@@ -17,6 +17,7 @@ package org.apache.lucene.search.spans;
  */
 
 
+import org.apache.lucene.search.spans.FilterSpans.AcceptStatus;
 import org.apache.lucene.util.ToStringUtils;
 
 import java.io.IOException;
@@ -25,10 +26,10 @@ import java.io.IOException;
 /**
  * Checks to see if the {@link #getMatch()} lies between a start and end position
  *
- * @see org.apache.lucene.search.spans.SpanFirstQuery for a derivation that is optimized for the case where start position is 0
+ * See {@link SpanFirstQuery} for a derivation that is optimized for the case where start position is 0.
  */
 public class SpanPositionRangeQuery extends SpanPositionCheckQuery {
-  protected int start = 0;
+  protected int start;
   protected int end;
 
   public SpanPositionRangeQuery(SpanQuery match, int start, int end) {
@@ -40,13 +41,12 @@ public class SpanPositionRangeQuery extends SpanPositionCheckQuery {
 
   @Override
   protected AcceptStatus acceptPosition(Spans spans) throws IOException {
-    assert spans.start() != spans.end();
-    if (spans.start() >= end)
-      return AcceptStatus.NO_AND_ADVANCE;
-    else if (spans.start() >= start && spans.end() <= end)
-      return AcceptStatus.YES;
-    else
-      return AcceptStatus.NO;
+    assert spans.startPosition() != spans.endPosition();
+    AcceptStatus res = (spans.startPosition() >= end)
+                      ? AcceptStatus.NO_MORE_IN_CURRENT_DOC
+                      : (spans.startPosition() >= start && spans.endPosition() <= end)
+                      ? AcceptStatus.YES : AcceptStatus.NO;
+    return res;
   }
 
 
@@ -85,20 +85,17 @@ public class SpanPositionRangeQuery extends SpanPositionCheckQuery {
 
   @Override
   public boolean equals(Object o) {
-    if (this == o) return true;
-    if (!(o instanceof SpanPositionRangeQuery)) return false;
-
+    if (! super.equals(o)) {
+      return false;
+    }
     SpanPositionRangeQuery other = (SpanPositionRangeQuery)o;
-    return this.end == other.end && this.start == other.start
-         && this.match.equals(other.match)
-         && this.getBoost() == other.getBoost();
+    return this.end == other.end && this.start == other.start;
   }
 
   @Override
   public int hashCode() {
-    int h = match.hashCode();
-    h ^= (h << 8) | (h >>> 25);  // reversible
-    h ^= Float.floatToRawIntBits(getBoost()) ^ end ^ start;
+    int h = super.hashCode() ^ end;
+    h = (h * 127) ^ start;
     return h;
   }
 

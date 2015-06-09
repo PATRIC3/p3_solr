@@ -32,6 +32,8 @@ import java.util.Set;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReader.CoreClosedListener;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.ReaderUtil;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.Bits;
@@ -563,13 +565,31 @@ public class LRUQueryCache implements QueryCache, Accountable {
     }
 
     @Override
-    Scorer scorer(LeafReaderContext context, final Bits acceptDocs, float score) throws IOException {
+    public void extractTerms(Set<Term> terms) {
+      in.extractTerms(terms);
+    }
+
+    private boolean cacheEntryHasReasonableWorstCaseSize(int maxDoc) {
+      // The worst-case (dense) is a bit set which needs one bit per document
+      final long worstCaseRamUsage = maxDoc / 8;
+      final long totalRamAvailable = maxRamBytesUsed;
+      // Imagine the worst-case that a cache entry is large than the size of
+      // the cache: not only will this entry be trashed immediately but it
+      // will also evict all current entries from the cache. For this reason
+      // we only cache on an IndexReader if we have available room for
+      // 5 different filters on this reader to avoid excessive trashing
+      return worstCaseRamUsage * 5 < totalRamAvailable;
+    }
+
+    @Override
+    public Scorer scorer(LeafReaderContext context, final Bits acceptDocs) throws IOException {
       if (context.ord == 0) {
         policy.onUse(getQuery());
       }
       DocIdSet docIdSet = get(in.getQuery(), context);
       if (docIdSet == null) {
-        if (policy.shouldCache(in.getQuery(), context)) {
+        if (cacheEntryHasReasonableWorstCaseSize(ReaderUtil.getTopLevelContext(context).reader().maxDoc())
+            && policy.shouldCache(in.getQuery(), context)) {
           final Scorer scorer = in.scorer(context, null);
           if (scorer == null) {
             docIdSet = DocIdSet.EMPTY;
@@ -586,64 +606,24 @@ public class LRUQueryCache implements QueryCache, Accountable {
       if (docIdSet == DocIdSet.EMPTY) {
         return null;
       }
-      final DocIdSetIterator approximation = docIdSet.iterator();
-      if (approximation == null) {
+      final DocIdSetIterator disi = docIdSet.iterator();
+      if (disi == null) {
         return null;
       }
 
-      final DocIdSetIterator disi;
-      final TwoPhaseIterator twoPhaseView;
+      // we apply acceptDocs as an approximation
       if (acceptDocs == null) {
-        twoPhaseView = null;
-        disi = approximation;
+        return new ConstantScoreScorer(this, 0f, disi);
       } else {
-        twoPhaseView = new TwoPhaseIterator(approximation) {
+        final TwoPhaseIterator twoPhaseView = new TwoPhaseIterator(disi) {
           @Override
           public boolean matches() throws IOException {
             final int doc = approximation.docID();
             return acceptDocs.get(doc);
           }
         };
-        disi = TwoPhaseIterator.asDocIdSetIterator(twoPhaseView);
+        return new ConstantScoreScorer(this, 0f, twoPhaseView);
       }
-      return new Scorer(this) {
-
-        @Override
-        public TwoPhaseIterator asTwoPhaseIterator() {
-          return twoPhaseView;
-        }
-
-        @Override
-        public float score() throws IOException {
-          return 0f;
-        }
-
-        @Override
-        public int freq() throws IOException {
-          return 1;
-        }
-
-        @Override
-        public int docID() {
-          return disi.docID();
-        }
-
-        @Override
-        public int nextDoc() throws IOException {
-          return disi.nextDoc();
-        }
-
-        @Override
-        public int advance(int target) throws IOException {
-          return disi.advance(target);
-        }
-
-        @Override
-        public long cost() {
-          return disi.cost();
-        }
-
-      };
     }
 
   }

@@ -24,27 +24,26 @@ import java.util.List;
 
 import org.apache.lucene.util.CollectionUtil;
 
-class ConjunctionDISI extends DocIdSetIterator {
+/** A conjunction of DocIdSetIterators.
+ * This iterates over the doc ids that are present in each given DocIdSetIterator.
+ * <br>Public only for use in {@link org.apache.lucene.search.spans}.
+ * @lucene.internal
+ */
+public class ConjunctionDISI extends DocIdSetIterator {
 
   /** Create a conjunction over the provided iterators, taking advantage of
    *  {@link TwoPhaseIterator}. */
   public static ConjunctionDISI intersect(List<? extends DocIdSetIterator> iterators) {
+    assert iterators.size() >= 2;
     final List<DocIdSetIterator> allIterators = new ArrayList<>();
     final List<TwoPhaseIterator> twoPhaseIterators = new ArrayList<>();
-    for (DocIdSetIterator iterator : iterators) {
-      if (iterator instanceof Scorer) {
-        // if we have a scorer, check if it supports two-phase iteration
-        TwoPhaseIterator twoPhaseIterator = ((Scorer) iterator).asTwoPhaseIterator();
-        if (twoPhaseIterator != null) {
-          // Note: 
-          allIterators.add(twoPhaseIterator.approximation());
-          twoPhaseIterators.add(twoPhaseIterator);
-        } else {
-          allIterators.add(iterator);
-        }
-      } else {
-        // no approximation support, use the iterator as-is
-        allIterators.add(iterator);
+    for (DocIdSetIterator iter : iterators) {
+      TwoPhaseIterator twoPhaseIter = TwoPhaseIterator.asTwoPhaseIterator(iter);
+      if (twoPhaseIter != null) {
+        allIterators.add(twoPhaseIter.approximation());
+        twoPhaseIterators.add(twoPhaseIter);
+      } else { // no approximation support, use the iterator as-is
+        allIterators.add(iter);
       }
     }
 
@@ -59,6 +58,7 @@ class ConjunctionDISI extends DocIdSetIterator {
   final DocIdSetIterator[] others;
 
   ConjunctionDISI(List<? extends DocIdSetIterator> iterators) {
+    assert iterators.size() >= 2;
     // Sort the array the first time to allow the least frequent DocsEnum to
     // lead the matching.
     CollectionUtil.timSort(iterators, new Comparator<DocIdSetIterator>() {

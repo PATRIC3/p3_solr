@@ -20,6 +20,7 @@ package org.apache.solr.common.cloud;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.util.ByteUtils;
+import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
@@ -36,6 +37,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -50,6 +52,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+
+import static java.util.Arrays.asList;
+import static java.util.Collections.unmodifiableSet;
 
 public class ZkStateReader implements Closeable {
   private static Logger log = LoggerFactory.getLogger(ZkStateReader.class);
@@ -79,18 +84,13 @@ public class ZkStateReader implements Closeable {
   public static final String CLUSTER_STATE = "/clusterstate.json";
   public static final String CLUSTER_PROPS = "/clusterprops.json";
   public static final String REJOIN_AT_HEAD_PROP = "rejoinAtHead";
+  public static final String SOLR_SECURITY_CONF_PATH = "/security.json";
 
   public static final String REPLICATION_FACTOR = "replicationFactor";
   public static final String MAX_SHARDS_PER_NODE = "maxShardsPerNode";
   public static final String AUTO_ADD_REPLICAS = "autoAddReplicas";
 
   public static final String ROLES = "/roles.json";
-
-  public static final String RECOVERING = "recovering";
-  public static final String RECOVERY_FAILED = "recovery_failed";
-  public static final String ACTIVE = "active";
-  public static final String DOWN = "down";
-  public static final String SYNC = "sync";
 
   public static final String CONFIGS_ZKNODE = "/configs";
   public final static String CONFIGNAME_PROP="configName";
@@ -119,6 +119,10 @@ public class ZkStateReader implements Closeable {
 
   private final ZkConfigManager configManager;
 
+  public static final Set<String> KNOWN_CLUSTER_PROPS = unmodifiableSet(new HashSet<>(asList(
+      LEGACY_CLOUD,
+      URL_SCHEME,
+      AUTO_ADD_REPLICAS)));
 
   //
   // convenience methods... should these go somewhere else?
@@ -127,6 +131,10 @@ public class ZkStateReader implements Closeable {
     CharArr out = new CharArr();
     new JSONWriter(out, 2).write(o); // indentation by default
     return toUTF8(out);
+  }
+
+  public static String toJSONString(Object o) {
+    return new String(toJSON(o), StandardCharsets.UTF_8);
   }
 
   public static byte[] toUTF8(CharArr out) {
@@ -696,18 +704,17 @@ public class ZkStateReader implements Closeable {
   }
 
 
-  public List<ZkCoreNodeProps> getReplicaProps(String collection,
-      String shardId, String thisCoreNodeName) {
+  public List<ZkCoreNodeProps> getReplicaProps(String collection, String shardId, String thisCoreNodeName) {
     return getReplicaProps(collection, shardId, thisCoreNodeName, null);
   }
   
-  public List<ZkCoreNodeProps> getReplicaProps(String collection,
-      String shardId, String thisCoreNodeName, String mustMatchStateFilter) {
+  public List<ZkCoreNodeProps> getReplicaProps(String collection, String shardId, String thisCoreNodeName,
+      Replica.State mustMatchStateFilter) {
     return getReplicaProps(collection, shardId, thisCoreNodeName, mustMatchStateFilter, null);
   }
   
-  public List<ZkCoreNodeProps> getReplicaProps(String collection,
-      String shardId, String thisCoreNodeName, String mustMatchStateFilter, String mustNotMatchStateFilter) {
+  public List<ZkCoreNodeProps> getReplicaProps(String collection, String shardId, String thisCoreNodeName,
+      Replica.State mustMatchStateFilter, Replica.State mustNotMatchStateFilter) {
     assert thisCoreNodeName != null;
     ClusterState clusterState = this.clusterState;
     if (clusterState == null) {
@@ -733,8 +740,8 @@ public class ZkStateReader implements Closeable {
       String coreNodeName = entry.getValue().getName();
       
       if (clusterState.liveNodesContain(nodeProps.getNodeName()) && !coreNodeName.equals(thisCoreNodeName)) {
-        if (mustMatchStateFilter == null || mustMatchStateFilter.equals(nodeProps.getState())) {
-          if (mustNotMatchStateFilter == null || !mustNotMatchStateFilter.equals(nodeProps.getState())) {
+        if (mustMatchStateFilter == null || mustMatchStateFilter == Replica.State.getState(nodeProps.getState())) {
+          if (mustNotMatchStateFilter == null || mustNotMatchStateFilter != Replica.State.getState(nodeProps.getState())) {
             nodes.add(nodeProps);
           }
         }
@@ -772,7 +779,75 @@ public class ZkStateReader implements Closeable {
       throw new SolrException(ErrorCode.SERVER_ERROR,"Error reading cluster properties",e) ;
     }
   }
-  
+
+  /**
+   * This method sets a cluster property.
+   *
+   * @param propertyName  The property name to be set.
+   * @param propertyValue The value of the property.
+   */
+  public void setClusterProperty(String propertyName, String propertyValue) {
+    if (!KNOWN_CLUSTER_PROPS.contains(propertyName)) {
+      throw new SolrException(ErrorCode.BAD_REQUEST, "Not a known cluster property " + propertyName);
+    }
+
+    for (; ; ) {
+      Stat s = new Stat();
+      try {
+        if (getZkClient().exists(CLUSTER_PROPS, true)) {
+          int v = 0;
+          Map properties = (Map) fromJSON(getZkClient().getData(CLUSTER_PROPS, null, s, true));
+          if (propertyValue == null) {
+            //Don't update ZK unless absolutely necessary.
+            if (properties.get(propertyName) != null) {
+              properties.remove(propertyName);
+              getZkClient().setData(CLUSTER_PROPS, toJSON(properties), s.getVersion(), true);
+            }
+          } else {
+            //Don't update ZK unless absolutely necessary.
+            if (!propertyValue.equals(properties.get(propertyName))) {
+              properties.put(propertyName, propertyValue);
+              getZkClient().setData(CLUSTER_PROPS, toJSON(properties), s.getVersion(), true);
+            }
+          }
+        } else {
+          Map properties = new LinkedHashMap();
+          properties.put(propertyName, propertyValue);
+          getZkClient().create(CLUSTER_PROPS, toJSON(properties), CreateMode.PERSISTENT, true);
+        }
+      } catch (KeeperException.BadVersionException bve) {
+        log.warn("Race condition while trying to set a new cluster prop on current version " + s.getVersion());
+        //race condition
+        continue;
+      } catch (KeeperException.NodeExistsException nee) {
+        log.warn("Race condition while trying to set a new cluster prop on current version " + s.getVersion());
+        //race condition
+        continue;
+      } catch (Exception ex) {
+        log.error("Error updating path " + CLUSTER_PROPS, ex);
+        throw new SolrException(ErrorCode.SERVER_ERROR, "Error updating cluster property " + propertyName, ex);
+      }
+      break;
+    }
+  }
+
+
+
+  /**
+   * Returns the content of /security.json from ZooKeeper as a Map
+   * If the files doesn't exist, it returns null.
+   */
+  public Map getSecurityProps() {
+    try {
+      if(getZkClient().exists(SOLR_SECURITY_CONF_PATH, true)) {
+        return (Map) ZkStateReader.fromJSON(getZkClient()
+            .getData(ZkStateReader.SOLR_SECURITY_CONF_PATH, null, new Stat(), true)) ;
+      }
+    } catch (KeeperException | InterruptedException e) {
+      throw new SolrException(ErrorCode.SERVER_ERROR,"Error reading security properties",e) ;
+    }
+    return null;
+  }
   /**
    * Returns the baseURL corresponding to a given node's nodeName --
    * NOTE: does not (currently) imply that the nodeName (or resulting 

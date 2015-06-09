@@ -20,6 +20,7 @@ package org.apache.lucene.index;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Objects;
 
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.RAMFile;
@@ -28,22 +29,25 @@ import org.apache.lucene.store.RAMOutputStream;
 import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
+import org.apache.lucene.util.RamUsageEstimator;
 
 /**
  * Prefix codes term instances (prefixes are shared)
- * @lucene.experimental
+ * @lucene.internal
  */
-class PrefixCodedTerms implements Accountable {
+public class PrefixCodedTerms implements Accountable {
   final RAMFile buffer;
+  private final long size;
   private long delGen;
 
-  private PrefixCodedTerms(RAMFile buffer) {
-    this.buffer = buffer;
+  private PrefixCodedTerms(RAMFile buffer, long size) {
+    this.buffer = Objects.requireNonNull(buffer);
+    this.size = size;
   }
 
   @Override
   public long ramBytesUsed() {
-    return buffer.ramBytesUsed();
+    return buffer.ramBytesUsed() + 2 * RamUsageEstimator.NUM_BYTES_LONG;
   }
   
   @Override
@@ -62,6 +66,10 @@ class PrefixCodedTerms implements Accountable {
     private RAMOutputStream output = new RAMOutputStream(buffer, false);
     private Term lastTerm = new Term("");
     private BytesRefBuilder lastTermBytes = new BytesRefBuilder();
+    private long size;
+
+    /** Sole constructor. */
+    public Builder() {}
 
     /** add a term */
     public void add(Term term) {
@@ -81,6 +89,7 @@ class PrefixCodedTerms implements Accountable {
         lastTermBytes.copyBytes(term.bytes);
         lastTerm.bytes = lastTermBytes.get();
         lastTerm.field = term.field;
+        size += 1;
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
@@ -90,7 +99,7 @@ class PrefixCodedTerms implements Accountable {
     public PrefixCodedTerms finish() {
       try {
         output.close();
-        return new PrefixCodedTerms(buffer);
+        return new PrefixCodedTerms(buffer, size);
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
@@ -111,7 +120,8 @@ class PrefixCodedTerms implements Accountable {
     }
   }
 
-  public static class TermIterator implements FieldTermIterator {
+  /** An iterator over the list of terms stored in a {@link PrefixCodedTerms}. */
+  public static class TermIterator extends FieldTermIterator {
     final IndexInput input;
     final BytesRefBuilder builder = new BytesRefBuilder();
     final BytesRef bytes = builder.get();
@@ -119,7 +129,7 @@ class PrefixCodedTerms implements Accountable {
     final long delGen;
     String field = "";
 
-    public TermIterator(long delGen, RAMFile buffer) {
+    private TermIterator(long delGen, RAMFile buffer) {
       try {
         input = new RAMInputStream("MergedPrefixCodedTermsIterator", buffer);
       } catch (IOException e) {
@@ -130,7 +140,7 @@ class PrefixCodedTerms implements Accountable {
     }
 
     @Override
-    public boolean next() {
+    public BytesRef next() {
       if (input.getFilePointer() < end) {
         try {
           int code = input.readVInt();
@@ -141,13 +151,13 @@ class PrefixCodedTerms implements Accountable {
           int prefix = code >>> 1;
           int suffix = input.readVInt();
           readTermBytes(prefix, suffix);
-          return newField;
+          return bytes;
         } catch (IOException e) {
           throw new RuntimeException(e);
         }
       } else {
         field = null;
-        return true;
+        return null;
       }
     }
 
@@ -156,11 +166,6 @@ class PrefixCodedTerms implements Accountable {
       builder.grow(prefix + suffix);
       input.readBytes(builder.bytes(), prefix, suffix);
       builder.setLength(prefix + suffix);
-    }
-
-    @Override
-    public BytesRef term() {
-      return bytes;
     }
 
     @Override
@@ -174,7 +179,29 @@ class PrefixCodedTerms implements Accountable {
     }
   }
 
+  /** Return an iterator over the terms stored in this {@link PrefixCodedTerms}. */
   public TermIterator iterator() {
     return new TermIterator(delGen, buffer);
+  }
+
+  /** Return the number of terms stored in this {@link PrefixCodedTerms}. */
+  public long size() {
+    return size;
+  }
+
+  @Override
+  public int hashCode() {
+    int h = buffer.hashCode();
+    h = 31 * h + (int) (delGen ^ (delGen >>> 32));
+    return h;
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) return true;
+    if (obj == null) return false;
+    if (getClass() != obj.getClass()) return false;
+    PrefixCodedTerms other = (PrefixCodedTerms) obj;
+    return buffer.equals(other.buffer) && delGen == other.delGen;
   }
 }

@@ -34,7 +34,6 @@ import org.apache.lucene.util.ToStringUtils;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /**
  * A query that executes high-frequency terms in a optional sub-query to prevent
@@ -247,7 +246,7 @@ public class CommonTermsQuery extends Query {
           // field does not exist
           continue;
         }
-        termsEnum = terms.iterator(termsEnum);
+        termsEnum = terms.iterator();
         assert termsEnum != null;
         
         if (termsEnum == TermsEnum.EMPTY) continue;
@@ -330,11 +329,6 @@ public class CommonTermsQuery extends Query {
    */
   public float getHighFreqMinimumNumberShouldMatch() {
     return highFreqMinNrShouldMatch;
-  }
-  
-  @Override
-  public void extractTerms(Set<Term> terms) {
-    terms.addAll(this.terms);
   }
   
   @Override

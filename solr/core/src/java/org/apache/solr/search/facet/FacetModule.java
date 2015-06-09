@@ -174,7 +174,7 @@ public class FacetModule extends SearchComponent {
       if (facetState.merger == null) {
         facetState.merger = facetState.facetRequest.createFacetMerger(facet);
       }
-      facetState.merger.merge(facet);
+      facetState.merger.merge(facet , new FacetMerger.Context());
     }
   }
 
@@ -215,22 +215,6 @@ class FacetComponentState {
   FacetMerger merger;
 }
 
-//
-// The FacetMerger code is in the prototype stage, and this is the reason that
-// many implementations are all in this file.  They can be moved to separate
-// files after the interfaces are locked down more.
-//
-
-class FacetMerger {
-  public void merge(Object facetResult) {
-
-  }
-
-  public Object getMergedResult() {
-    return null; // TODO
-  }
-}
-
 
 abstract class FacetSortableMerger extends FacetMerger {
   public void prepareSort() {
@@ -242,22 +226,21 @@ abstract class FacetSortableMerger extends FacetMerger {
   public abstract int compareTo(FacetSortableMerger other, FacetField.SortDirection direction);
 }
 
-class FacetDoubleMerger extends FacetSortableMerger {
-  double val;
-
+abstract class FacetDoubleMerger extends FacetSortableMerger {
   @Override
-  public void merge(Object facetResult) {
-    val += ((Number)facetResult).doubleValue();
-  }
+  public abstract void merge(Object facetResult, Context mcontext);
+
+  protected abstract double getDouble();
 
   @Override
   public Object getMergedResult() {
-    return val;
+    return getDouble();
   }
+
 
   @Override
   public int compareTo(FacetSortableMerger other, FacetField.SortDirection direction) {
-    return compare(val, ((FacetDoubleMerger)other).val, direction);
+    return compare(getDouble(), ((FacetDoubleMerger)other).getDouble(), direction);
   }
 
 
@@ -282,11 +265,14 @@ class FacetDoubleMerger extends FacetSortableMerger {
 }
 
 
+
+
+
 class FacetLongMerger extends FacetSortableMerger {
   long val;
 
   @Override
-  public void merge(Object facetResult) {
+  public void merge(Object facetResult, Context mcontext) {
     val += ((Number)facetResult).longValue();
   }
 
@@ -303,8 +289,9 @@ class FacetLongMerger extends FacetSortableMerger {
 
 
 // base class for facets that create buckets (and can hence have sub-facets)
-class FacetBucketMerger<FacetRequestT extends FacetRequest> extends FacetMerger {
+abstract class FacetBucketMerger<FacetRequestT extends FacetRequest> extends FacetMerger {
   FacetRequestT freq;
+  int bucketNumber;
 
   public FacetBucketMerger(FacetRequestT freq) {
     this.freq = freq;
@@ -312,7 +299,7 @@ class FacetBucketMerger<FacetRequestT extends FacetRequest> extends FacetMerger 
 
   /** Bucketval is the representative value for the bucket.  Only applicable to terms and range queries to distinguish buckets. */
   FacetBucket newBucket(Comparable bucketVal) {
-    return new FacetBucket(this, bucketVal);
+    return new FacetBucket(this, bucketVal, bucketNumber++);
   }
 
   // do subs...
@@ -342,11 +329,11 @@ class FacetQueryMerger extends FacetBucketMerger<FacetQuery> {
   }
 
   @Override
-  public void merge(Object facet) {
+  public void merge(Object facet, Context mcontext) {
     if (bucket == null) {
       bucket = newBucket(null);
     }
-    bucket.mergeBucket((SimpleOrderedMap) facet);
+    bucket.mergeBucket((SimpleOrderedMap) facet, mcontext);
   }
 
   @Override
@@ -358,14 +345,17 @@ class FacetQueryMerger extends FacetBucketMerger<FacetQuery> {
 
 
 class FacetBucket {
-  FacetBucketMerger parent;
-  Comparable bucketValue;
+  final FacetBucketMerger parent;
+  final Comparable bucketValue;
+  final int bucketNumber;  // this is just for internal correlation (the first bucket created is bucket 0, the next bucket 1, etc)
+
   long count;
   Map<String, FacetMerger> subs;
 
-  public FacetBucket(FacetBucketMerger parent, Comparable bucketValue) {
+  public FacetBucket(FacetBucketMerger parent, Comparable bucketValue, int bucketNumber) {
     this.parent = parent;
     this.bucketValue = bucketValue;
+    this.bucketNumber = bucketNumber;
   }
 
   public long getCount() {
@@ -397,7 +387,7 @@ class FacetBucket {
     return merger;
   }
 
-  public void mergeBucket(SimpleOrderedMap bucket) {
+  public void mergeBucket(SimpleOrderedMap bucket, FacetMerger.Context mcontext) {
     // todo: for refinements, we want to recurse, but not re-do stats for intermediate buckets
 
     // drive merging off the received bucket?
@@ -416,7 +406,7 @@ class FacetBucket {
       FacetMerger merger = getMerger(key, val);
 
       if (merger != null) {
-        merger.merge( val );
+        merger.merge( val , mcontext );
       }
     }
   }
@@ -446,13 +436,13 @@ class FacetFieldMerger extends FacetBucketMerger<FacetField> {
   FacetBucket allBuckets;
   FacetMerger numBuckets;
 
-  LinkedHashMap<Object,FacetBucket> buckets = new LinkedHashMap<Object,FacetBucket>();
+  LinkedHashMap<Object,FacetBucket> buckets = new LinkedHashMap<>();
   List<FacetBucket> sortedBuckets;
   int numReturnedBuckets; // the number of buckets in the bucket lists returned from all of the shards
 
   private static class SortVal implements Comparable<SortVal> {
     FacetBucket bucket;
-    FacetSortableMerger merger;
+    FacetSortableMerger merger;  // make this class inner and access merger , direction in parent?
     FacetField.SortDirection direction;
 
     @Override
@@ -467,18 +457,18 @@ class FacetFieldMerger extends FacetBucketMerger<FacetField> {
   }
 
   @Override
-  public void merge(Object facetResult) {
-    merge((SimpleOrderedMap)facetResult);
+  public void merge(Object facetResult, Context mcontext) {
+    merge((SimpleOrderedMap)facetResult, mcontext);
   }
 
-  public void merge(SimpleOrderedMap facetResult) {
+  protected void merge(SimpleOrderedMap facetResult, Context mcontext) {
     if (freq.missing) {
       Object o = facetResult.get("missing");
       if (o != null) {
         if (missingBucket == null) {
           missingBucket = newBucket(null);
         }
-        missingBucket.mergeBucket((SimpleOrderedMap)o);
+        missingBucket.mergeBucket((SimpleOrderedMap)o , mcontext);
       }
     }
 
@@ -488,13 +478,13 @@ class FacetFieldMerger extends FacetBucketMerger<FacetField> {
         if (allBuckets == null) {
           allBuckets = newBucket(null);
         }
-        allBuckets.mergeBucket((SimpleOrderedMap)o);
+        allBuckets.mergeBucket((SimpleOrderedMap)o , mcontext);
       }
     }
 
     List<SimpleOrderedMap> bucketList = (List<SimpleOrderedMap>) facetResult.get("buckets");
     numReturnedBuckets += bucketList.size();
-    mergeBucketList(bucketList);
+    mergeBucketList(bucketList , mcontext);
 
     if (freq.numBuckets) {
       Object nb = facetResult.get("numBuckets");
@@ -502,13 +492,13 @@ class FacetFieldMerger extends FacetBucketMerger<FacetField> {
         if (numBuckets == null) {
           numBuckets = new FacetNumBucketsMerger();
         }
-        numBuckets.merge(nb);
+        numBuckets.merge(nb , mcontext);
       }
     }
 
   }
 
-  public void mergeBucketList(List<SimpleOrderedMap> bucketList) {
+  public void mergeBucketList(List<SimpleOrderedMap> bucketList, Context mcontext) {
     for (SimpleOrderedMap bucketRes : bucketList) {
       Comparable bucketVal = (Comparable)bucketRes.get("val");
       FacetBucket bucket = buckets.get(bucketVal);
@@ -516,7 +506,7 @@ class FacetFieldMerger extends FacetBucketMerger<FacetField> {
         bucket = newBucket(bucketVal);
         buckets.put(bucketVal, bucket);
       }
-      bucket.mergeBucket( bucketRes );
+      bucket.mergeBucket( bucketRes , mcontext );
     }
   }
 
@@ -685,7 +675,7 @@ class FacetFieldMerger extends FacetBucketMerger<FacetField> {
     Set<Object> values;
 
     @Override
-    public void merge(Object facetResult) {
+    public void merge(Object facetResult, Context mcontext) {
       SimpleOrderedMap map = (SimpleOrderedMap)facetResult;
       long numBuckets = ((Number)map.get("numBuckets")).longValue();
       sumBuckets += numBuckets;
@@ -728,21 +718,16 @@ class FacetRangeMerger extends FacetBucketMerger<FacetRange> {
   }
 
   @Override
-  FacetBucket newBucket(Comparable bucketVal) {
-    return super.newBucket(bucketVal);
-  }
-
-  @Override
   FacetMerger createFacetMerger(String key, Object val) {
     return super.createFacetMerger(key, val);
   }
 
   @Override
-  public void merge(Object facetResult) {
-    merge((SimpleOrderedMap) facetResult);
+  public void merge(Object facetResult, Context mcontext) {
+    merge((SimpleOrderedMap) facetResult , mcontext);
   }
 
-  public void merge(SimpleOrderedMap facetResult) {
+  public void merge(SimpleOrderedMap facetResult, Context mcontext) {
     boolean all = freq.others.contains(FacetParams.FacetRangeOther.ALL);
 
     if (all || freq.others.contains(FacetParams.FacetRangeOther.BEFORE)) {
@@ -751,7 +736,7 @@ class FacetRangeMerger extends FacetBucketMerger<FacetRange> {
         if (beforeBucket == null) {
           beforeBucket = newBucket(null);
         }
-        beforeBucket.mergeBucket((SimpleOrderedMap)o);
+        beforeBucket.mergeBucket((SimpleOrderedMap)o, mcontext);
       }
     }
 
@@ -761,7 +746,7 @@ class FacetRangeMerger extends FacetBucketMerger<FacetRange> {
         if (afterBucket == null) {
           afterBucket = newBucket(null);
         }
-        afterBucket.mergeBucket((SimpleOrderedMap)o);
+        afterBucket.mergeBucket((SimpleOrderedMap)o , mcontext);
       }
     }
 
@@ -771,15 +756,16 @@ class FacetRangeMerger extends FacetBucketMerger<FacetRange> {
         if (betweenBucket == null) {
           betweenBucket = newBucket(null);
         }
-        betweenBucket.mergeBucket((SimpleOrderedMap)o);
+        betweenBucket.mergeBucket((SimpleOrderedMap)o , mcontext);
       }
     }
 
     List<SimpleOrderedMap> bucketList = (List<SimpleOrderedMap>) facetResult.get("buckets");
-    mergeBucketList(bucketList);
+    mergeBucketList(bucketList , mcontext);
   }
 
-  public void mergeBucketList(List<SimpleOrderedMap> bucketList) {
+  // TODO: share more merging with field faceting
+  public void mergeBucketList(List<SimpleOrderedMap> bucketList, Context mcontext) {
     for (SimpleOrderedMap bucketRes : bucketList) {
       Comparable bucketVal = (Comparable)bucketRes.get("val");
       FacetBucket bucket = buckets.get(bucketVal);
@@ -787,7 +773,7 @@ class FacetRangeMerger extends FacetBucketMerger<FacetRange> {
         bucket = newBucket(bucketVal);
         buckets.put(bucketVal, bucket);
       }
-      bucket.mergeBucket( bucketRes );
+      bucket.mergeBucket( bucketRes , mcontext );
     }
   }
 
@@ -796,14 +782,11 @@ class FacetRangeMerger extends FacetBucketMerger<FacetRange> {
     SimpleOrderedMap result = new SimpleOrderedMap(4);
 
     List<SimpleOrderedMap> resultBuckets = new ArrayList<>(buckets.size());
-    // TODO: if we implement mincount for ranges, we'll need to sort buckets (see FacetFieldMerger)
 
     for (FacetBucket bucket : buckets.values()) {
-      /***
        if (bucket.getCount() < freq.mincount) {
-       continue;
+         continue;
        }
-       ***/
       resultBuckets.add( bucket.getMergedBucket() );
     }
 

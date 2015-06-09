@@ -30,6 +30,7 @@ import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CollectionParams.CollectionAction;
 import org.apache.solr.common.params.CoreAdminParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SolrjNamedThreadFactory;
 import org.apache.zookeeper.KeeperException;
@@ -67,7 +68,7 @@ public class MiniSolrCloudCluster {
   private final CloudSolrClient solrClient;
   private final JettyConfig jettyConfig;
 
-  private final ExecutorService executor = Executors.newCachedThreadPool(new SolrjNamedThreadFactory("jetty-launcher"));
+  private final ExecutorService executor = ExecutorUtil.newMDCAwareCachedThreadPool(new SolrjNamedThreadFactory("jetty-launcher"));
 
   /**
    * Create a MiniSolrCloudCluster
@@ -283,7 +284,7 @@ public class MiniSolrCloudCluster {
   
   public NamedList<Object> createCollection(String name, int numShards, int replicationFactor, 
       String configName, Map<String, String> collectionProperties) throws SolrServerException, IOException {
-    ModifiableSolrParams params = new ModifiableSolrParams();
+    final ModifiableSolrParams params = new ModifiableSolrParams();
     params.set(CoreAdminParams.ACTION, CollectionAction.CREATE.name());
     params.set(CoreAdminParams.NAME, name);
     params.set("numShards", numShards);
@@ -295,7 +296,20 @@ public class MiniSolrCloudCluster {
       }
     }
     
-    QueryRequest request = new QueryRequest(params);
+    return makeCollectionsRequest(params);
+  }
+
+  public NamedList<Object> deleteCollection(String name) throws SolrServerException, IOException {
+    final ModifiableSolrParams params = new ModifiableSolrParams();
+    params.set(CoreAdminParams.ACTION, CollectionAction.DELETE.name());
+    params.set(CoreAdminParams.NAME, name);
+
+    return makeCollectionsRequest(params);
+  }
+
+  private NamedList<Object> makeCollectionsRequest(final ModifiableSolrParams params) throws SolrServerException, IOException {
+    
+    final QueryRequest request = new QueryRequest(params);
     request.setPath("/admin/collections");
     
     return solrClient.request(request);

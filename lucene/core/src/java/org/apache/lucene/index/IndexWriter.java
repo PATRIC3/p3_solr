@@ -32,8 +32,8 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -47,6 +47,7 @@ import org.apache.lucene.index.DocValuesUpdate.BinaryDocValuesUpdate;
 import org.apache.lucene.index.DocValuesUpdate.NumericDocValuesUpdate;
 import org.apache.lucene.index.FieldInfos.FieldNumbers;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
@@ -201,6 +202,9 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
   // ArrayUtil.MAX_ARRAY_LENGTH on "typical" JVMs.  We don't just use
   // ArrayUtil.MAX_ARRAY_LENGTH here because this can vary across JVMs:
   public static final int MAX_DOCS = Integer.MAX_VALUE - 128;
+
+  /** Maximum value of the token position in an indexed field. */
+  public static final int MAX_POSITION = Integer.MAX_VALUE - 128;
 
   // Use package-private instance var to enforce the limit so testing
   // can use less electricity:
@@ -1320,6 +1324,15 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
    */
   public void deleteDocuments(Query... queries) throws IOException {
     ensureOpen();
+
+    // LUCENE-6379: Specialize MatchAllDocsQuery
+    for(Query query : queries) {
+      if (query.getClass() == MatchAllDocsQuery.class) {
+        deleteAll();
+        return;
+      }
+    }
+
     try {
       if (docWriter.deleteQueries(queries)) {
         processEvents(true, false);
@@ -2700,6 +2713,15 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
 
               readerPool.commit(segmentInfos);
 
+              if (changeCount.get() != lastCommitChangeCount) {
+                // There are changes to commit, so we will write a new segments_N in startCommit.
+                // The act of committing is itself an NRT-visible change (an NRT reader that was
+                // just opened before this should see it on reopen) so we increment changeCount
+                // and segments version so a future NRT reopen will see the change:
+                changeCount.incrementAndGet();
+                segmentInfos.changed();
+              }
+
               // Must clone the segmentInfos while we still
               // hold fullFlushLock and while sync'd so that
               // no partial changes (eg a delete w/o
@@ -2872,9 +2894,16 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
             // we committed, if anything goes wrong after this, we are screwed and it's a tragedy:
             commitCompleted = true;
 
+            if (infoStream.isEnabled("IW")) {
+              infoStream.message("IW", "commit: done writing segments file \"" + committedSegmentsFileName + "\"");
+            }
+
             // NOTE: don't use this.checkpoint() here, because
             // we do not want to increment changeCount:
             deleter.checkpoint(pendingCommit, true);
+
+            // Carry over generation to our master SegmentInfos:
+            segmentInfos.updateGeneration(pendingCommit);
 
             lastCommitChangeCount = pendingCommitChangeCount;
             rollbackSegments = pendingCommit.createBackupSegmentInfos();
@@ -2914,7 +2943,6 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
     }
 
     if (infoStream.isEnabled("IW")) {
-      infoStream.message("IW", "commit: wrote segments file \"" + committedSegmentsFileName + "\"");
       infoStream.message("IW", String.format(Locale.ROOT, "commit: took %.1f msec", (System.nanoTime()-startCommitTime)/1000000.0));
       infoStream.message("IW", "commit: done");
     }
@@ -4289,6 +4317,10 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
           // (this method unwinds everything it did on
           // an exception)
           toSync.prepareCommit(directory);
+          if (infoStream.isEnabled("IW")) {
+            infoStream.message("IW", "startCommit: wrote pending segments file \"" + IndexFileNames.fileNameFromGeneration(IndexFileNames.PENDING_SEGMENTS, "", toSync.getGeneration()) + "\"");
+          }
+
           //System.out.println("DONE prepareCommit");
 
           pendingCommitSet = true;

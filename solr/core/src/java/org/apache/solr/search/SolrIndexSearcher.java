@@ -20,6 +20,7 @@ package org.apache.solr.search;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -66,23 +67,23 @@ import org.apache.lucene.uninverting.UninvertingReader;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
-import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
-import org.apache.solr.core.DirectoryFactory.DirContext;
 import org.apache.solr.core.DirectoryFactory;
+import org.apache.solr.core.DirectoryFactory.DirContext;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrInfoMBean;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
-import org.apache.solr.search.facet.UnInvertedField;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
+import org.apache.solr.search.facet.UnInvertedField;
 import org.apache.solr.search.stats.StatsSource;
 import org.apache.solr.update.SolrIndexConfig;
 import org.slf4j.Logger;
@@ -196,16 +197,20 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       postFilter.setLastDelegate(collector);
       collector = postFilter;
     }
-    
+
     try {
       super.search(query, collector);
-      if(collector instanceof DelegatingCollector) {
-        ((DelegatingCollector)collector).finish();
-      }
-    }
-    catch( TimeLimitingCollector.TimeExceededException | ExitableDirectoryReader.ExitingReaderException x ) {
-      log.warn( "Query: " + query + "; " + x.getMessage() );
+    } catch (TimeLimitingCollector.TimeExceededException | ExitableDirectoryReader.ExitingReaderException x) {
+      log.warn("Query: " + query + "; " + x.getMessage());
       qr.setPartialResults(true);
+    } catch (EarlyTerminatingCollectorException etce) {
+      if (collector instanceof DelegatingCollector) {
+        ((DelegatingCollector) collector).finish();
+      }
+      throw etce;
+    }
+    if (collector instanceof DelegatingCollector) {
+      ((DelegatingCollector) collector).finish();
     }
   }
   
@@ -617,7 +622,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     }
 
     @Override
-    public void stringField(FieldInfo fieldInfo, String value) throws IOException {
+    public void stringField(FieldInfo fieldInfo, byte[] bytes) throws IOException {
+      String value = new String(bytes, StandardCharsets.UTF_8);
       final FieldType ft = new FieldType(TextField.TYPE_STORED);
       ft.setStoreTermVectors(fieldInfo.hasVectors());
       ft.setOmitNorms(fieldInfo.omitsNorms());
@@ -707,7 +713,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
               throw new AssertionError();
             }
           } else {
-            visitor.stringField(info, f.stringValue());
+            visitor.stringField(info, f.stringValue().getBytes(StandardCharsets.UTF_8));
           }
           break;
         case NO:
@@ -795,7 +801,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     Terms terms = leafReader.terms(t.field());
     if (terms == null) return -1;
     BytesRef termBytes = t.bytes();
-    final TermsEnum termsEnum = terms.iterator(null);
+    final TermsEnum termsEnum = terms.iterator();
     if (!termsEnum.seekExact(termBytes)) {
       return -1;
     }
@@ -818,7 +824,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       final Terms terms = reader.terms(field);
       if (terms == null) continue;
       
-      TermsEnum te = terms.iterator(null);
+      TermsEnum te = terms.iterator();
       if (te.seekExact(idBytes)) {
         PostingsEnum docs = te.postings(reader.getLiveDocs(), null, PostingsEnum.NONE);
         int id = docs.nextDoc();

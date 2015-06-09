@@ -23,11 +23,14 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.WeakHashMap;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.Bits;
@@ -48,8 +51,8 @@ public class CachingWrapperQuery extends Query implements Accountable {
    * @param policy policy defining which filters should be cached on which segments
    */
   public CachingWrapperQuery(Query query, QueryCachingPolicy policy) {
-    this.query = query;
-    this.policy = policy;
+    this.query = Objects.requireNonNull(query, "Query must not be null");
+    this.policy = Objects.requireNonNull(policy, "QueryCachingPolicy must not be null");
   }
 
   /** Same as {@link CachingWrapperQuery#CachingWrapperQuery(Query, QueryCachingPolicy)}
@@ -116,7 +119,12 @@ public class CachingWrapperQuery extends Query implements Accountable {
     policy.onUse(weight.getQuery());
     return new ConstantScoreWeight(weight.getQuery()) {
       @Override
-      Scorer scorer(LeafReaderContext context, final Bits acceptDocs, float score) throws IOException {
+      public void extractTerms(Set<Term> terms) {
+        weight.extractTerms(terms);
+      }
+
+      @Override
+      public Scorer scorer(LeafReaderContext context, final Bits acceptDocs) throws IOException {
         final LeafReader reader = context.reader();
         final Object key = reader.getCoreCacheKey();
 
@@ -140,19 +148,17 @@ public class CachingWrapperQuery extends Query implements Accountable {
         if (docIdSet == DocIdSet.EMPTY) {
           return null;
         }
-        final DocIdSetIterator approximation = docIdSet.iterator();
-        if (approximation == null) {
+        final DocIdSetIterator disi = docIdSet.iterator();
+        if (disi == null) {
           return null;
         }
 
-        final DocIdSetIterator disi;
-        final TwoPhaseIterator twoPhaseView;
+        // We apply acceptDocs as an approximation
         if (acceptDocs == null) {
-          twoPhaseView = null;
-          disi = approximation;
+          return new ConstantScoreScorer(this, 0f, disi);
         } else {
-          twoPhaseView = new TwoPhaseIterator(approximation) {
-            
+          final TwoPhaseIterator twoPhaseView = new TwoPhaseIterator(disi) {
+
             @Override
             public boolean matches() throws IOException {
               final int doc = approximation.docID();
@@ -160,46 +166,8 @@ public class CachingWrapperQuery extends Query implements Accountable {
             }
 
           };
-          disi = TwoPhaseIterator.asDocIdSetIterator(twoPhaseView);
+          return new ConstantScoreScorer(this, 0f, twoPhaseView);
         }
-        return new Scorer(weight) {
-
-          @Override
-          public TwoPhaseIterator asTwoPhaseIterator() {
-            return twoPhaseView;
-          }
-
-          @Override
-          public float score() throws IOException {
-            return 0f;
-          }
-
-          @Override
-          public int freq() throws IOException {
-            return 1;
-          }
-
-          @Override
-          public int docID() {
-            return disi.docID();
-          }
-
-          @Override
-          public int nextDoc() throws IOException {
-            return disi.nextDoc();
-          }
-
-          @Override
-          public int advance(int target) throws IOException {
-            return disi.advance(target);
-          }
-
-          @Override
-          public long cost() {
-            return disi.cost();
-          }
-          
-        };
       }
     };
   }

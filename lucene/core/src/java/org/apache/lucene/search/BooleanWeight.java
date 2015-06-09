@@ -22,8 +22,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Bits;
@@ -78,6 +80,17 @@ public class BooleanWeight extends Weight {
   }
 
   @Override
+  public void extractTerms(Set<Term> terms) {
+    int i = 0;
+    for (BooleanClause clause : query.clauses()) {
+      if (clause.isScoring() || (needsScores == false && clause.isProhibited() == false)) {
+        weights.get(i).extractTerms(terms);
+      }
+      i++;
+    }
+  }
+
+  @Override
   public float getValueForNormalization() throws IOException {
     float sum = 0.0f;
     for (int i = 0 ; i < weights.size(); i++) {
@@ -122,8 +135,7 @@ public class BooleanWeight extends Weight {
   @Override
   public Explanation explain(LeafReaderContext context, int doc) throws IOException {
     final int minShouldMatch = query.getMinimumNumberShouldMatch();
-    ComplexExplanation sumExpl = new ComplexExplanation();
-    sumExpl.setDescription("sum of:");
+    List<Explanation> subs = new ArrayList<>();
     int coord = 0;
     float sum = 0.0f;
     boolean fail = false;
@@ -133,30 +145,17 @@ public class BooleanWeight extends Weight {
     for (Iterator<Weight> wIter = weights.iterator(); wIter.hasNext();) {
       Weight w = wIter.next();
       BooleanClause c = cIter.next();
-      if (w.scorer(context, context.reader().getLiveDocs()) == null) {
-        if (c.isRequired()) {
-          fail = true;
-          Explanation r = new Explanation(0.0f, "no match on required clause (" + c.getQuery().toString() + ")");
-          sumExpl.addDetail(r);
-        }
-        continue;
-      }
       Explanation e = w.explain(context, doc);
       if (e.isMatch()) {
         if (c.isScoring()) {
-          sumExpl.addDetail(e);
+          subs.add(e);
           sum += e.getValue();
           coord++;
         } else if (c.isRequired()) {
-          Explanation r = new Explanation(0f, "match on required clause, product of:");
-          r.addDetail(new Explanation(0f, Occur.FILTER + " clause"));
-          r.addDetail(e);
-          sumExpl.addDetail(r);
+          subs.add(Explanation.match(0f, "match on required clause, product of:",
+              Explanation.match(0f, Occur.FILTER + " clause"), e));
         } else if (c.isProhibited()) {
-          Explanation r =
-            new Explanation(0.0f, "match on prohibited clause (" + c.getQuery().toString() + ")");
-          r.addDetail(e);
-          sumExpl.addDetail(r);
+          subs.add(Explanation.noMatch("match on prohibited clause (" + c.getQuery().toString() + ")", e));
           fail = true;
         }
         if (!c.isProhibited()) {
@@ -166,39 +165,24 @@ public class BooleanWeight extends Weight {
           shouldMatchCount++;
         }
       } else if (c.isRequired()) {
-        Explanation r = new Explanation(0.0f, "no match on required clause (" + c.getQuery().toString() + ")");
-        r.addDetail(e);
-        sumExpl.addDetail(r);
+        subs.add(Explanation.noMatch("no match on required clause (" + c.getQuery().toString() + ")", e));
         fail = true;
       }
     }
     if (fail) {
-      sumExpl.setMatch(Boolean.FALSE);
-      sumExpl.setValue(0.0f);
-      sumExpl.setDescription
-        ("Failure to meet condition(s) of required/prohibited clause(s)");
-      return sumExpl;
+      return Explanation.noMatch("Failure to meet condition(s) of required/prohibited clause(s)", subs);
+    } else if (matchCount == 0) {
+      return Explanation.noMatch("No matching clauses", subs);
     } else if (shouldMatchCount < minShouldMatch) {
-      sumExpl.setMatch(Boolean.FALSE);
-      sumExpl.setValue(0.0f);
-      sumExpl.setDescription("Failure to match minimum number "+
-                             "of optional clauses: " + minShouldMatch);
-      return sumExpl;
-    }
-    
-    sumExpl.setMatch(0 < matchCount);
-    sumExpl.setValue(sum);
-    
-    final float coordFactor = disableCoord ? 1.0f : coord(coord, maxCoord);
-    if (coordFactor == 1.0f) {
-      return sumExpl;                             // eliminate wrapper
+      return Explanation.noMatch("Failure to match minimum number of optional clauses: " + minShouldMatch, subs);
     } else {
-      ComplexExplanation result = new ComplexExplanation(sumExpl.isMatch(),
-                                                         sum*coordFactor,
-                                                         "product of:");
-      result.addDetail(sumExpl);
-      result.addDetail(new Explanation(coordFactor,
-                                       "coord("+coord+"/"+maxCoord+")"));
+      // we have a match
+      Explanation result = Explanation.match(sum, "sum of:", subs);
+      final float coordFactor = disableCoord ? 1.0f : coord(coord, maxCoord);
+      if (coordFactor != 1f) {
+        result = Explanation.match(sum * coordFactor, "product of:",
+            result, Explanation.match(coordFactor, "coord("+coord+"/"+maxCoord+")"));
+      }
       return result;
     }
   }
@@ -212,6 +196,7 @@ public class BooleanWeight extends Weight {
     for (Weight w  : weights) {
       BooleanClause c =  cIter.next();
       BulkScorer subScorer = w.bulkScorer(context, acceptDocs);
+      
       if (subScorer == null) {
         if (c.isRequired()) {
           return null;
@@ -237,7 +222,7 @@ public class BooleanWeight extends Weight {
       return null;
     }
 
-    return new BooleanScorer(this, disableCoord, maxCoord, optional, Math.max(1, query.minNrShouldMatch));
+    return new BooleanScorer(this, disableCoord, maxCoord, optional, Math.max(1, query.minNrShouldMatch), needsScores);
   }
 
   @Override

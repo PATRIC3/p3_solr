@@ -52,10 +52,12 @@ import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ContentStream;
+import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SolrjNamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -259,8 +261,9 @@ public class HttpSolrClient extends SolrClient {
   public HttpUriRequestResponse httpUriRequest(final SolrRequest request, final ResponseParser processor) throws SolrServerException, IOException {
     HttpUriRequestResponse mrr = new HttpUriRequestResponse();
     final HttpRequestBase method = createMethod(request, null);
-    ExecutorService pool = Executors.newFixedThreadPool(1, new SolrjNamedThreadFactory("httpUriRequest"));
+    ExecutorService pool = ExecutorUtil.newMDCAwareFixedThreadPool(1, new SolrjNamedThreadFactory("httpUriRequest"));
     try {
+      MDC.put("HttpSolrClient.url", baseUrl);
       mrr.future = pool.submit(new Callable<NamedList<Object>>(){
 
         @Override
@@ -270,6 +273,7 @@ public class HttpSolrClient extends SolrClient {
  
     } finally {
       pool.shutdown();
+      MDC.remove("HttpSolrClient.url");
     }
     assert method != null;
     mrr.httpUriRequest = method;
@@ -691,14 +695,18 @@ public class HttpSolrClient extends SolrClient {
    */
   @Override
   public void close() throws IOException {
-    shutdown();
+    if (httpClient != null && internalClient) {
+      HttpClientUtil.close(httpClient);
+    }
   }
 
   @Override
   @Deprecated
   public void shutdown() {
-    if (httpClient != null && internalClient) {
-      HttpClientUtil.close(httpClient);
+    try {
+      close();
+    } catch (IOException e) {
+      throw new RuntimeException(e);
     }
   }
 

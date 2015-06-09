@@ -20,15 +20,16 @@ package org.apache.lucene.search;
 import java.io.IOException;
 import java.util.Set;
 
-import org.apache.lucene.analysis.*;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.analysis.MockTokenizer;
+import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.MultiFields;
-import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
@@ -104,19 +105,18 @@ public class TestTermRangeQuery extends LuceneTestCase {
     initializeIndex(new String[]{"A", "B", "C", "D"});
     IndexReader reader = DirectoryReader.open(dir);
     IndexSearcher searcher = newSearcher(reader);
+
     TermRangeQuery query = new TermRangeQuery("content", null, null, true, true);
-    Terms terms = MultiFields.getTerms(searcher.getIndexReader(), "content");
-    assertFalse(query.getTermsEnum(terms) instanceof TermRangeTermsEnum);
     assertEquals(4, searcher.search(query, 1000).scoreDocs.length);
-    query = new TermRangeQuery("content", null, null, false, false);
-    assertFalse(query.getTermsEnum(terms) instanceof TermRangeTermsEnum);
+
+    query = TermRangeQuery.newStringRange("content", "", null, true, true);
     assertEquals(4, searcher.search(query, 1000).scoreDocs.length);
+
     query = TermRangeQuery.newStringRange("content", "", null, true, false);
-    assertFalse(query.getTermsEnum(terms) instanceof TermRangeTermsEnum);
     assertEquals(4, searcher.search(query, 1000).scoreDocs.length);
-    // and now anothe one
-    query = TermRangeQuery.newStringRange("content", "B", null, true, false);
-    assertTrue(query.getTermsEnum(terms) instanceof TermRangeTermsEnum);
+
+    // and now another one
+    query = TermRangeQuery.newStringRange("content", "B", null, true, true);
     assertEquals(3, searcher.search(query, 1000).scoreDocs.length);
     reader.close();
   }
@@ -336,4 +336,5 @@ public class TestTermRangeQuery extends LuceneTestCase {
     //assertEquals("C added => A,B,<empty string>,C in range", 3, hits.length());
      reader.close();
   }
+
 }

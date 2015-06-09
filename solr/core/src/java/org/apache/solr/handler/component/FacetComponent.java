@@ -37,6 +37,7 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.FacetParams;
+import org.apache.solr.common.params.FacetParams.FacetRangeOther;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.params.SolrParams;
@@ -64,12 +65,7 @@ public class FacetComponent extends SearchComponent {
   private static final String PIVOT_KEY = "facet_pivot";
   private static final String PIVOT_REFINE_PREFIX = "{!"+PivotFacet.REFINE_PARAM+"=";
 
-  /**
-   * Incremented counter used to track the values being refined in a given request.
-   * This counter is used in conjunction with {@link PivotFacet#REFINE_PARAM} to identify
-   * which refinement values are associated with which pivots.
-   */
-  int pivotRefinementCounter = 0;
+
 
   @Override
   public void prepare(ResponseBuilder rb) throws IOException {
@@ -270,14 +266,14 @@ public class FacetComponent extends SearchComponent {
 
       if ( ! queuedRefinementsForShard.isEmpty() ) {
         
-        String fieldsKey = PivotFacet.REFINE_PARAM + pivotRefinementCounter;
+        String fieldsKey = PivotFacet.REFINE_PARAM + fi.pivotRefinementCounter;
         String command;
         
         if (pivotFacet.localParams != null) {
-          command = PIVOT_REFINE_PREFIX + pivotRefinementCounter + " "
+          command = PIVOT_REFINE_PREFIX + fi.pivotRefinementCounter + " "
             + pivotFacet.facetStr.substring(2);
         } else {
-          command = PIVOT_REFINE_PREFIX + pivotRefinementCounter + "}"
+          command = PIVOT_REFINE_PREFIX + fi.pivotRefinementCounter + "}"
             + pivotFacet.getKey();
         }
         
@@ -289,7 +285,7 @@ public class FacetComponent extends SearchComponent {
           
         }
       }
-      pivotRefinementCounter++;
+      fi.pivotRefinementCounter++;
     }
     
     rb.addRequest(this, shardsRefineRequestPivot);
@@ -763,7 +759,7 @@ public class FacetComponent extends SearchComponent {
     }
   }
 
-  //
+  private final static String[] OTHER_KEYS = new String[]{FacetRangeOther.BEFORE.toString(), FacetRangeOther.BETWEEN.toString(), FacetRangeOther.AFTER.toString()};
   // The implementation below uses the first encountered shard's
   // facet_ranges as the basis for subsequent shards' data to be merged.
   private void doDistribRanges(FacetInfo fi, NamedList facet_counts) {
@@ -777,7 +773,8 @@ public class FacetComponent extends SearchComponent {
       // go through each facet_range
       for (Map.Entry<String,SimpleOrderedMap<Object>> entry : facet_ranges) {
         final String field = entry.getKey();
-        if (fi.rangeFacets.get(field) == null) {
+        SimpleOrderedMap<Object> fieldMap = fi.rangeFacets.get(field); 
+        if (fieldMap == null) {
           // first time we've seen this field, no merging
           fi.rangeFacets.add(field, entry.getValue());
 
@@ -790,17 +787,29 @@ public class FacetComponent extends SearchComponent {
 
           @SuppressWarnings("unchecked")
           NamedList<Integer> existFieldValues
-            = (NamedList<Integer>) fi.rangeFacets.get(field).get("counts");
+            = (NamedList<Integer>) fieldMap.get("counts");
 
           for (Map.Entry<String,Integer> existPair : existFieldValues) {
             final String key = existPair.getKey();
             // can be null if inconsistencies in shards responses
             Integer newValue = shardFieldValues.get(key);
-            if  (null != newValue) {
+            if (null != newValue) {
               Integer oldValue = existPair.getValue();
               existPair.setValue(oldValue + newValue);
             }
           }
+          
+          // merge before/between/after if they exist
+          for (String otherKey:OTHER_KEYS) {
+            Integer shardValue = (Integer)entry.getValue().get(otherKey);
+            if (shardValue != null && shardValue > 0) {
+              Integer existingValue = (Integer)fieldMap.get(otherKey);
+              // shouldn't be null
+              int idx = fieldMap.indexOf(otherKey, 0);
+              fieldMap.setVal(idx, existingValue + shardValue);
+            }
+          }
+          
         }
       }
     }
@@ -967,13 +976,12 @@ public class FacetComponent extends SearchComponent {
   
   @Override
   public void finishStage(ResponseBuilder rb) {
-    pivotRefinementCounter = 0;
     if (!rb.doFacets || rb.stage != ResponseBuilder.STAGE_GET_FIELDS) return;
     // wait until STAGE_GET_FIELDS
     // so that "result" is already stored in the response (for aesthetics)
     
     FacetInfo fi = rb._facetInfo;
-    
+
     NamedList<Object> facet_counts = new SimpleOrderedMap<>();
     
     NamedList<Number> facet_queries = new SimpleOrderedMap<>();
@@ -1097,6 +1105,12 @@ public class FacetComponent extends SearchComponent {
    * <b>This API is experimental and subject to change</b>
    */
   public static class FacetInfo {
+    /**
+     * Incremented counter used to track the values being refined in a given request.
+     * This counter is used in conjunction with {@link PivotFacet#REFINE_PARAM} to identify
+     * which refinement values are associated with which pivots.
+     */
+    int pivotRefinementCounter = 0;
 
     public LinkedHashMap<String,QueryFacet> queryFacets;
     public LinkedHashMap<String,DistribFieldFacet> facets;

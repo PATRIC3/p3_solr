@@ -47,6 +47,15 @@ public class AssertingLeafReader extends FilterLeafReader {
     assert in.numDocs() <= in.maxDoc();
     assert in.numDeletedDocs() + in.numDocs() == in.maxDoc();
     assert !in.hasDeletions() || in.numDeletedDocs() > 0 && in.numDocs() < in.maxDoc();
+
+    addCoreClosedListener(new CoreClosedListener() {
+      @Override
+      public void onClose(Object ownerCoreCacheKey) throws IOException {
+        final Object expectedKey = getCoreCacheKey();
+        assert expectedKey == ownerCoreCacheKey
+            : "Core closed listener called on a different key " + expectedKey + " <> " + ownerCoreCacheKey;
+      }
+    });
   }
 
   @Override
@@ -113,23 +122,10 @@ public class AssertingLeafReader extends FilterLeafReader {
     }
 
     @Override
-    public TermsEnum iterator(TermsEnum reuse) throws IOException {
-      // reuse, if the codec reused
-      final TermsEnum actualReuse;
-      if (reuse instanceof AssertingTermsEnum) {
-        actualReuse = ((AssertingTermsEnum) reuse).in;
-      } else {
-        actualReuse = null;
-      }
-      TermsEnum termsEnum = super.iterator(actualReuse);
+    public TermsEnum iterator() throws IOException {
+      TermsEnum termsEnum = super.iterator();
       assert termsEnum != null;
-      if (termsEnum == actualReuse) {
-        // codec reused, reset asserting state
-        ((AssertingTermsEnum)reuse).reset();
-        return reuse;
-      } else {
-        return new AssertingTermsEnum(termsEnum);
-      }
+      return new AssertingTermsEnum(termsEnum);
     }
   }
   
@@ -260,14 +256,14 @@ public class AssertingLeafReader extends FilterLeafReader {
     public TermState termState() throws IOException {
       assertThread("Terms enums", creationThread);
       assert state == State.POSITIONED : "termState() called on unpositioned TermsEnum";
-      return super.termState();
+      return in.termState();
     }
 
     @Override
     public void seekExact(BytesRef term, TermState state) throws IOException {
       assertThread("Terms enums", creationThread);
       assert term.isValid();
-      super.seekExact(term, state);
+      in.seekExact(term, state);
       this.state = State.POSITIONED;
     }
 
@@ -813,16 +809,15 @@ public class AssertingLeafReader extends FilterLeafReader {
     return docsWithField;
   }
 
-  // this is the same hack as FCInvisible
+  // we don't change behavior of the reader: just validate the API.
+
   @Override
   public Object getCoreCacheKey() {
-    return cacheKey;
+    return in.getCoreCacheKey();
   }
 
   @Override
   public Object getCombinedCoreAndDeletesKey() {
-    return cacheKey;
+    return in.getCombinedCoreAndDeletesKey();
   }
-  
-  private final Object cacheKey = new Object();
 }

@@ -1,31 +1,28 @@
 package org.apache.solr.cloud;
 
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope.Scope;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
+
 import javax.security.auth.login.Configuration;
 
-import org.apache.lucene.util.Constants;
 import org.apache.hadoop.minikdc.MiniKdc;
+import org.apache.lucene.util.Constants;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.cloud.DefaultZkACLProvider;
 import org.apache.solr.common.cloud.SaslZkACLProvider;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkACLProvider;
-import org.apache.solr.common.cloud.DefaultZkACLProvider;
+import org.apache.solr.util.BadZookeeperThreadsFilter;
 import org.apache.zookeeper.CreateMode;
-
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakFilters;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -44,19 +41,16 @@ import org.slf4j.LoggerFactory;
  * limitations under the License.
  */
 
-@ThreadLeakScope(Scope.NONE) // zookeeper sasl login can leak threads, see ZOOKEEPER-2100
+@ThreadLeakFilters(defaultFilters = true, filters = {
+    BadZookeeperThreadsFilter.class // hdfs currently leaks thread(s)
+})
 public class SaslZkACLProviderTest extends SolrTestCaseJ4 {
 
   protected static Logger log = LoggerFactory
       .getLogger(SaslZkACLProviderTest.class);
 
   private static final Charset DATA_ENCODING = Charset.forName("UTF-8");
-  // These Locales don't generate dates that are compatibile with Hadoop MiniKdc.
-  protected final static List<String> brokenLocales =
-    Arrays.asList(
-      "th_TH_TH_#u-nu-thai",
-      "ja_JP_JP_#u-ca-japanese",
-      "hi_IN");
+
   protected Locale savedLocale = null;
 
   protected ZkTestServer zkServer;
@@ -76,10 +70,7 @@ public class SaslZkACLProviderTest extends SolrTestCaseJ4 {
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    if (brokenLocales.contains(Locale.getDefault().toString())) {
-      savedLocale = Locale.getDefault();
-      Locale.setDefault(Locale.US);
-    }
+    savedLocale = KerberosTestUtil.overrideLocaleIfNotSpportedByMiniKdc();
     log.info("####SETUP_START " + getTestName());
     createTempDir();
 
@@ -123,10 +114,7 @@ public class SaslZkACLProviderTest extends SolrTestCaseJ4 {
   @Override
   public void tearDown() throws Exception {
     zkServer.shutdown();
-
-    if (savedLocale != null) {
-      Locale.setDefault(savedLocale);
-    }
+    Locale.setDefault(savedLocale);
     super.tearDown();
   }
 

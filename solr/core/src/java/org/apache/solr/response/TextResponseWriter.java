@@ -23,7 +23,7 @@ import java.util.*;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexableField;
-import org.apache.solr.client.solrj.io.TupleStream;
+import org.apache.solr.client.solrj.io.stream.TupleStream;
 import org.apache.solr.client.solrj.io.Tuple;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.common.EnumFieldValue;
@@ -203,6 +203,8 @@ public abstract class TextResponseWriter {
       writeByteArr(name, arr.bytes, arr.offset, arr.length);
     } else if (val instanceof EnumFieldValue) {
       writeStr(name, val.toString(), true);
+    } else if (val instanceof WriteableValue) {
+      ((WriteableValue)val).write(name, this);
     } else {
       // default... for debugging only
       writeStr(name, val.getClass().getName() + ':' + val.toString(), true);

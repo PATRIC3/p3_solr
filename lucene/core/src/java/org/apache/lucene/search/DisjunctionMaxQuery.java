@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 import org.apache.lucene.index.LeafReaderContext;
@@ -66,6 +67,7 @@ public class DisjunctionMaxQuery extends Query implements Iterable<Query> {
    * @param tieBreakerMultiplier   the weight to give to each matching non-maximum disjunct
    */
   public DisjunctionMaxQuery(Collection<Query> disjuncts, float tieBreakerMultiplier) {
+    Objects.requireNonNull(disjuncts, "Collection of Querys must not be null");
     this.tieBreakerMultiplier = tieBreakerMultiplier;
     add(disjuncts);
   }
@@ -74,7 +76,7 @@ public class DisjunctionMaxQuery extends Query implements Iterable<Query> {
    * @param query the disjunct added
    */
   public void add(Query query) {
-    disjuncts.add(query);
+    disjuncts.add(Objects.requireNonNull(query, "Query must not be null"));
   }
 
   /** Add a collection of disjuncts to this disjunction
@@ -82,7 +84,7 @@ public class DisjunctionMaxQuery extends Query implements Iterable<Query> {
    * @param disjuncts a collection of queries to add as disjuncts.
    */
   public void add(Collection<Query> disjuncts) {
-    this.disjuncts.addAll(disjuncts);
+    this.disjuncts.addAll(Objects.requireNonNull(disjuncts, "Query connection must not be null"));
   }
 
   /** @return An {@code Iterator<Query>} over the disjuncts */
@@ -125,6 +127,13 @@ public class DisjunctionMaxQuery extends Query implements Iterable<Query> {
         weights.add(disjunctQuery.createWeight(searcher, needsScores));
       }
       this.needsScores = needsScores;
+    }
+
+    @Override
+    public void extractTerms(Set<Term> terms) {
+      for (Weight weight : weights) {
+        weight.extractTerms(terms);
+      }
     }
 
     /** Compute the sub of squared weights of us applied to our subqueries.  Used for normalization. */
@@ -175,21 +184,25 @@ public class DisjunctionMaxQuery extends Query implements Iterable<Query> {
     /** Explain the score we computed for doc */
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      if (disjuncts.size() == 1) return weights.get(0).explain(context,doc);
-      ComplexExplanation result = new ComplexExplanation();
+      boolean match = false;
       float max = 0.0f, sum = 0.0f;
-      result.setDescription(tieBreakerMultiplier == 0.0f ? "max of:" : "max plus " + tieBreakerMultiplier + " times others of:");
+      List<Explanation> subs = new ArrayList<>();
       for (Weight wt : weights) {
         Explanation e = wt.explain(context, doc);
         if (e.isMatch()) {
-          result.setMatch(Boolean.TRUE);
-          result.addDetail(e);
+          match = true;
+          subs.add(e);
           sum += e.getValue();
           max = Math.max(max, e.getValue());
         }
       }
-      result.setValue(max + (sum - max) * tieBreakerMultiplier);
-      return result;
+      if (match) {
+        final float score = max + (sum - max) * tieBreakerMultiplier;
+        final String desc = tieBreakerMultiplier == 0.0f ? "max of:" : "max plus " + tieBreakerMultiplier + " times others of:";
+        return Explanation.match(score, desc, subs);
+      } else {
+        return Explanation.noMatch("No matching clause");
+      }
     }
     
   }  // end of DisjunctionMaxWeight inner class
@@ -235,14 +248,6 @@ public class DisjunctionMaxQuery extends Query implements Iterable<Query> {
     DisjunctionMaxQuery clone = (DisjunctionMaxQuery)super.clone();
     clone.disjuncts = (ArrayList<Query>) this.disjuncts.clone();
     return clone;
-  }
-
-  // inherit javadoc
-  @Override
-  public void extractTerms(Set<Term> terms) {
-    for (Query query : disjuncts) {
-      query.extractTerms(terms);
-    }
   }
 
   /** Prettyprint us.

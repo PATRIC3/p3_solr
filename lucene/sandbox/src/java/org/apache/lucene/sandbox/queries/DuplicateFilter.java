@@ -99,7 +99,7 @@ public class DuplicateFilter extends Filter {
     Terms terms = reader.fields().terms(fieldName);
 
     if (terms != null) {
-      TermsEnum termsEnum = terms.iterator(null);
+      TermsEnum termsEnum = terms.iterator();
       PostingsEnum docs = null;
       while (true) {
         BytesRef currTerm = termsEnum.next();
@@ -135,7 +135,7 @@ public class DuplicateFilter extends Filter {
     Terms terms = reader.fields().terms(fieldName);
 
     if (terms != null) {
-      TermsEnum termsEnum = terms.iterator(null);
+      TermsEnum termsEnum = terms.iterator();
       PostingsEnum docs = null;
       while (true) {
         BytesRef currTerm = termsEnum.next();
@@ -195,7 +195,7 @@ public class DuplicateFilter extends Filter {
     if (this == obj) {
       return true;
     }
-    if ((obj == null) || (obj.getClass() != this.getClass())) {
+    if (super.equals(obj) == false) {
       return false;
     }
 
@@ -216,7 +216,7 @@ public class DuplicateFilter extends Filter {
 
   @Override
   public int hashCode() {
-    int hash = 217;
+    int hash = super.hashCode();
     hash = 31 * hash + keepMode.hashCode();
     hash = 31 * hash + processingMode.hashCode();
     hash = 31 * hash + fieldName.hashCode();

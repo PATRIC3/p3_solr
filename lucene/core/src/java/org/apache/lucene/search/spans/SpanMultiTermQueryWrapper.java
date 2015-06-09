@@ -19,6 +19,8 @@ package org.apache.lucene.search.spans;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Set;
+import java.util.Objects;
 
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
@@ -62,7 +64,7 @@ public class SpanMultiTermQueryWrapper<Q extends MultiTermQuery> extends SpanQue
    */
   @SuppressWarnings({"rawtypes","unchecked"})
   public SpanMultiTermQueryWrapper(Q query) {
-    this.query = query;
+    this.query = Objects.requireNonNull(query);
     
     MultiTermQuery.RewriteMethod method = query.getRewriteMethod();
     if (method instanceof TopTermsRewrite) {
@@ -72,7 +74,12 @@ public class SpanMultiTermQueryWrapper<Q extends MultiTermQuery> extends SpanQue
       setRewriteMethod(SCORING_SPAN_QUERY_REWRITE); 
     }
   }
-  
+
+  @Override
+  protected void extractTerms(Set<Term> terms) {
+    throw new IllegalStateException("Rewrite first");
+  }
+
   /**
    * Expert: returns the rewriteMethod
    */
@@ -138,12 +145,11 @@ public class SpanMultiTermQueryWrapper<Q extends MultiTermQuery> extends SpanQue
 
   @Override
   public boolean equals(Object obj) {
-    if (this == obj) return true;
-    if (!super.equals(obj)) return false;
-    if (getClass() != obj.getClass()) return false;
+    if (! super.equals(obj)) {
+      return false;
+    }
     SpanMultiTermQueryWrapper<?> other = (SpanMultiTermQueryWrapper<?>) obj;
-    if (!query.equals(other.query)) return false;
-    return true;
+    return query.equals(other.query);
   }
 
   /** Abstract class that defines how the query is rewritten. */

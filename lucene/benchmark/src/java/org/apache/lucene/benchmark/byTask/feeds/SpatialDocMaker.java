@@ -17,6 +17,12 @@ package org.apache.lucene.benchmark.byTask.feeds;
  * limitations under the License.
  */
 
+import java.util.AbstractMap;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+
 import com.spatial4j.core.context.SpatialContext;
 import com.spatial4j.core.context.SpatialContextFactory;
 import com.spatial4j.core.shape.Point;
@@ -25,15 +31,12 @@ import org.apache.lucene.benchmark.byTask.utils.Config;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.spatial.SpatialStrategy;
+import org.apache.lucene.spatial.composite.CompositeSpatialStrategy;
 import org.apache.lucene.spatial.prefix.RecursivePrefixTreeStrategy;
+import org.apache.lucene.spatial.prefix.tree.PackedQuadPrefixTree;
 import org.apache.lucene.spatial.prefix.tree.SpatialPrefixTree;
 import org.apache.lucene.spatial.prefix.tree.SpatialPrefixTreeFactory;
-
-import java.util.AbstractMap;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
+import org.apache.lucene.spatial.serialized.SerializedDVStrategy;
 
 /**
  * Indexes spatial data according to a configured {@link SpatialStrategy} with optional
@@ -87,19 +90,35 @@ public class SpatialDocMaker extends DocMaker {
 
     SpatialContext ctx = SpatialContextFactory.makeSpatialContext(configMap, null);
 
-    //Some day the strategy might be initialized with a factory but such a factory
-    // is non-existent.
     return makeSpatialStrategy(config, configMap, ctx);
   }
 
   protected SpatialStrategy makeSpatialStrategy(final Config config, Map<String, String> configMap,
                                                 SpatialContext ctx) {
+    //TODO once strategies have factories, we could use them here.
+    final String strategyName = config.get("spatial.strategy", "rpt");
+    switch (strategyName) {
+      case "rpt": return makeRPTStrategy(SPATIAL_FIELD, config, configMap, ctx);
+      case "composite": return makeCompositeStrategy(config, configMap, ctx);
+      //TODO add more as-needed
+      default: throw new IllegalStateException("Unknown spatial.strategy: " + strategyName);
+    }
+  }
+
+  protected RecursivePrefixTreeStrategy makeRPTStrategy(String spatialField, Config config,
+                                                        Map<String, String> configMap, SpatialContext ctx) {
     //A factory for the prefix tree grid
     SpatialPrefixTree grid = SpatialPrefixTreeFactory.makeSPT(configMap, null, ctx);
 
-    RecursivePrefixTreeStrategy strategy = new RecursivePrefixTreeStrategy(grid, SPATIAL_FIELD);
+    RecursivePrefixTreeStrategy strategy = new RecursivePrefixTreeStrategy(grid, spatialField);
     strategy.setPointsOnly(config.get("spatial.docPointsOnly", false));
-    strategy.setPruneLeafyBranches(config.get("spatial.pruneLeafyBranches", true));
+    final boolean pruneLeafyBranches = config.get("spatial.pruneLeafyBranches", true);
+    if (grid instanceof PackedQuadPrefixTree) {
+      ((PackedQuadPrefixTree) grid).setPruneLeafyBranches(pruneLeafyBranches);
+      strategy.setPruneLeafyBranches(false);//always leave it to packed grid, even though it isn't the same
+    } else {
+      strategy.setPruneLeafyBranches(pruneLeafyBranches);
+    }
 
     int prefixGridScanLevel = config.get("query.spatial.prefixGridScanLevel", -4);
     if (prefixGridScanLevel < 0)
@@ -108,6 +127,20 @@ public class SpatialDocMaker extends DocMaker {
 
     double distErrPct = config.get("spatial.distErrPct", .025);//doc & query; a default
     strategy.setDistErrPct(distErrPct);
+    return strategy;
+  }
+
+  protected SerializedDVStrategy makeSerializedDVStrategy(String spatialField, Config config,
+                                                          Map<String, String> configMap, SpatialContext ctx) {
+    return new SerializedDVStrategy(ctx, spatialField);
+  }
+
+  protected SpatialStrategy makeCompositeStrategy(Config config, Map<String, String> configMap, SpatialContext ctx) {
+    final CompositeSpatialStrategy strategy = new CompositeSpatialStrategy(
+        SPATIAL_FIELD, makeRPTStrategy(SPATIAL_FIELD + "_rpt", config, configMap, ctx),
+        makeSerializedDVStrategy(SPATIAL_FIELD + "_sdv", config, configMap, ctx)
+    );
+    strategy.setOptimizePredicates(config.get("query.spatial.composite.optimizePredicates", true));
     return strategy;
   }
 

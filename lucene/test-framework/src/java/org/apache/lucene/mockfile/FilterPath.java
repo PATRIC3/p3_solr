@@ -23,11 +23,14 @@ import java.net.URI;
 import java.nio.file.FileSystem;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.ProviderMismatchException;
 import java.nio.file.WatchEvent.Kind;
 import java.nio.file.WatchEvent.Modifier;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.util.Iterator;
+
+import org.apache.lucene.util.SuppressForbidden;
 
 /**  
  * A {@code FilterPath} contains another 
@@ -120,11 +123,7 @@ public class FilterPath implements Path {
 
   @Override
   public boolean startsWith(Path other) {
-    if (other instanceof FilterPath) {
-      FilterPath f = (FilterPath) other;
-      return fileSystem == f.fileSystem && delegate.startsWith(f.delegate);
-    }
-    return false;
+    return delegate.startsWith(toDelegate(other));
   }
 
   @Override
@@ -134,11 +133,7 @@ public class FilterPath implements Path {
 
   @Override
   public boolean endsWith(Path other) {
-    if (other instanceof FilterPath) {
-      FilterPath f = (FilterPath) other;
-      return fileSystem == f.fileSystem && delegate.endsWith(f.delegate);
-    }
-    return false;
+    return delegate.endsWith(toDelegate(other));
   }
 
   @Override
@@ -153,10 +148,7 @@ public class FilterPath implements Path {
 
   @Override
   public Path resolve(Path other) {
-    if (other instanceof FilterPath) {
-      other = ((FilterPath)other).delegate;
-    }
-    return wrap(delegate.resolve(other));
+    return wrap(delegate.resolve(toDelegate(other)));
   }
 
   @Override
@@ -166,10 +158,7 @@ public class FilterPath implements Path {
 
   @Override
   public Path resolveSibling(Path other) {
-    if (other instanceof FilterPath) {
-      other = ((FilterPath)other).delegate;
-    }
-    return wrap(delegate.resolveSibling(other));
+    return wrap(delegate.resolveSibling(toDelegate(other)));
   }
 
   @Override
@@ -179,10 +168,7 @@ public class FilterPath implements Path {
 
   @Override
   public Path relativize(Path other) {
-    if (other instanceof FilterPath) {
-      other = ((FilterPath)other).delegate;
-    }
-    return wrap(delegate.relativize(other));
+    return wrap(delegate.relativize(toDelegate(other)));
   }
 
   // TODO: should these methods not expose delegate result directly?
@@ -209,6 +195,7 @@ public class FilterPath implements Path {
   }
 
   @Override
+  @SuppressForbidden(reason = "Abstract API requires to use java.io.File")
   public File toFile() {
     // TODO: should we throw exception here?
     return delegate.toFile();
@@ -247,12 +234,29 @@ public class FilterPath implements Path {
 
   @Override
   public int compareTo(Path other) {
-    if (other instanceof FilterPath) {
-      other = ((FilterPath)other).delegate;
-    }
-    return delegate.compareTo(other);
+    return delegate.compareTo(toDelegate(other));
   }
   
+  @Override
+  public int hashCode() {
+    return delegate.hashCode();
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) return true;
+    if (obj == null) return false;
+    if (getClass() != obj.getClass()) return false;
+    FilterPath other = (FilterPath) obj;
+    if (delegate == null) {
+      if (other.delegate != null) return false;
+    } else if (!delegate.equals(other.delegate)) return false;
+    if (fileSystem == null) {
+      if (other.fileSystem != null) return false;
+    } else if (!fileSystem.equals(other.fileSystem)) return false;
+    return true;
+  }
+
   /**
    * Unwraps all {@code FilterPath}s, returning
    * the innermost {@code Path}.
@@ -272,5 +276,20 @@ public class FilterPath implements Path {
    *  path from various operations */
   protected Path wrap(Path other) {
     return new FilterPath(other, fileSystem);
+  }
+  
+  /** Override this to customize the unboxing of Path
+   *  from various operations
+   */
+  protected Path toDelegate(Path path) {
+    if (path instanceof FilterPath) {
+      FilterPath fp = (FilterPath) path;
+      if (fp.fileSystem != fileSystem) {
+        throw new ProviderMismatchException("mismatch, expected: " + fileSystem.provider().getClass() + ", got: " + fp.fileSystem.provider().getClass());
+      }
+      return fp.delegate;
+    } else {
+      throw new ProviderMismatchException("mismatch, expected: FilterPath, got: " + path.getClass());
+    }
   }
 }

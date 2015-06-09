@@ -83,7 +83,7 @@ public class TestLRUQueryCache extends LuceneTestCase {
     final RandomIndexWriter w = new RandomIndexWriter(random(), dir);
     final SearcherFactory searcherFactory = new SearcherFactory() {
       @Override
-      public IndexSearcher newSearcher(IndexReader reader) throws IOException {
+      public IndexSearcher newSearcher(IndexReader reader, IndexReader previous) throws IOException {
         IndexSearcher searcher = new IndexSearcher(reader);
         searcher.setQueryCachingPolicy(MAYBE_CACHE_POLICY);
         searcher.setQueryCache(queryCache);
@@ -349,7 +349,7 @@ public class TestLRUQueryCache extends LuceneTestCase {
     public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
       return new ConstantScoreWeight(this) {
         @Override
-        Scorer scorer(LeafReaderContext context, Bits acceptDocs, float score) throws IOException {
+        public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
           return null;
         }
       };
@@ -899,14 +899,25 @@ public class TestLRUQueryCache extends LuceneTestCase {
     doc.add(f);
     w.addDocument(doc);
     IndexReader reader = w.getReader();
+    
+    final int maxSize;
+    final long maxRamBytesUsed;
+    final int iters;
+    
+    if (TEST_NIGHTLY) {
+      maxSize = TestUtil.nextInt(random(), 1, 10000);
+      maxRamBytesUsed = TestUtil.nextLong(random(), 1, 5000000);
+      iters = atLeast(20000);
+    } else {
+      maxSize = TestUtil.nextInt(random(), 1, 1000);
+      maxRamBytesUsed = TestUtil.nextLong(random(), 1, 500000);
+      iters = atLeast(2000);
+    }
 
-    final int maxSize = TestUtil.nextInt(random(), 1, 10000);
-    final long maxRamBytesUsed = TestUtil.nextLong(random(), 1, 5000000);
     final LRUQueryCache queryCache = new LRUQueryCache(maxSize, maxRamBytesUsed);
     IndexSearcher uncachedSearcher = null;
     IndexSearcher cachedSearcher = null;
 
-    final int iters = atLeast(20000);
     for (int i = 0; i < iters; ++i) {
       if (i == 0 || random().nextInt(100) == 1) {
         reader.close();
@@ -942,9 +953,8 @@ public class TestLRUQueryCache extends LuceneTestCase {
     @Override
     public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
       return new ConstantScoreWeight(this) {
-        
         @Override
-        Scorer scorer(LeafReaderContext context, Bits acceptDocs, float score) throws IOException {
+        public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
           return null;
         }
       };
@@ -992,5 +1002,28 @@ public class TestLRUQueryCache extends LuceneTestCase {
     }
     
     IOUtils.close(w, reader, dir);
+  }
+
+  public void testRefuseToCacheTooLargeEntries() throws IOException {
+    Directory dir = newDirectory();
+    final RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    for (int i = 0; i < 100; ++i) {
+      w.addDocument(new Document());
+    }
+    IndexReader reader = w.getReader();
+
+    // size of 1 byte
+    final LRUQueryCache queryCache = new LRUQueryCache(1, 1);
+    final IndexSearcher searcher = newSearcher(reader);
+    searcher.setQueryCache(queryCache);
+    searcher.setQueryCachingPolicy(QueryCachingPolicy.ALWAYS_CACHE);
+
+    searcher.count(new MatchAllDocsQuery());
+    assertEquals(0, queryCache.getCacheCount());
+    assertEquals(0, queryCache.getEvictionCount());
+
+    reader.close();
+    w.close();
+    dir.close();
   }
 }

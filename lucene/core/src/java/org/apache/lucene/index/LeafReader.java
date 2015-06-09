@@ -79,7 +79,9 @@ public abstract class LeafReader extends IndexReader {
    */
   public static interface CoreClosedListener {
     /** Invoked when the shared core of the original {@code
-     *  SegmentReader} has closed. */
+     *  SegmentReader} has closed. The provided {@code
+     *  ownerCoreCacheKey} will be the same key as the one
+     *  returned by {@link LeafReader#getCoreCacheKey()}. */
     public void onClose(Object ownerCoreCacheKey) throws IOException;
   }
 
@@ -146,7 +148,7 @@ public abstract class LeafReader extends IndexReader {
     if (terms == null) {
       return 0;
     }
-    final TermsEnum termsEnum = terms.iterator(null);
+    final TermsEnum termsEnum = terms.iterator();
     if (termsEnum.seekExact(term.bytes())) {
       return termsEnum.docFreq();
     } else {
@@ -165,7 +167,7 @@ public abstract class LeafReader extends IndexReader {
     if (terms == null) {
       return 0;
     }
-    final TermsEnum termsEnum = terms.iterator(null);
+    final TermsEnum termsEnum = terms.iterator();
     if (termsEnum.seekExact(term.bytes())) {
       return termsEnum.totalTermFreq();
     } else {
@@ -214,7 +216,7 @@ public abstract class LeafReader extends IndexReader {
     assert term.bytes() != null;
     final Terms terms = terms(term.field());
     if (terms != null) {
-      final TermsEnum termsEnum = terms.iterator(null);
+      final TermsEnum termsEnum = terms.iterator();
       if (termsEnum.seekExact(term.bytes())) {
         return termsEnum.postings(getLiveDocs(), null, flags);
       }
@@ -315,7 +317,7 @@ public abstract class LeafReader extends IndexReader {
     assert term.bytes() != null;
     final Terms terms = terms(term.field());
     if (terms != null) {
-      final TermsEnum termsEnum = terms.iterator(null);
+      final TermsEnum termsEnum = terms.iterator();
       if (termsEnum.seekExact(term.bytes())) {
         return termsEnum.docs(getLiveDocs(), null);
       }
@@ -333,7 +335,7 @@ public abstract class LeafReader extends IndexReader {
     assert term.bytes() != null;
     final Terms terms = terms(term.field());
     if (terms != null) {
-      final TermsEnum termsEnum = terms.iterator(null);
+      final TermsEnum termsEnum = terms.iterator();
       if (termsEnum.seekExact(term.bytes())) {
         return termsEnum.docsAndPositions(getLiveDocs(), null);
       }

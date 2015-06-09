@@ -19,13 +19,17 @@ package org.apache.solr.client.solrj;
 
 
 import com.google.common.collect.Maps;
+
 import junit.framework.Assert;
+
 import org.apache.lucene.util.TestUtil;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
 import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
 import org.apache.solr.client.solrj.impl.BinaryResponseParser;
 import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrClient;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
+import org.apache.solr.client.solrj.impl.HttpSolrClient.RemoteSolrException;
+import org.apache.solr.client.solrj.impl.NoOpResponseParser;
 import org.apache.solr.client.solrj.impl.XMLResponseParser;
 import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
 import org.apache.solr.client.solrj.request.AbstractUpdateRequest.ACTION;
@@ -42,12 +46,15 @@ import org.apache.solr.client.solrj.response.UpdateResponse;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.AnalysisParams;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.FacetParams;
+import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.junit.Test;
+import org.noggit.JSONParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -519,6 +526,89 @@ abstract public class SolrExampleTests extends SolrExampleTestsBase
     // Augmented _value_ with alias
     assertEquals( "aaa", out1.get( "aaa" ) );
     assertEquals( 10, ((Integer)out1.get( "ten" )).intValue() );
+  }
+  
+
+  @Test
+  public void testRawFields() throws Exception
+  {    
+    String rawJson = "{ \"raw\": 1.234, \"id\":\"111\" }";
+    String rawXml = "<hello>this is <some/><xml/></hello>";
+    SolrClient client = getSolrClient();
+    
+    // Empty the database...
+    client.deleteByQuery("*:*");// delete everything!
+    
+    // Now add something...
+    SolrInputDocument doc = new SolrInputDocument();
+    doc.addField( "id", "111", 1.0f );
+    doc.addField( "name", "doc1", 1.0f );
+    doc.addField( "json_s", rawJson );
+    doc.addField( "xml_s", rawXml );
+    client.add(doc);
+    client.commit(); // make sure this gets in first
+    
+    SolrQuery query = new SolrQuery();
+    query.setQuery( "*:*" );
+    query.set( CommonParams.FL, "id,json_s:[json],xml_s:[xml]" );
+    
+    QueryRequest req = new QueryRequest( query );
+    req.setResponseParser(new BinaryResponseParser());
+    QueryResponse rsp = req.process(client);
+    
+    SolrDocumentList out = rsp.getResults();
+    assertEquals( 1, out.getNumFound() );
+    SolrDocument out1 = out.get( 0 ); 
+    assertEquals( "111", out1.getFieldValue( "id" ) );
+    
+    // Check that the 'raw' fields are unchanged using the standard formats
+    assertEquals( rawJson, out1.get( "json_s" ) );
+    assertEquals( rawXml,  out1.get( "xml_s" ) );
+    
+//    // Check that unknown augmenters throw an error
+//    query.set( CommonParams.FL, "id,[asdkgjahsdgjka]" );
+//    try {
+//      rsp = client.query( query );
+//      fail("Should throw an exception for unknown transformer: "+query.get(CommonParams.FL));
+//    }
+//    catch(SolrException ex) {
+//      assertEquals(ErrorCode.BAD_REQUEST.code, ex.code());
+//    }
+
+    if(client instanceof EmbeddedSolrServer) {
+      return; // the EmbeddedSolrServer ignores the configured parser
+    }
+    
+    // Check raw JSON Output
+    query.set("fl", "id,json_s:[json],xml_s:[xml]");
+    query.set(CommonParams.WT, "json");
+    
+    req = new QueryRequest( query );
+    req.setResponseParser(new NoOpResponseParser("json"));
+    NamedList<Object> resp = client.request(req);
+    String raw = (String)resp.get("response");
+    
+    // Check that the response parses as JSON
+    JSONParser parser = new JSONParser(raw);
+    int evt = parser.nextEvent();
+    while(evt!=JSONParser.EOF) {
+      evt = parser.nextEvent();
+    }
+    assertTrue(raw.indexOf(rawJson)>0); // no escaping
+    assertTrue(raw.indexOf('"'+rawXml+'"')>0); // quoted xml
+
+    // Check raw XML Output
+    req.setResponseParser(new NoOpResponseParser("xml"));
+    query.set("fl", "id,json_s:[json],xml_s:[xml]");
+    query.set(CommonParams.WT, "xml");
+    req = new QueryRequest( query );
+    req.setResponseParser(new NoOpResponseParser("xml"));
+    resp = client.request(req);
+    raw = (String)resp.get("response");
+    
+    // Check that we get raw xml and json is escaped
+    assertTrue(raw.indexOf('>'+rawJson+'<')>0); // escaped
+    assertTrue(raw.indexOf(rawXml)>0); // raw xml
   }
 
   @Test
@@ -1584,6 +1674,41 @@ abstract public class SolrExampleTests extends SolrExampleTestsBase
         }
       }
     }
+  }
+
+  @Test
+  public void testExpandComponent() throws IOException, SolrServerException {
+    SolrClient server = getSolrClient();
+    server.deleteByQuery("*:*");
+
+    ArrayList<SolrInputDocument> docs = new ArrayList<>();
+    docs.add( makeTestDoc("id","1", "term_s", "YYYY", "group_s", "group1", "test_ti", "5", "test_tl", "10", "test_tf", "2000", "type_s", "parent"));
+    docs.add( makeTestDoc("id","2", "term_s","YYYY", "group_s", "group1", "test_ti", "50", "test_tl", "100", "test_tf", "200", "type_s", "child"));
+    docs.add( makeTestDoc("id","3", "term_s", "YYYY", "test_ti", "5000", "test_tl", "100", "test_tf", "200"));
+    docs.add( makeTestDoc("id","4", "term_s", "YYYY", "test_ti", "500", "test_tl", "1000", "test_tf", "2000"));
+    docs.add( makeTestDoc("id","5", "term_s", "YYYY", "group_s", "group2", "test_ti", "4", "test_tl", "10", "test_tf", "2000", "type_s", "parent"));
+    docs.add( makeTestDoc("id","6", "term_s","YYYY", "group_s", "group2", "test_ti", "10", "test_tl", "100", "test_tf", "200", "type_s", "child"));
+    docs.add( makeTestDoc("id","7", "term_s", "YYYY", "group_s", "group1", "test_ti", "1", "test_tl", "100000", "test_tf", "2000", "type_s", "child"));
+    docs.add( makeTestDoc("id","8", "term_s","YYYY", "group_s", "group2", "test_ti", "2", "test_tl", "100000", "test_tf", "200", "type_s", "child"));
+
+    server.add(docs);
+    server.commit();
+
+    ModifiableSolrParams msParams = new ModifiableSolrParams();
+    msParams.add("q", "*:*");
+    msParams.add("fq", "{!collapse field=group_s}");
+    msParams.add("defType", "edismax");
+    msParams.add("bf", "field(test_ti)");
+    msParams.add("expand", "true");
+    QueryResponse resp = server.query(msParams);
+
+    Map<String, SolrDocumentList> expanded = resp.getExpandedResults();
+    assertEquals(2, expanded.size());
+    assertEquals("1", expanded.get("group1").get(0).get("id"));
+    assertEquals("7", expanded.get("group1").get(1).get("id"));
+    assertEquals("5", expanded.get("group2").get(0).get("id"));
+    assertEquals("8", expanded.get("group2").get(1).get("id"));
+
   }
 
   @Test

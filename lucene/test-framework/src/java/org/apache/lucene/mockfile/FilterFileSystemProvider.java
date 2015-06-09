@@ -17,12 +17,10 @@ package org.apache.lucene.mockfile;
  * limitations under the License.
  */
 
-import java.io.IOError;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SeekableByteChannel;
@@ -35,6 +33,7 @@ import java.nio.file.FileSystem;
 import java.nio.file.LinkOption;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.nio.file.ProviderMismatchException;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.FileAttributeView;
@@ -125,7 +124,7 @@ public class FilterFileSystemProvider extends FileSystemProvider {
     if (fileSystem == null) {
       throw new IllegalStateException("subclass did not initialize singleton filesystem");
     }
-    Path path = delegate.getPath(toDelegate(uri));
+    Path path = delegate.getPath(uri);
     return new FilterPath(path, fileSystem);
   }
 
@@ -215,8 +214,14 @@ public class FilterFileSystemProvider extends FileSystemProvider {
   }
 
   @Override
-  public DirectoryStream<Path> newDirectoryStream(Path dir, Filter<? super Path> filter) throws IOException {
-    return delegate.newDirectoryStream(toDelegate(dir), filter);
+  public DirectoryStream<Path> newDirectoryStream(Path dir, final Filter<? super Path> filter) throws IOException {
+    Filter<Path> wrappedFilter = new Filter<Path>() {
+      @Override
+      public boolean accept(Path entry) throws IOException {
+        return filter.accept(new FilterPath(entry, fileSystem));
+      }
+    };
+    return new FilterDirectoryStream(delegate.newDirectoryStream(toDelegate(dir), wrappedFilter), fileSystem);
   }
 
   @Override
@@ -239,18 +244,15 @@ public class FilterFileSystemProvider extends FileSystemProvider {
     return delegate.readSymbolicLink(toDelegate(link));
   }
 
-  private Path toDelegate(Path path) {
+  protected Path toDelegate(Path path) {
     if (path instanceof FilterPath) {
-      return ((FilterPath) path).delegate;
-    }
-    return path;
-  }
-  
-  private URI toDelegate(URI uri) {
-    try {
-      return new URI(delegate.getScheme(), uri.getSchemeSpecificPart(), uri.getFragment());
-    } catch (URISyntaxException e) {
-      throw new IOError(e);
+      FilterPath fp = (FilterPath) path;
+      if (fp.fileSystem != fileSystem) {
+        throw new ProviderMismatchException("mismatch, expected: " + fileSystem.provider().getClass() + ", got: " + fp.fileSystem.provider().getClass());
+      }
+      return fp.delegate;
+    } else {
+      throw new ProviderMismatchException("mismatch, expected: FilterPath, got: " + path.getClass());
     }
   }
   

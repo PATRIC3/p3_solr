@@ -24,20 +24,20 @@ import java.util.Random;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.StringField;
-import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.PostingsEnum;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.FilteredQuery.FilterStrategy;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BitDocIdSet;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IOUtils;
@@ -362,20 +362,20 @@ public class TestFilteredQuery extends LuceneTestCase {
   public void testInvalidArguments() throws Exception {
     try {
       new FilteredQuery(null, null);
-      fail("Should throw IllegalArgumentException");
-    } catch (IllegalArgumentException iae) {
+      fail("Should throw NullPointerException");
+    } catch (NullPointerException npe) {
       // pass
     }
     try {
       new FilteredQuery(new TermQuery(new Term("field", "one")), null);
-      fail("Should throw IllegalArgumentException");
-    } catch (IllegalArgumentException iae) {
+      fail("Should throw NullPointerException");
+    } catch (NullPointerException npe) {
       // pass
     }
     try {
       new FilteredQuery(null, new QueryWrapperFilter(new PrefixQuery(new Term("field", "o"))));
-      fail("Should throw IllegalArgumentException");
-    } catch (IllegalArgumentException iae) {
+      fail("Should throw NullPointerException");
+    } catch (NullPointerException npe) {
       // pass
     }
   }

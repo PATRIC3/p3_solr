@@ -39,9 +39,11 @@ final class MappingMultiPostingsEnum extends PostingsEnum {
   int doc = -1;
   private MergeState mergeState;
   MultiPostingsEnum multiDocsAndPositionsEnum;
+  final String field;
 
   /** Sole constructor. */
-  public MappingMultiPostingsEnum(MergeState mergeState) {
+  public MappingMultiPostingsEnum(String field, MergeState mergeState) {
+    this.field = field;
     this.mergeState = mergeState;
   }
 
@@ -49,6 +51,7 @@ final class MappingMultiPostingsEnum extends PostingsEnum {
     this.numSubs = postingsEnum.getNumSubs();
     this.subs = postingsEnum.getSubs();
     upto = -1;
+    doc = -1;
     current = null;
     this.multiDocsAndPositionsEnum = postingsEnum;
     return this;
@@ -111,9 +114,17 @@ final class MappingMultiPostingsEnum extends PostingsEnum {
 
   @Override
   public int nextPosition() throws IOException {
-    return current.nextPosition();
+    int pos = current.nextPosition();
+    if (pos < 0) {
+      throw new CorruptIndexException("position=" + pos + " is negative, field=\"" + field + " doc=" + doc,
+                                      mergeState.fieldsProducers[upto].toString());
+    } else if (pos > IndexWriter.MAX_POSITION) {
+      throw new CorruptIndexException("position=" + pos + " is too large (> IndexWriter.MAX_POSITION=" + IndexWriter.MAX_POSITION + "), field=\"" + field + "\" doc=" + doc,
+                                      mergeState.fieldsProducers[upto].toString());
+    }
+    return pos;
   }
-
+  
   @Override
   public int startOffset() throws IOException {
     return current.startOffset();

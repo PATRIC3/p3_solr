@@ -228,5 +228,10 @@ public interface CommonParams {
   public static final String JAVABIN = "javabin";
 
   public static final String JSON = "json";
+
+  public static final String PATH = "path";
+
+  public static final String NAME = "name";
+  public static final String VALUE_LONG = "val";
 }
 

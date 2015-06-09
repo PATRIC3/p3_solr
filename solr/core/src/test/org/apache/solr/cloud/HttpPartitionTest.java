@@ -36,7 +36,10 @@ import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.CoreContainer;
+import org.apache.solr.core.SolrCore;
 import org.apache.solr.servlet.SolrDispatchFilter;
+import org.apache.solr.update.UpdateHandler;
+import org.apache.solr.update.UpdateLog;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -129,8 +132,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     createCollectionRetry(testCollectionName, 1, 2, 1);
     cloudClient.setDefaultCollection(testCollectionName);
 
-    Replica leader =
-        cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, shardId);
+    Replica leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, shardId);
     JettySolrRunner leaderJetty = getJettyOnPort(getReplicaPort(leader));
 
     CoreContainer cores = ((SolrDispatchFilter)leaderJetty.getDispatchFilter().getFilter()).getCores();
@@ -148,7 +150,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     assertTrue(zkController.isReplicaInRecoveryHandling(replicaUrl));
     Map<String,Object> lirStateMap = zkController.getLeaderInitiatedRecoveryStateObject(testCollectionName, shardId, notLeader.getName());
     assertNotNull(lirStateMap);
-    assertEquals(ZkStateReader.DOWN, lirStateMap.get("state"));
+    assertSame(Replica.State.DOWN, Replica.State.getState((String) lirStateMap.get(ZkStateReader.STATE_PROP)));
     zkController.removeReplicaFromLeaderInitiatedRecoveryHandling(replicaUrl);
     assertTrue(!zkController.isReplicaInRecoveryHandling(replicaUrl));
 
@@ -158,7 +160,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     zkClient.setData(znodePath, "down".getBytes(StandardCharsets.UTF_8), true);
     lirStateMap = zkController.getLeaderInitiatedRecoveryStateObject(testCollectionName, shardId, notLeader.getName());
     assertNotNull(lirStateMap);
-    assertEquals(ZkStateReader.DOWN, lirStateMap.get("state"));
+    assertSame(Replica.State.DOWN, Replica.State.getState((String) lirStateMap.get(ZkStateReader.STATE_PROP)));
     zkClient.delete(znodePath, -1, false);
 
     // try to clean up
@@ -209,7 +211,22 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     
     // sent 3 docs in so far, verify they are on the leader and replica
     assertDocsExistInAllReplicas(notLeaders, testCollectionName, 1, 3);
-        
+
+    // Get the max version from the replica core to make sure it gets updated after recovery (see SOLR-7625)
+    JettySolrRunner replicaJetty = getJettyOnPort(getReplicaPort(notLeader));
+    SolrDispatchFilter filter = (SolrDispatchFilter)replicaJetty.getDispatchFilter().getFilter();
+    CoreContainer coreContainer = filter.getCores();
+    ZkCoreNodeProps replicaCoreNodeProps = new ZkCoreNodeProps(notLeader);
+    String coreName = replicaCoreNodeProps.getCoreName();
+    Long maxVersionBefore = null;
+    try (SolrCore core = coreContainer.getCore(coreName)) {
+      assertNotNull("Core '"+coreName+"' not found for replica: "+notLeader.getName(), core);
+      UpdateLog ulog = core.getUpdateHandler().getUpdateLog();
+      maxVersionBefore = ulog.getCurrentMaxVersion();
+    }
+    assertNotNull("max version bucket seed not set for core " + coreName, maxVersionBefore);
+    log.info("Looked up max version bucket seed "+maxVersionBefore+" for core "+coreName);
+
     // now up the stakes and do more docs
     int numDocs = 1000;
     boolean hasPartition = false;
@@ -236,7 +253,15 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     }
     
     notLeaders = ensureAllReplicasAreActive(testCollectionName, "shard1", 1, 2, maxWaitSecsToSeeAllActive);
-    
+
+    try (SolrCore core = coreContainer.getCore(coreName)) {
+      assertNotNull("Core '" + coreName + "' not found for replica: " + notLeader.getName(), core);
+      Long currentMaxVersion = core.getUpdateHandler().getUpdateLog().getCurrentMaxVersion();
+      log.info("After recovery, looked up NEW max version bucket seed " + currentMaxVersion +
+          " for core " + coreName + ", was: " + maxVersionBefore);
+      assertTrue("max version bucket seed not updated after recovery!", currentMaxVersion > maxVersionBefore);
+    }
+
     // verify all docs received
     assertDocsExistInAllReplicas(notLeaders, testCollectionName, 1, numDocs + 3);
 
@@ -425,8 +450,8 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     for (Slice shard : cs.getActiveSlices(testCollectionName)) {
       if (shard.getName().equals(shardId)) {
         for (Replica replica : shard.getReplicas()) {
-          String replicaState = replica.getStr(ZkStateReader.STATE_PROP);
-          if (ZkStateReader.ACTIVE.equals(replicaState) || ZkStateReader.RECOVERING.equals(replicaState)) {
+          final Replica.State state = replica.getState();
+          if (state == Replica.State.ACTIVE || state == Replica.State.RECOVERING) {
             activeReplicas.put(replica.getName(), replica);
           }
         }
@@ -529,9 +554,9 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
         if (!replicasToCheck.contains(replica.getName()))
           continue;
 
-        String replicaState = replica.getStr(ZkStateReader.STATE_PROP);
-        if (!ZkStateReader.ACTIVE.equals(replicaState)) {
-          log.info("Replica " + replica.getName() + " is currently " + replicaState);
+        final Replica.State state = replica.getState();
+        if (state != Replica.State.ACTIVE) {
+          log.info("Replica " + replica.getName() + " is currently " + state);
           allReplicasUp = false;
         }
       }

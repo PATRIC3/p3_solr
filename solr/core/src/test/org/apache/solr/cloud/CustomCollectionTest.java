@@ -37,6 +37,7 @@ import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CollectionParams.CollectionAction;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.update.DirectUpdateHandler2;
 import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.junit.BeforeClass;
@@ -74,13 +75,6 @@ public class CustomCollectionTest extends AbstractFullDistribZkTestBase {
   private static final String DEFAULT_COLLECTION = "collection1";
   private static final boolean DEBUG = false;
 
-  ThreadPoolExecutor executor = new ThreadPoolExecutor(0,
-      Integer.MAX_VALUE, 5, TimeUnit.SECONDS, new SynchronousQueue<Runnable>(),
-      new DefaultSolrThreadFactory("testExecutor"));
-
-  CompletionService<Object> completionService;
-  Set<Future<Object>> pending;
-
   @BeforeClass
   public static void beforeThisClass2() throws Exception {
   }
@@ -99,8 +93,6 @@ public class CustomCollectionTest extends AbstractFullDistribZkTestBase {
 
   public CustomCollectionTest() {
     sliceCount = 2;
-    completionService = new ExecutorCompletionService<>(executor);
-    pending = new HashSet<>();
     checkCreatedVsState = false;
 
   }
@@ -282,7 +274,9 @@ public class CustomCollectionTest extends AbstractFullDistribZkTestBase {
         attempts++;
         int activeReplicaCount = 0;
         for (Replica x : zkStateReader.getClusterState().getCollection(collectionName).getSlice("x").getReplicas()) {
-          if("active".equals(x.getStr("state"))) activeReplicaCount++;
+          if (x.getState() == Replica.State.ACTIVE) {
+            activeReplicaCount++;
+          }
         }
         Thread.sleep(500);
         if(activeReplicaCount >= replicationFactor) break;

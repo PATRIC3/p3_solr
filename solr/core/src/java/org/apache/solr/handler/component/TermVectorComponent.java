@@ -1,6 +1,7 @@
 package org.apache.solr.handler.component;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -275,8 +276,8 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
     // once we find it...
     final StoredFieldVisitor getUniqValue = new StoredFieldVisitor() {
       @Override 
-      public void stringField(FieldInfo fieldInfo, String value) {
-        uniqValues.add(value);
+      public void stringField(FieldInfo fieldInfo, byte[] bytes) {
+        uniqValues.add(new String(bytes, StandardCharsets.UTF_8));
       }
 
       @Override 
@@ -294,8 +295,6 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
         return (fieldInfo.name.equals(finalUniqFieldName)) ? Status.YES : Status.NO;
       }
     };
-
-    TermsEnum termsEnum = null;
 
     while (iter.hasNext()) {
       Integer docId = iter.next();
@@ -320,8 +319,8 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
           final String field = entry.getKey();
           final Terms vector = reader.getTermVector(docId, field);
           if (vector != null) {
-            termsEnum = vector.iterator(termsEnum);
-            mapOneVector(docNL, entry.getValue(), reader, docId, vector.iterator(termsEnum), field);
+            TermsEnum termsEnum = vector.iterator();
+            mapOneVector(docNL, entry.getValue(), reader, docId, termsEnum, field);
           }
         }
       } else {
@@ -330,7 +329,7 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
         for (String field : vectors) {
           Terms terms = vectors.terms(field);
           if (terms != null) {
-            termsEnum = terms.iterator(termsEnum);
+            TermsEnum termsEnum = terms.iterator();
             mapOneVector(docNL, allFields, reader, docId, termsEnum, field);
           }
         }

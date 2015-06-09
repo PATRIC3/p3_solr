@@ -20,6 +20,7 @@ package org.apache.lucene.search;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Set;
 
 import org.apache.lucene.index.PostingsEnum;
@@ -110,6 +111,7 @@ public class PhraseQuery extends Query {
    * 
    */
   public void add(Term term, int position) {
+    Objects.requireNonNull(term, "Term must not be null");
     if (positions.size() > 0) {
       final int previousPosition = positions.get(positions.size()-1);
       if (position < previousPosition) {
@@ -174,14 +176,12 @@ public class PhraseQuery extends Query {
 
   static class PostingsAndFreq implements Comparable<PostingsAndFreq> {
     final PostingsEnum postings;
-    final int docFreq;
     final int position;
     final Term[] terms;
     final int nTerms; // for faster comparisons
 
-    public PostingsAndFreq(PostingsEnum postings, int docFreq, int position, Term... terms) {
+    public PostingsAndFreq(PostingsEnum postings, int position, Term... terms) {
       this.postings = postings;
-      this.docFreq = docFreq;
       this.position = position;
       nTerms = terms==null ? 0 : terms.length;
       if (nTerms>0) {
@@ -200,9 +200,6 @@ public class PhraseQuery extends Query {
 
     @Override
     public int compareTo(PostingsAndFreq other) {
-      if (docFreq != other.docFreq) {
-        return docFreq - other.docFreq;
-      }
       if (position != other.position) {
         return position - other.position;
       }
@@ -223,7 +220,6 @@ public class PhraseQuery extends Query {
     public int hashCode() {
       final int prime = 31;
       int result = 1;
-      result = prime * result + docFreq;
       result = prime * result + position;
       for (int i=0; i<nTerms; i++) {
         result = prime * result + terms[i].hashCode(); 
@@ -237,7 +233,6 @@ public class PhraseQuery extends Query {
       if (obj == null) return false;
       if (getClass() != obj.getClass()) return false;
       PostingsAndFreq other = (PostingsAndFreq) obj;
-      if (docFreq != other.docFreq) return false;
       if (position != other.position) return false;
       if (terms == null) return other.terms == null;
       return Arrays.equals(terms, other.terms);
@@ -273,6 +268,11 @@ public class PhraseQuery extends Query {
     }
 
     @Override
+    public void extractTerms(Set<Term> queryTerms) {
+      queryTerms.addAll(terms);
+    }
+
+    @Override
     public String toString() { return "weight(" + PhraseQuery.this + ")"; }
 
     @Override
@@ -302,7 +302,7 @@ public class PhraseQuery extends Query {
       }
 
       // Reuse single TermsEnum below:
-      final TermsEnum te = fieldTerms.iterator(null);
+      final TermsEnum te = fieldTerms.iterator();
       
       for (int i = 0; i < terms.size(); i++) {
         final Term t = terms.get(i);
@@ -313,7 +313,7 @@ public class PhraseQuery extends Query {
         }
         te.seekExact(t.bytes(), state);
         PostingsEnum postingsEnum = te.postings(liveDocs, null, PostingsEnum.POSITIONS);
-        postingsFreqs[i] = new PostingsAndFreq(postingsEnum, te.docFreq(), positions.get(i), t);
+        postingsFreqs[i] = new PostingsAndFreq(postingsEnum, positions.get(i), t);
       }
 
       // sort by increasing docFreq order
@@ -341,31 +341,22 @@ public class PhraseQuery extends Query {
         if (newDoc == doc) {
           float freq = slop == 0 ? scorer.freq() : ((SloppyPhraseScorer)scorer).sloppyFreq();
           SimScorer docScorer = similarity.simScorer(stats, context);
-          ComplexExplanation result = new ComplexExplanation();
-          result.setDescription("weight("+getQuery()+" in "+doc+") [" + similarity.getClass().getSimpleName() + "], result of:");
-          Explanation scoreExplanation = docScorer.explain(doc, new Explanation(freq, "phraseFreq=" + freq));
-          result.addDetail(scoreExplanation);
-          result.setValue(scoreExplanation.getValue());
-          result.setMatch(true);
-          return result;
+          Explanation freqExplanation = Explanation.match(freq, "phraseFreq=" + freq);
+          Explanation scoreExplanation = docScorer.explain(doc, freqExplanation);
+          return Explanation.match(
+              scoreExplanation.getValue(),
+              "weight("+getQuery()+" in "+doc+") [" + similarity.getClass().getSimpleName() + "], result of:",
+              scoreExplanation);
         }
       }
       
-      return new ComplexExplanation(false, 0.0f, "no matching term");
+      return Explanation.noMatch("no matching term");
     }
   }
 
   @Override
   public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
     return new PhraseWeight(searcher, needsScores);
-  }
-
-  /**
-   * @see org.apache.lucene.search.Query#extractTerms(Set)
-   */
-  @Override
-  public void extractTerms(Set<Term> queryTerms) {
-    queryTerms.addAll(terms);
   }
 
   /** Prints a user-readable version of this query. */

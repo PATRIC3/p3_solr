@@ -58,6 +58,7 @@ public class LeaderInitiatedRecoveryOnCommitTest extends BasicDistributedZkTest 
     }
   }
 
+  @Override
   @Test
   public void test() throws Exception {
     oneShardTest();
@@ -96,7 +97,7 @@ public class LeaderInitiatedRecoveryOnCommitTest extends BasicDistributedZkTest 
 
     cloudClient.getZkStateReader().updateClusterState(true); // get the latest state
     leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard1");
-    assertEquals("Leader was not active", "active", leader.getStr("state"));
+    assertSame("Leader was not active", Replica.State.ACTIVE, leader.getState());
 
     log.info("Healing partitioned replica at "+leader.getCoreUrl());
     leaderProxy.reopen();
@@ -144,7 +145,7 @@ public class LeaderInitiatedRecoveryOnCommitTest extends BasicDistributedZkTest 
 
     cloudClient.getZkStateReader().updateClusterState(true); // get the latest state
     leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard1");
-    assertEquals("Leader was not active", "active", leader.getStr("state"));
+    assertSame("Leader was not active", Replica.State.ACTIVE, leader.getState());
 
     log.info("Healing partitioned replica at "+leader.getCoreUrl());
     leaderProxy.reopen();

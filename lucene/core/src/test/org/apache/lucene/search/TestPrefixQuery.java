@@ -30,10 +30,8 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.Terms;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.BytesRef;
@@ -70,7 +68,6 @@ public class TestPrefixQuery extends LuceneTestCase {
     assertEquals("One in /Computers/Mac", 1, hits.length);
 
     query = new PrefixQuery(new Term("category", ""));
-    Terms terms = MultiFields.getTerms(searcher.getIndexReader(), "category");
     hits = searcher.search(query, 1000).scoreDocs;
     assertEquals("everything", 3, hits.length);
     writer.close();
@@ -92,8 +89,6 @@ public class TestPrefixQuery extends LuceneTestCase {
     IndexSearcher searcher = newSearcher(reader);
 
     assertEquals(1, searcher.search(query, 1000).totalHits);
-
-    Terms terms = MultiFields.getTerms(searcher.getIndexReader(), "field");
     writer.close();
     reader.close();
     directory.close();

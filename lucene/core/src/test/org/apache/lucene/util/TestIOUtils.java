@@ -18,23 +18,21 @@ package org.apache.lucene.util;
  */
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AccessMode;
 import java.nio.file.FileStore;
 import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
-import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileAttributeView;
+import java.nio.file.attribute.FileStoreAttributeView;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 
-import org.apache.lucene.mockfile.FilterFileStore;
 import org.apache.lucene.mockfile.FilterFileSystem;
 import org.apache.lucene.mockfile.FilterFileSystemProvider;
 import org.apache.lucene.mockfile.FilterPath;
@@ -118,18 +116,15 @@ public class TestIOUtils extends LuceneTestCase {
   }
   
   // fake up a filestore to test some underlying methods
-  static class MockFileStore extends FilterFileStore {
+  static class MockFileStore extends FileStore {
     final String description;
     final String type;
+    final String name;
     
-    MockFileStore(FileStore delegate, String description) {
-      this(delegate, description, "mockfs");
-    }
-    
-    MockFileStore(FileStore delegate, String description, String type) {
-      super(delegate, "justafake://");
+    MockFileStore(String description, String type, String name) {
       this.description = description;
       this.type = type;
+      this.name = name;
     }
 
     @Override
@@ -138,40 +133,75 @@ public class TestIOUtils extends LuceneTestCase {
     }
 
     @Override
+    public String name() {
+      return name;
+    }
+
+    @Override
     public String toString() {
       return description;
     }
-  }
-  
-  public void testGetBlockDevice() throws Exception {
-    Path dir = createTempDir();
-    FileStore actual = Files.getFileStore(dir);
 
-    assertEquals("/dev/sda1", IOUtils.getBlockDevice(new MockFileStore(actual, "/ (/dev/sda1)")));
-    assertEquals("/dev/sda1", IOUtils.getBlockDevice(new MockFileStore(actual, "/test/ space(((trash)))/ (/dev/sda1)")));
-    assertEquals("notreal", IOUtils.getBlockDevice(new MockFileStore(actual, "/ (notreal)")));
+
+    // TODO: we can enable mocking of these when we need them later:
+
+    @Override
+    public boolean isReadOnly() {
+      return false;
+    }
+
+    @Override
+    public long getTotalSpace() throws IOException {
+      return 1000;
+    }
+
+    @Override
+    public long getUsableSpace() throws IOException {
+      return 800;
+    }
+
+    @Override
+    public long getUnallocatedSpace() throws IOException {
+      return 1000;
+    }
+
+    @Override
+    public boolean supportsFileAttributeView(Class<? extends FileAttributeView> type) {
+      return false;
+    }
+
+    @Override
+    public boolean supportsFileAttributeView(String name) {
+      return false;
+    }
+
+    @Override
+    public <V extends FileStoreAttributeView> V getFileStoreAttributeView(Class<V> type) {
+      return null;
+    }
+
+    @Override
+    public Object getAttribute(String attribute) throws IOException {
+      return null;
+    }
   }
   
   public void testGetMountPoint() throws Exception {
-    Path dir = createTempDir();
-    FileStore actual = Files.getFileStore(dir);
-
-    assertEquals("/", IOUtils.getMountPoint(new MockFileStore(actual, "/ (/dev/sda1)")));
-    assertEquals("/test/ space(((trash)))/", IOUtils.getMountPoint(new MockFileStore(actual, "/test/ space(((trash)))/ (/dev/sda1)")));
-    assertEquals("/", IOUtils.getMountPoint(new MockFileStore(actual, "/ (notreal)")));
+    assertEquals("/", IOUtils.getMountPoint(new MockFileStore("/ (/dev/sda1)", "ext4", "/dev/sda1")));
+    assertEquals("/test/ space(((trash)))/", IOUtils.getMountPoint(new MockFileStore("/test/ space(((trash)))/ (/dev/sda1)", "ext3", "/dev/sda1")));
+    assertEquals("/", IOUtils.getMountPoint(new MockFileStore("/ (notreal)", "ext2", "notreal")));
   }
   
   /** mock linux that takes mappings of test files, to their associated filesystems.
    *  it will chroot /dev and /sys requests to root, so you can mock those too.
    *  <p>
    *  It is hacky by definition, so don't try putting it around a complex chain or anything.
-   *  Use FilterPath.unwrap
    */
   static class MockLinuxFileSystemProvider extends FilterFileSystemProvider {
     final Map<String,FileStore> filesToStore;
     final Path root;
     
-    public MockLinuxFileSystemProvider(FileSystem delegateInstance, final Map<String,FileStore> filesToStore, Path root) {
+    public MockLinuxFileSystemProvider(final FileSystem delegateInstance, final Map<String,FileStore> filesToStore, Path root) {
       super("mocklinux://", delegateInstance);
       final Collection<FileStore> allStores = new HashSet<>(filesToStore.values());
       this.fileSystem = new FilterFileSystem(this, delegateInstance) {
@@ -182,11 +212,11 @@ public class TestIOUtils extends LuceneTestCase {
 
         @Override
         public Path getPath(String first, String... more) {
-          return new MockLinuxPath(super.getPath(first, more), this);
+          return new MockLinuxPath(delegateInstance.getPath(first, more), this);
         }
       };
       this.filesToStore = filesToStore;
-      this.root = root;
+      this.root = new MockLinuxPath(root, this.fileSystem);
     }
 
     @Override
@@ -197,7 +227,7 @@ public class TestIOUtils extends LuceneTestCase {
       }
       // act like the linux fs provider here, return a crazy rootfs one
       if (ret.toString().startsWith(root + " (")) {
-        return new MockFileStore(ret, root + " (rootfs)", "rootfs");
+        return new MockFileStore(root + " (rootfs)", "rootfs", "rootfs");
       }
 
       return ret;
@@ -213,14 +243,8 @@ public class TestIOUtils extends LuceneTestCase {
     }
     
     @Override
-    public void checkAccess(Path path, AccessMode... modes) throws IOException {
-      // TODO: kinda screwed up how we do this, but it's easy to get lost. just unravel completely.
-      delegate.checkAccess(maybeChroot(FilterPath.unwrap(path)), modes);
-    }
-
-    @Override
-    public InputStream newInputStream(Path path, OpenOption... options) throws IOException {
-      return super.newInputStream(maybeChroot(path), options);
+    protected Path toDelegate(Path path) {
+      return super.toDelegate(maybeChroot(path));
     }
 
     class MockLinuxPath extends FilterPath {
@@ -250,8 +274,8 @@ public class TestIOUtils extends LuceneTestCase {
     dir = FilterPath.unwrap(dir).toRealPath();
     
     // now we can create some fake mount points:
-    FileStore root = new MockFileStore(Files.getFileStore(dir), dir.toString() + " (/dev/sda1)");
-    FileStore usr = new MockFileStore(Files.getFileStore(dir), dir.resolve("usr").toString() + " (/dev/sda2)");
+    FileStore root = new MockFileStore(dir.toString() + " (/dev/sda1)", "ntfs", "/dev/sda1");
+    FileStore usr = new MockFileStore(dir.resolve("usr").toString() + " (/dev/sda2)", "xfs", "/dev/sda2");
 
     // associate some preset files to these
     Map<String,FileStore> mappings = new HashMap<>();
@@ -284,7 +308,7 @@ public class TestIOUtils extends LuceneTestCase {
     dir = FilterPath.unwrap(dir).toRealPath();
     
     // fake tmpfs
-    FileStore root = new MockFileStore(Files.getFileStore(dir), dir.toString() + " (/dev/sda1)", "tmpfs");
+    FileStore root = new MockFileStore(dir.toString() + " (/dev/sda1)", "tmpfs", "/dev/sda1");
     Map<String,FileStore> mappings = Collections.singletonMap(dir.toString(), root);
     FileSystem mockLinux = new MockLinuxFileSystemProvider(dir.getFileSystem(), mappings, dir).getFileSystem(null);
     
@@ -297,7 +321,7 @@ public class TestIOUtils extends LuceneTestCase {
     dir = FilterPath.unwrap(dir).toRealPath();
     
     // fake nfs
-    FileStore root = new MockFileStore(Files.getFileStore(dir), dir.toString() + " (somenfsserver:/some/mount)", "nfs");
+    FileStore root = new MockFileStore(dir.toString() + " (somenfsserver:/some/mount)", "nfs", "somenfsserver:/some/mount");
     Map<String,FileStore> mappings = Collections.singletonMap(dir.toString(), root);
     FileSystem mockLinux = new MockLinuxFileSystemProvider(dir.getFileSystem(), mappings, dir).getFileSystem(null);
     
@@ -311,7 +335,7 @@ public class TestIOUtils extends LuceneTestCase {
     dir = FilterPath.unwrap(dir).toRealPath();
     
     // fake ssd
-    FileStore root = new MockFileStore(Files.getFileStore(dir), dir.toString() + " (/dev/zzz1)");
+    FileStore root = new MockFileStore(dir.toString() + " (/dev/zzz1)", "btrfs", "/dev/zzz1");
     // make a fake /dev/zzz1 for it
     Path devdir = dir.resolve("dev");
     Files.createDirectories(devdir);
@@ -335,7 +359,7 @@ public class TestIOUtils extends LuceneTestCase {
     dir = FilterPath.unwrap(dir).toRealPath();
     
     // fake ssd
-    FileStore root = new MockFileStore(Files.getFileStore(dir), dir.toString() + " (/dev/zzz1)");
+    FileStore root = new MockFileStore(dir.toString() + " (/dev/zzz1)", "reiser4", "/dev/zzz1");
     // make a fake /dev/zzz1 for it
     Path devdir = dir.resolve("dev");
     Files.createDirectories(devdir);
@@ -359,7 +383,7 @@ public class TestIOUtils extends LuceneTestCase {
     dir = FilterPath.unwrap(dir).toRealPath();
     
     // fake ssd
-    FileStore root = new MockFileStore(Files.getFileStore(dir), dir.toString() + " (/dev/zzz12)");
+    FileStore root = new MockFileStore(dir.toString() + " (/dev/zzz12)", "zfs", "/dev/zzz12");
     // make a fake /dev/zzz11 for it
     Path devdir = dir.resolve("dev");
     Files.createDirectories(devdir);

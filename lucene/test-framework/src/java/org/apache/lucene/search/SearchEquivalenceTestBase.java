@@ -37,6 +37,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.automaton.Automata;
 import org.apache.lucene.util.automaton.CharacterRunAutomaton;
@@ -50,6 +51,7 @@ import org.junit.BeforeClass;
  * {@link #assertSameSet(Query, Query)} and 
  * {@link #assertSubsetOf(Query, Query)}
  */
+@SuppressCodecs("SimpleText")
 public abstract class SearchEquivalenceTestBase extends LuceneTestCase {
   protected static IndexSearcher s1, s2;
   protected static Directory directory;
@@ -72,7 +74,7 @@ public abstract class SearchEquivalenceTestBase extends LuceneTestCase {
     doc.add(field);
     
     // index some docs
-    int numDocs = atLeast(1000);
+    int numDocs = TEST_NIGHTLY ? atLeast(1000) : atLeast(100);
     for (int i = 0; i < numDocs; i++) {
       id.setStringValue(Integer.toString(i));
       field.setStringValue(randomFieldContents());
@@ -224,6 +226,20 @@ public abstract class SearchEquivalenceTestBase extends LuceneTestCase {
     public String toString(String field) {
       return "SlowQWF(" + query + ")";
     }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (super.equals(obj) == false) {
+        return false;
+      }
+      return query.equals(((SlowWrapperFilter) obj).query);
+    }
+
+    @Override
+    public int hashCode() {
+      return 31 * super.hashCode() + query.hashCode();
+    }
+
   }
 
   /**
@@ -244,7 +260,7 @@ public abstract class SearchEquivalenceTestBase extends LuceneTestCase {
     assertSubsetOf(q1, q2, null);
     
     // test with some filters (this will sometimes cause advance'ing enough to test it)
-    int numFilters = atLeast(10);
+    int numFilters = TEST_NIGHTLY ? atLeast(10) : atLeast(3);
     for (int i = 0; i < numFilters; i++) {
       Filter filter = randomFilter();
       // incorporate the filter in different ways.
@@ -263,6 +279,9 @@ public abstract class SearchEquivalenceTestBase extends LuceneTestCase {
    * Both queries will be filtered by <code>filter</code>
    */
   protected void assertSubsetOf(Query q1, Query q2, Filter filter) throws Exception {
+    QueryUtils.check(q1);
+    QueryUtils.check(q2);
+
     if (filter != null) {
       q1 = new FilteredQuery(q1, filter);
       q2 = new FilteredQuery(q2, filter);
@@ -272,7 +291,7 @@ public abstract class SearchEquivalenceTestBase extends LuceneTestCase {
       // not efficient, but simple!
       TopDocs td1 = s1.search(q1, reader.maxDoc(), sort);
       TopDocs td2 = s2.search(q2, reader.maxDoc(), sort);
-      assertTrue(td1.totalHits <= td2.totalHits);
+      assertTrue("too many hits: " + td1.totalHits + " > " + td2.totalHits, td1.totalHits <= td2.totalHits);
       
       // fill the superset into a bitset
       BitSet bitset = new BitSet();
@@ -295,7 +314,7 @@ public abstract class SearchEquivalenceTestBase extends LuceneTestCase {
 
     assertSameScores(q1, q2, null);
     // also test with some filters to test advancing
-    int numFilters = atLeast(10);
+    int numFilters = TEST_NIGHTLY ? atLeast(10) : atLeast(3);
     for (int i = 0; i < numFilters; i++) {
       Filter filter = randomFilter();
       // incorporate the filter in different ways.

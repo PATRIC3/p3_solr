@@ -1274,7 +1274,7 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     masterClient.close();
     masterJetty.stop();
 
-    Directory dir = FSDirectory.open(Paths.get(dataDir, "index"));
+    Directory dir = FSDirectory.open(Paths.get(dataDir).resolve("index"));
     String[] files = dir.listAll();
     long totalBytes = 0;
     for(String file : files) {
@@ -1313,11 +1313,8 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
     long timeTakenInSeconds = TimeUnit.SECONDS.convert(timeTaken, TimeUnit.NANOSECONDS);
 
     //Let's make sure it took more than approximateTimeInSeconds to make sure that it was throttled
-    boolean isElapsed = false;
-    if(timeTakenInSeconds - approximateTimeInSeconds > 0) {
-      isElapsed = true;
-    }
-    assertTrue(isElapsed);
+    log.info("approximateTimeInSeconds = " + approximateTimeInSeconds + " timeTakenInSeconds = " + timeTakenInSeconds);
+    assertTrue(timeTakenInSeconds - approximateTimeInSeconds > 0);
   }
 
   private class AddExtraDocs implements Runnable {

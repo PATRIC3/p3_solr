@@ -18,22 +18,38 @@ package org.apache.lucene.search;
  */
 
 import java.io.IOException;
+import java.util.Set;
 
 import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.util.Bits;
+import org.apache.lucene.index.Term;
 
-abstract class ConstantScoreWeight extends Weight {
+/**
+ * A Weight that has a constant score equal to the boost of the wrapped query.
+ * This is typically useful when building queries which do not produce
+ * meaningful scores and are mostly useful for filtering.
+ *
+ * @lucene.internal
+ */
+public abstract class ConstantScoreWeight extends Weight {
 
   private float queryNorm;
   private float queryWeight;
 
   protected ConstantScoreWeight(Query query) {
     super(query);
+    queryWeight = getQuery().getBoost();
+    queryNorm = 1f;
+  }
+
+  @Override
+  public void extractTerms(Set<Term> terms) {
+    // most constant-score queries don't wrap index terms
+    // eg. geo filters, doc values queries, ...
+    // override if your constant-score query does wrap terms
   }
 
   @Override
   public final float getValueForNormalization() throws IOException {
-    queryWeight = getQuery().getBoost();
     return queryWeight * queryWeight;
   }
 
@@ -43,31 +59,33 @@ abstract class ConstantScoreWeight extends Weight {
     queryWeight *= queryNorm;
   }
 
+  /** Return the score produced by this {@link Weight}. */
+  protected final float score() {
+    return queryWeight;
+  }
+
   @Override
   public final Explanation explain(LeafReaderContext context, int doc) throws IOException {
     final Scorer s = scorer(context, context.reader().getLiveDocs());
-    final boolean exists = (s != null && s.advance(doc) == doc);
-
-    final ComplexExplanation result = new ComplexExplanation();
-    if (exists) {
-      result.setDescription(getQuery().toString() + ", product of:");
-      result.setValue(queryWeight);
-      result.setMatch(Boolean.TRUE);
-      result.addDetail(new Explanation(getQuery().getBoost(), "boost"));
-      result.addDetail(new Explanation(queryNorm, "queryNorm"));
+    final boolean exists;
+    if (s == null) {
+      exists = false;
     } else {
-      result.setDescription(getQuery().toString() + " doesn't match id " + doc);
-      result.setValue(0);
-      result.setMatch(Boolean.FALSE);
+      final TwoPhaseIterator twoPhase = s.asTwoPhaseIterator();
+      if (twoPhase == null) {
+        exists = s.advance(doc) == doc;
+      } else {
+        exists = twoPhase.approximation().advance(doc) == doc && twoPhase.matches();
+      }
     }
-    return result;
-  }
 
-  @Override
-  public final Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
-    return scorer(context, acceptDocs, queryWeight);
+    if (exists) {
+      return Explanation.match(
+          queryWeight, getQuery().toString() + ", product of:",
+          Explanation.match(getQuery().getBoost(), "boost"), Explanation.match(queryNorm, "queryNorm"));
+    } else {
+      return Explanation.noMatch(getQuery().toString() + " doesn't match id " + doc);
+    }
   }
-
-  abstract Scorer scorer(LeafReaderContext context, Bits acceptDocs, float score) throws IOException;
 
 }

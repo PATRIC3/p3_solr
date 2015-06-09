@@ -18,6 +18,7 @@ package org.apache.lucene.search;
  */
 
 import java.io.IOException;
+import java.util.Set;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -73,6 +74,11 @@ public class TestBooleanScorer extends LuceneTestCase {
     public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
       return new Weight(CrazyMustUseBulkScorerQuery.this) {
         @Override
+        public void extractTerms(Set<Term> terms) {
+          throw new UnsupportedOperationException();
+        }
+
+        @Override
         public Explanation explain(LeafReaderContext context, int doc) {
           throw new UnsupportedOperationException();
         }
@@ -122,7 +128,7 @@ public class TestBooleanScorer extends LuceneTestCase {
     IndexReader r = w.getReader();
     w.close();
 
-    IndexSearcher s = newSearcher(r);
+    IndexSearcher s = new IndexSearcher(r);
     BooleanQuery q1 = new BooleanQuery();
     q1.add(new TermQuery(new Term("field", "little")), BooleanClause.Occur.SHOULD);
     q1.add(new TermQuery(new Term("field", "diseases")), BooleanClause.Occur.SHOULD);

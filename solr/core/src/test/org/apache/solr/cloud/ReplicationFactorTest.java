@@ -40,7 +40,6 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-//@AwaitsFix(bugUrl = "https://issues.apache.org/jira/browse/SOLR-6157")
 
 /**
  * Tests a client application's ability to get replication factor

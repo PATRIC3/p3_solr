@@ -25,6 +25,7 @@ import org.apache.solr.common.util.StrUtils;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -48,14 +49,14 @@ public abstract class SolrParams implements Serializable {
     String val = get(param);
     return val==null ? def : val;
   }
-  
+
   /** returns a RequiredSolrParams wrapping this */
   public RequiredSolrParams required()
   {
     // TODO? should we want to stash a reference?
     return new RequiredSolrParams(this);
   }
-  
+
   protected String fpname(String field, String param) {
     return "f."+field+'.'+param;
   }
@@ -75,7 +76,7 @@ public abstract class SolrParams implements Serializable {
     String val = get(fpname(field,param));
     return val!=null ? val : get(param, def);
   }
-  
+
   /** returns the String values of the field parameter, "f.field.param", or
    *  the values for "param" if that is not set.
    */
@@ -95,15 +96,15 @@ public abstract class SolrParams implements Serializable {
     String val = get(param);
     return val==null ? def : StrUtils.parseBool(val);
   }
-  
-  /** Returns the Boolean value of the field param, 
+
+  /** Returns the Boolean value of the field param,
       or the value for param, or null if neither is set. */
   public Boolean getFieldBool(String field, String param) {
     String val = getFieldParam(field, param);
     return val==null ? null : StrUtils.parseBool(val);
   }
-  
-  /** Returns the boolean value of the field param, 
+
+  /** Returns the boolean value of the field param,
   or the value for param, or def if neither is set. */
   public boolean getFieldBool(String field, String param, boolean def) {
     String val = getFieldParam(field, param);
@@ -165,8 +166,8 @@ public abstract class SolrParams implements Serializable {
 
 
   /**
-   * @return The int value of the field param, or the value for param 
-   * or <code>null</code> if neither is set. 
+   * @return The int value of the field param, or the value for param
+   * or <code>null</code> if neither is set.
    **/
   public Integer getFieldInt(String field, String param) {
     String val = getFieldParam(field, param);
@@ -177,8 +178,8 @@ public abstract class SolrParams implements Serializable {
       throw new SolrException( SolrException.ErrorCode.BAD_REQUEST, ex.getMessage(), ex );
     }
   }
-  
-  /** Returns the int value of the field param, 
+
+  /** Returns the int value of the field param,
   or the value for param, or def if neither is set. */
   public int getFieldInt(String field, String param, int def) {
     String val = getFieldParam(field, param);
@@ -312,8 +313,12 @@ public abstract class SolrParams implements Serializable {
     HashMap<String,String[]> map = new HashMap<>();
     for (int i=0; i<params.size(); i++) {
       String name = params.getName(i);
-      String val = params.getVal(i).toString();
-      MultiMapSolrParams.addParam(name,val,map);
+      Object val = params.getVal(i);
+      if (val instanceof String[]) {
+        MultiMapSolrParams.addParam(name, (String[]) val, map);
+      } else {
+        MultiMapSolrParams.addParam(name, val.toString(), map);
+      }
     }
     return map;
   }
@@ -323,7 +328,7 @@ public abstract class SolrParams implements Serializable {
     // always use MultiMap for easier processing further down the chain
     return new MultiMapSolrParams(toMultiMap(params));
   }
-  
+
   /** Create filtered SolrParams. */
   public SolrParams toFilteredSolrParams(List<String> names) {
     NamedList<String> nl = new NamedList<>();
@@ -338,11 +343,11 @@ public abstract class SolrParams implements Serializable {
     }
     return toSolrParams(nl);
   }
-  
+
   /** Convert this to a NamedList */
   public NamedList<Object> toNamedList() {
     final SimpleOrderedMap<Object> result = new SimpleOrderedMap<>();
-    
+
     for(Iterator<String> it=getParameterNamesIterator(); it.hasNext(); ) {
       final String name = it.next();
       final String [] values = getParams(name);
@@ -354,5 +359,23 @@ public abstract class SolrParams implements Serializable {
       }
     }
     return result;
+  }
+
+  /**Copy all params to the given map or if the given map is null
+   * create a new one
+   */
+  public Map<String, Object> getAll(Map<String, Object> sink, String... params){
+    if(sink == null) sink = new LinkedHashMap<>();
+    for (String param : params) {
+      String[] v = getParams(param);
+      if(v != null && v.length>0 ) {
+        if(v.length == 1) {
+          sink.put(param, v[0]);
+        } else {
+          sink.put(param,v);
+        }
+      }
+    }
+    return sink;
   }
 }

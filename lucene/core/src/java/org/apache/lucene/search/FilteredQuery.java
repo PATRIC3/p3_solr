@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
 
 import org.apache.lucene.index.IndexReader;
@@ -66,18 +67,9 @@ public class FilteredQuery extends Query {
    * @see FilterStrategy
    */
   public FilteredQuery(Query query, Filter filter, FilterStrategy strategy) {
-    if (query == null) {
-      throw new IllegalArgumentException("Query must not be be null.");
-    }
-    if (filter == null) {
-      throw new IllegalArgumentException("Filter must not be be null.");
-    }
-    if (strategy == null) {
-      throw new IllegalArgumentException("FilterStrategy must not be null");
-    }
-    this.strategy = strategy;
-    this.query = query;
-    this.filter = filter;
+    this.strategy = Objects.requireNonNull(strategy, "FilterStrategy must not be null");
+    this.query = Objects.requireNonNull(query, "Query must not be null");
+    this.filter = Objects.requireNonNull(filter, "Filter must not be null");
   }
   
   /**
@@ -88,6 +80,11 @@ public class FilteredQuery extends Query {
   public Weight createWeight(final IndexSearcher searcher, boolean needsScores) throws IOException {
     final Weight weight = query.createWeight (searcher, needsScores);
     return new Weight(FilteredQuery.this) {
+
+      @Override
+      public void extractTerms(Set<Term> terms) {
+        weight.extractTerms(terms);
+      }
 
       @Override
       public float getValueForNormalization() throws IOException { 
@@ -111,10 +108,7 @@ public class FilteredQuery extends Query {
         if (docIdSetIterator.advance(i) == i) {
           return inner;
         } else {
-          Explanation result = new Explanation
-            (0.0f, "failure to match filter: " + f.toString());
-          result.addDetail(inner);
-          return result;
+          return Explanation.noMatch("failure to match filter: " + f.toString(), inner);
         }
       }
 
@@ -333,27 +327,27 @@ public class FilteredQuery extends Query {
   
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
-    if (filter instanceof QueryWrapperFilter) {
-      // In that case the filter does not implement random-access anyway so
-      // we want to take advantage of approximations
-      BooleanQuery rewritten = new BooleanQuery();
-      rewritten.add(query, Occur.MUST);
-      rewritten.add(((QueryWrapperFilter) filter).getQuery(), Occur.FILTER);
-      rewritten.setBoost(getBoost());
-      return rewritten;
-    }
-
     final Query queryRewritten = query.rewrite(reader);
+    final Query filterRewritten = filter.rewrite(reader);
     
-    if (queryRewritten != query) {
-      // rewrite to a new FilteredQuery wrapping the rewritten query
-      final Query rewritten = new FilteredQuery(queryRewritten, filter, strategy);
-      rewritten.setBoost(this.getBoost());
-      return rewritten;
-    } else {
-      // nothing to rewrite, we are done!
-      return this;
+    if (queryRewritten != query || filterRewritten != filter) {
+      // rewrite to a new FilteredQuery wrapping the rewritten query/filter
+      if (filterRewritten instanceof Filter) {
+        final Query rewritten = new FilteredQuery(queryRewritten, (Filter) filterRewritten, strategy);
+        rewritten.setBoost(this.getBoost());
+        return rewritten;
+      } else {
+        // In that case the filter does not implement random-access anyway so
+        // we want to take advantage of approximations
+        BooleanQuery rewritten = new BooleanQuery();
+        rewritten.add(queryRewritten, Occur.MUST);
+        rewritten.add(filterRewritten, Occur.FILTER);
+        rewritten.setBoost(getBoost());
+        return rewritten;
+      }
     }
+    // nothing to rewrite, we are done!
+    return this;
   }
 
   /** Returns this FilteredQuery's (unfiltered) Query */
@@ -369,12 +363,6 @@ public class FilteredQuery extends Query {
   /** Returns this FilteredQuery's {@link FilterStrategy} */
   public FilterStrategy getFilterStrategy() {
     return this.strategy;
-  }
-
-  // inherit javadoc
-  @Override
-  public void extractTerms(Set<Term> terms) {
-    getQuery().extractTerms(terms);
   }
 
   /** Prints a user-readable version of this query. */

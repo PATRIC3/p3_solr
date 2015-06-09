@@ -28,13 +28,11 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.function.FunctionQuery;
 import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.search.ComplexExplanation;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.FilterScorer;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.TwoPhaseIterator;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ToStringUtils;
@@ -107,15 +105,6 @@ public class CustomScoreQuery extends Query {
     }
     
     return (clone == null) ? this : clone;
-  }
-
-  /*(non-Javadoc) @see org.apache.lucene.search.Query#extractTerms(java.util.Set) */
-  @Override
-  public void extractTerms(Set<Term> terms) {
-    subQuery.extractTerms(terms);
-    for (Query scoringQuery : scoringQueries) {
-      scoringQuery.extractTerms(terms);
-    }
   }
 
   /*(non-Javadoc) @see org.apache.lucene.search.Query#clone() */
@@ -199,6 +188,14 @@ public class CustomScoreQuery extends Query {
     }
 
     @Override
+    public void extractTerms(Set<Term> terms) {
+      subQueryWeight.extractTerms(terms);
+      for (Weight scoringWeight : valSrcWeights) {
+        scoringWeight.extractTerms(terms);
+      }
+    }
+
+    @Override
     public float getValueForNormalization() throws IOException {
       float sum = subQueryWeight.getValueForNormalization();
       for (Weight valSrcWeight : valSrcWeights) {
@@ -246,7 +243,7 @@ public class CustomScoreQuery extends Query {
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
       Explanation explain = doExplain(context, doc);
-      return explain == null ? new Explanation(0.0f, "no matching docs") : explain;
+      return explain == null ? Explanation.noMatch("no matching docs") : explain;
     }
     
     private Explanation doExplain(LeafReaderContext info, int doc) throws IOException {
@@ -261,11 +258,9 @@ public class CustomScoreQuery extends Query {
       }
       Explanation customExp = CustomScoreQuery.this.getCustomScoreProvider(info).customExplain(doc,subQueryExpl,valSrcExpls);
       float sc = queryWeight * customExp.getValue();
-      Explanation res = new ComplexExplanation(
-        true, sc, CustomScoreQuery.this.toString() + ", product of:");
-      res.addDetail(customExp);
-      res.addDetail(new Explanation(queryWeight, "queryWeight"));
-      return res;
+      return Explanation.match(
+        sc, CustomScoreQuery.this.toString() + ", product of:",
+        customExp, Explanation.match(queryWeight, "queryWeight"));
     }
     
   }

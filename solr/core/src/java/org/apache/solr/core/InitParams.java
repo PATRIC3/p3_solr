@@ -17,14 +17,21 @@ package org.apache.solr.core;
  * limitations under the License.
  */
 
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.StrUtils;
-
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import com.google.common.collect.ImmutableSet;
+import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.StrUtils;
+
+import static org.apache.solr.common.params.CommonParams.NAME;
+import static org.apache.solr.common.params.CommonParams.PATH;
+import static org.apache.solr.core.PluginInfo.APPENDS;
+import static org.apache.solr.core.PluginInfo.DEFAULTS;
+import static org.apache.solr.core.PluginInfo.INVARIANTS;
 
 /**
  * An Object which represents a {@code <initParams>} tag
@@ -34,20 +41,23 @@ public class InitParams {
   public final String name;
   public final Set<String> paths;
   public final NamedList defaults, invariants, appends;
+  private PluginInfo pluginInfo;
+  private final Set<String> KNOWN_KEYS = ImmutableSet.of(DEFAULTS, INVARIANTS, APPENDS);
 
   public InitParams(PluginInfo p) {
-    this.name = p.attributes.get("name");
+    this.pluginInfo = p;
+    this.name = p.attributes.get(NAME);
     Set<String> paths = null;
-    String pathStr = p.attributes.get("path");
+    String pathStr = p.attributes.get(PATH);
     if (pathStr != null) {
       paths = Collections.unmodifiableSet(new HashSet<>(StrUtils.splitSmart(pathStr, ',')));
     }
     this.paths = paths;
-    NamedList nl = (NamedList) p.initArgs.get(PluginInfo.DEFAULTS);
+    NamedList nl = (NamedList) p.initArgs.get(DEFAULTS);
     defaults = nl == null ? null : nl.getImmutableCopy();
-    nl = (NamedList) p.initArgs.get(PluginInfo.INVARIANTS);
+    nl = (NamedList) p.initArgs.get(INVARIANTS);
     invariants = nl == null ? null : nl.getImmutableCopy();
-    nl = (NamedList) p.initArgs.get(PluginInfo.APPENDS);
+    nl = (NamedList) p.initArgs.get(APPENDS);
     appends = nl == null ? null : nl.getImmutableCopy();
   }
 
@@ -83,13 +93,23 @@ public class InitParams {
   public void apply(PluginInfo info) {
     if (!info.isFromSolrConfig()) {
       //if this is a component implicitly defined in code it should be overridden by initPrams
-      merge(defaults, (NamedList) info.initArgs.get(PluginInfo.DEFAULTS), info.initArgs, PluginInfo.DEFAULTS, false);
+      merge(defaults, (NamedList) info.initArgs.get(DEFAULTS), info.initArgs, DEFAULTS, false);
     } else {
       //if the args is initialized from solrconfig.xml inside the requesthHandler it should be taking precedence over  initParams
-      merge((NamedList) info.initArgs.get(PluginInfo.DEFAULTS), defaults, info.initArgs, PluginInfo.DEFAULTS, false);
+      merge((NamedList) info.initArgs.get(DEFAULTS), defaults, info.initArgs, DEFAULTS, false);
     }
-    merge((NamedList) info.initArgs.get(PluginInfo.INVARIANTS), invariants, info.initArgs, PluginInfo.INVARIANTS, false);
-    merge((NamedList) info.initArgs.get(PluginInfo.APPENDS), appends, info.initArgs, PluginInfo.APPENDS, true);
+    merge((NamedList) info.initArgs.get(INVARIANTS), invariants, info.initArgs, INVARIANTS, false);
+    merge((NamedList) info.initArgs.get(APPENDS), appends, info.initArgs, APPENDS, true);
+
+    if (pluginInfo.initArgs != null) {
+      for (int i = 0; i < pluginInfo.initArgs.size(); i++) {
+        String name = pluginInfo.initArgs.getName(i);
+        if (KNOWN_KEYS.contains(name)) continue;//aready taken care of
+        Object val = info.initArgs.get(name);
+        if (val != null) continue; //this is explicitly specified in the reqhandler , ignore
+        info.initArgs.add(name, pluginInfo.initArgs.getVal(i));
+      }
+    }
   }
 
   private static void merge(NamedList first, NamedList second, NamedList sink, String name, boolean appends) {

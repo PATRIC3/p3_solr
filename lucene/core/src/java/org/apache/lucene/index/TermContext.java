@@ -17,6 +17,7 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
@@ -52,6 +53,7 @@ public final class TermContext {
     assert context != null && context.isTopLevel;
     topReaderContext = context;
     docFreq = 0;
+    totalTermFreq = 0;
     final int len;
     if (context.leaves() == null) {
       len = 1;
@@ -89,7 +91,7 @@ public final class TermContext {
       //if (DEBUG) System.out.println("  r=" + leaves[i].reader);
       final Terms terms = ctx.reader().terms(field);
       if (terms != null) {
-        final TermsEnum termsEnum = terms.iterator(null);
+        final TermsEnum termsEnum = terms.iterator();
         if (termsEnum.seekExact(bytes)) { 
           final TermState termState = termsEnum.termState();
           //if (DEBUG) System.out.println("    found");
@@ -106,6 +108,7 @@ public final class TermContext {
    */
   public void clear() {
     docFreq = 0;
+    totalTermFreq = 0;
     Arrays.fill(states, null);
   }
 
@@ -114,16 +117,31 @@ public final class TermContext {
    * should be derived from a {@link IndexReaderContext}'s leaf ord.
    */
   public void register(TermState state, final int ord, final int docFreq, final long totalTermFreq) {
+    register(state, ord);
+    accumulateStatistics(docFreq, totalTermFreq);
+  }
+
+  /**
+   * Expert: Registers and associates a {@link TermState} with an leaf ordinal. The
+   * leaf ordinal should be derived from a {@link IndexReaderContext}'s leaf ord.
+   * On the contrary to {@link #register(TermState, int, int, long)} this method
+   * does NOT update term statistics.
+   */
+  public void register(TermState state, final int ord) {
     assert state != null : "state must not be null";
     assert ord >= 0 && ord < states.length;
     assert states[ord] == null : "state for ord: " + ord
         + " already registered";
+    states[ord] = state;
+  }
+
+  /** Expert: Accumulate term statistics. */
+  public void accumulateStatistics(final int docFreq, final long totalTermFreq) {
     this.docFreq += docFreq;
     if (this.totalTermFreq >= 0 && totalTermFreq >= 0)
       this.totalTermFreq += totalTermFreq;
     else
       this.totalTermFreq = -1;
-    states[ord] = state;
   }
 
   /**
@@ -159,10 +177,29 @@ public final class TermContext {
   public long totalTermFreq() {
     return totalTermFreq;
   }
-  
-  /** expert: only available for queries that want to lie about docfreq
-   * @lucene.internal */
-  public void setDocFreq(int docFreq) {
-    this.docFreq = docFreq;
+
+  /** Returns true if all terms stored here are real (e.g., not auto-prefix terms).
+   *
+   *  @lucene.internal */
+  public boolean hasOnlyRealTerms() {
+    for (TermState termState : states) {
+      if (termState != null && termState.isRealTerm() == false) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @Override
+  public String toString() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("TermContext\n");
+    for(TermState termState : states) {
+      sb.append("  state=");
+      sb.append(termState.toString());
+      sb.append('\n');
+    }
+
+    return sb.toString();
   }
 }

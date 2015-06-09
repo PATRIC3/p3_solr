@@ -18,6 +18,7 @@ package org.apache.lucene.search;
  */
 
 import java.io.IOException;
+import java.util.Objects;
 import java.util.Set;
 
 import org.apache.lucene.index.IndexReaderContext;
@@ -40,7 +41,6 @@ import org.apache.lucene.util.ToStringUtils;
  */
 public class TermQuery extends Query {
   private final Term term;
-  private final int docFreq;
   private final TermContext perReaderTermState;
   
   final class TermWeight extends Weight {
@@ -54,13 +54,32 @@ public class TermQuery extends Query {
       super(TermQuery.this);
       this.needsScores = needsScores;
       assert termStates != null : "TermContext must not be null";
+      // checked with a real exception in TermQuery constructor
+      assert termStates.hasOnlyRealTerms();
       this.termStates = termStates;
       this.similarity = searcher.getSimilarity();
-      this.stats = similarity.computeWeight(getBoost(),
-          searcher.collectionStatistics(term.field()),
-          searcher.termStatistics(term, termStates));
+      
+      final CollectionStatistics collectionStats;
+      final TermStatistics termStats;
+      if (needsScores) {
+        collectionStats = searcher.collectionStatistics(term.field());
+        termStats = searcher.termStatistics(term, termStates);
+      } else {
+        // do not bother computing actual stats, scores are not needed
+        final int maxDoc = searcher.getIndexReader().maxDoc();
+        final int docFreq = termStates.docFreq();
+        final long totalTermFreq = termStates.totalTermFreq();
+        collectionStats = new CollectionStatistics(term.field(), maxDoc, -1, -1, -1);
+        termStats = new TermStatistics(term.bytes(), docFreq, totalTermFreq);
+      }
+      this.stats = similarity.computeWeight(getBoost(), collectionStats, termStats);
     }
-    
+
+    @Override
+    public void extractTerms(Set<Term> terms) {
+      terms.add(getTerm());
+    }
+
     @Override
     public String toString() {
       return "weight(" + TermQuery.this + ")";
@@ -101,7 +120,7 @@ public class TermQuery extends Query {
       // System.out.println("LD=" + reader.getLiveDocs() + " set?=" +
       // (reader.getLiveDocs() != null ? reader.getLiveDocs().get(0) : "null"));
       final TermsEnum termsEnum = context.reader().terms(term.field())
-          .iterator(null);
+          .iterator();
       termsEnum.seekExact(term.bytes(), state);
       return termsEnum;
     }
@@ -121,33 +140,22 @@ public class TermQuery extends Query {
         if (newDoc == doc) {
           float freq = scorer.freq();
           SimScorer docScorer = similarity.simScorer(stats, context);
-          ComplexExplanation result = new ComplexExplanation();
-          result.setDescription("weight(" + getQuery() + " in " + doc + ") ["
-              + similarity.getClass().getSimpleName() + "], result of:");
-          Explanation scoreExplanation = docScorer.explain(doc,
-              new Explanation(freq, "termFreq=" + freq));
-          result.addDetail(scoreExplanation);
-          result.setValue(scoreExplanation.getValue());
-          result.setMatch(true);
-          return result;
+          Explanation freqExplanation = Explanation.match(freq, "termFreq=" + freq);
+          Explanation scoreExplanation = docScorer.explain(doc, freqExplanation);
+          return Explanation.match(
+              scoreExplanation.getValue(),
+              "weight(" + getQuery() + " in " + doc + ") ["
+                  + similarity.getClass().getSimpleName() + "], result of:",
+              scoreExplanation);
         }
       }
-      return new ComplexExplanation(false, 0.0f, "no matching term");
+      return Explanation.noMatch("no matching term");
     }
   }
   
   /** Constructs a query for the term <code>t</code>. */
   public TermQuery(Term t) {
-    this(t, -1);
-  }
-  
-  /**
-   * Expert: constructs a TermQuery that will use the provided docFreq instead
-   * of looking up the docFreq against the searcher.
-   */
-  public TermQuery(Term t, int docFreq) {
-    term = t;
-    this.docFreq = docFreq;
+    term = Objects.requireNonNull(t);
     perReaderTermState = null;
   }
   
@@ -157,9 +165,14 @@ public class TermQuery extends Query {
    */
   public TermQuery(Term t, TermContext states) {
     assert states != null;
-    term = t;
-    docFreq = states.docFreq();
-    perReaderTermState = states;
+    term = Objects.requireNonNull(t);
+    if (states.hasOnlyRealTerms() == false) {
+      // The reason for this is that fake terms might have the same bytes as
+      // real terms, and this confuses query caching because they don't match
+      // the same documents
+      throw new IllegalArgumentException("Term queries must be created on real terms");
+    }
+    perReaderTermState = Objects.requireNonNull(states);
   }
   
   /** Returns the term of this query. */
@@ -181,15 +194,7 @@ public class TermQuery extends Query {
       termState = this.perReaderTermState;
     }
     
-    // we must not ignore the given docFreq - if set use the given value (lie)
-    if (docFreq != -1) termState.setDocFreq(docFreq);
-    
     return new TermWeight(searcher, needsScores, termState);
-  }
-  
-  @Override
-  public void extractTerms(Set<Term> terms) {
-    terms.add(getTerm());
   }
   
   /** Prints a user-readable version of this query. */

@@ -17,6 +17,23 @@
 
 package org.apache.solr.handler.admin;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
@@ -50,6 +67,7 @@ import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.DirectoryFactory.DirContext;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.core.SolrResourceLoader;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
@@ -67,25 +85,11 @@ import org.apache.solr.util.RefCounted;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import org.slf4j.MDC;
 
 import static org.apache.solr.common.cloud.DocCollection.DOC_ROUTER;
+import static org.apache.solr.common.params.CommonParams.NAME;
+import static org.apache.solr.common.params.CommonParams.PATH;
 
 /**
  *
@@ -96,7 +100,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
   protected final CoreContainer coreContainer;
   protected final Map<String, Map<String, TaskObject>> requestStatusMap;
 
-  protected final ExecutorService parallelExecutor = Executors.newFixedThreadPool(50,
+  protected final ExecutorService parallelExecutor = ExecutorUtil.newMDCAwareFixedThreadPool(50,
       new DefaultSolrThreadFactory("parallelCoreAdminExecutor"));
 
   protected static int MAX_TRACKED_REQUESTS = 100;
@@ -189,7 +193,16 @@ public class CoreAdminHandler extends RequestHandlerBase {
       handleRequestInternal(req, rsp, action);
     } else {
       ParallelCoreAdminHandlerThread parallelHandlerThread = new ParallelCoreAdminHandlerThread(req, rsp, action, taskObject);
-      parallelExecutor.execute(parallelHandlerThread);
+      try {
+        MDC.put("CoreAdminHandler.asyncId", taskId);
+        if (action != null) {
+          MDC.put("CoreAdminHandler.action", action.name());
+        }
+        parallelExecutor.execute(parallelHandlerThread);
+      } finally {
+        MDC.remove("CoreAdminHandler.asyncId");
+        MDC.remove("CoreAdminHandler.action");
+      }
     }
   }
 
@@ -299,9 +312,38 @@ public class CoreAdminHandler extends RequestHandlerBase {
             log.warn("zkController is null in CoreAdminHandler.handleRequestInternal:REJOINLEADERELCTIONS. No action taken.");
           }
           break;
+        case INVOKE:
+          handleInvoke(req, rsp);
+          break;
       }
     }
     rsp.setHttpCaching(false);
+  }
+
+  public void handleInvoke(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception {
+    String[] klas = req.getParams().getParams("class");
+    if (klas == null || klas.length == 0) {
+      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "class is a required param");
+    }
+    for (String c : klas) {
+      Map<String, Object> result = invokeAClass(req, c);
+      rsp.add(c, result);
+    }
+
+  }
+
+  private Map<String, Object> invokeAClass(SolrQueryRequest req, String c) {
+    SolrResourceLoader loader = null;
+    if (req.getCore() != null) loader = req.getCore().getResourceLoader();
+    else if (req.getContext().get(CoreContainer.class.getName()) != null) {
+      CoreContainer cc = (CoreContainer) req.getContext().get(CoreContainer.class.getName());
+      loader = cc.getResourceLoader();
+    }
+
+    Invocable invokable = loader.newInstance(c, Invocable.class);
+    Map<String, Object> result = invokable.invoke(req);
+    log.info("Invocable_invoked {}", result);
+    return result;
   }
 
 
@@ -312,7 +354,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
     SolrParams params = adminReq.getParams();
     List<DocRouter.Range> ranges = null;
 
-    String[] pathsArr = params.getParams("path");
+    String[] pathsArr = params.getParams(PATH);
     String rangesStr = params.get(CoreAdminParams.RANGES);    // ranges=a-b,c-d,e-f
     if (rangesStr != null)  {
       String[] rangesArr = rangesStr.split(",");
@@ -593,7 +635,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
     catch (Exception ex) {
       if (coreContainer.isZooKeeperAware() && dcore != null && !preExisitingZkEntry) {
         try {
-          coreContainer.getZkController().unregister(dcore.getName(), dcore,null);
+          coreContainer.getZkController().unregister(dcore.getName(), dcore);
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
           SolrException.log(log, null, e);
@@ -865,7 +907,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
     
     String nodeName = params.get("nodeName");
     String coreNodeName = params.get("coreNodeName");
-    String waitForState = params.get("state");
+    Replica.State waitForState = Replica.State.getState(params.get(ZkStateReader.STATE_PROP));
     Boolean checkLive = params.getBool("checkLive");
     Boolean onlyIfLeader = params.getBool("onlyIfLeader");
     Boolean onlyIfLeaderActive = params.getBool("onlyIfLeaderActive");
@@ -875,7 +917,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
         + ", onlyIfLeaderActive: "+onlyIfLeaderActive);
 
     int maxTries = 0; 
-    String state = null;
+    Replica.State state = null;
     boolean live = false;
     int retry = 0;
     while (true) {
@@ -916,41 +958,39 @@ public class CoreAdminHandler extends RequestHandlerBase {
                 cloudDescriptor.getCollectionName() + ") have state: " + waitForState);
           }
           
-          ClusterState clusterState = coreContainer.getZkController()
-              .getClusterState();
+          ClusterState clusterState = coreContainer.getZkController().getClusterState();
           String collection = cloudDescriptor.getCollectionName();
-          Slice slice = clusterState.getSlice(collection,
-              cloudDescriptor.getShardId());
+          Slice slice = clusterState.getSlice(collection, cloudDescriptor.getShardId());
           if (slice != null) {
-            ZkNodeProps nodeProps = slice.getReplicasMap().get(coreNodeName);
-            if (nodeProps != null) {
-              state = nodeProps.getStr(ZkStateReader.STATE_PROP);
+            final Replica replica = slice.getReplicasMap().get(coreNodeName);
+            if (replica != null) {
+              state = replica.getState();
               live = clusterState.liveNodesContain(nodeName);
               
-              String localState = cloudDescriptor.getLastPublished();
+              final Replica.State localState = cloudDescriptor.getLastPublished();
 
               // TODO: This is funky but I've seen this in testing where the replica asks the
               // leader to be in recovery? Need to track down how that happens ... in the meantime,
               // this is a safeguard 
               boolean leaderDoesNotNeedRecovery = (onlyIfLeader != null && 
                   onlyIfLeader && 
-                  core.getName().equals(nodeProps.getStr("core")) &&
-                  ZkStateReader.RECOVERING.equals(waitForState) && 
-                  ZkStateReader.ACTIVE.equals(localState) && 
-                  ZkStateReader.ACTIVE.equals(state));
+                  core.getName().equals(replica.getStr("core")) &&
+                  waitForState == Replica.State.RECOVERING && 
+                  localState == Replica.State.ACTIVE &&
+                  state == Replica.State.ACTIVE);
               
               if (leaderDoesNotNeedRecovery) {
                 log.warn("Leader "+core.getName()+" ignoring request to be in the recovering state because it is live and active.");
               }              
               
-              boolean onlyIfActiveCheckResult = onlyIfLeaderActive != null && onlyIfLeaderActive && (localState == null || !localState.equals(ZkStateReader.ACTIVE));
+              boolean onlyIfActiveCheckResult = onlyIfLeaderActive != null && onlyIfLeaderActive && localState != Replica.State.ACTIVE;
               log.info("In WaitForState("+waitForState+"): collection="+collection+", shard="+slice.getName()+
                   ", thisCore="+core.getName()+", leaderDoesNotNeedRecovery="+leaderDoesNotNeedRecovery+
                   ", isLeader? "+core.getCoreDescriptor().getCloudDescriptor().isLeader()+
-                  ", live="+live+", checkLive="+checkLive+", currentState="+state+", localState="+localState+", nodeName="+nodeName+
-                  ", coreNodeName="+coreNodeName+", onlyIfActiveCheckResult="+onlyIfActiveCheckResult+", nodeProps: "+nodeProps);
+                  ", live="+live+", checkLive="+checkLive+", currentState="+state.toString()+", localState="+localState+", nodeName="+nodeName+
+                  ", coreNodeName="+coreNodeName+", onlyIfActiveCheckResult="+onlyIfActiveCheckResult+", nodeProps: "+replica);
 
-              if (!onlyIfActiveCheckResult && nodeProps != null && (state.equals(waitForState) || leaderDoesNotNeedRecovery)) {
+              if (!onlyIfActiveCheckResult && replica != null && (state == waitForState || leaderDoesNotNeedRecovery)) {
                 if (checkLive == null) {
                   break;
                 } else if (checkLive && live) {
@@ -982,7 +1022,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
               "I was asked to wait on state " + waitForState + " for "
                   + shardId + " in " + collection + " on " + nodeName
                   + " but I still do not see the requested state. I see state: "
-                  + state + " live:" + live + " leader from ZK: " + leaderInfo
+                  + state.toString() + " live:" + live + " leader from ZK: " + leaderInfo
           );
         }
         
@@ -1048,7 +1088,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
         SolrException.log(log, "Replay failed");
         throw new SolrException(ErrorCode.SERVER_ERROR, "Replay failed");
       }
-      coreContainer.getZkController().publish(core.getCoreDescriptor(), ZkStateReader.ACTIVE);
+      coreContainer.getZkController().publish(core.getCoreDescriptor(), Replica.State.ACTIVE);
       rsp.add("core", cname);
       rsp.add("status", "BUFFER_APPLIED");
     } catch (InterruptedException e) {
@@ -1105,7 +1145,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
       // It would be a real mistake to load the cores just to get the status
       CoreDescriptor desc = cores.getUnloadedCoreDescriptor(cname);
       if (desc != null) {
-        info.add("name", desc.getName());
+        info.add(NAME, desc.getName());
         info.add("instanceDir", desc.getInstanceDir());
         // None of the following are guaranteed to be present in a not-yet-loaded core.
         String tmp = desc.getDataDir();
@@ -1119,7 +1159,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
     } else {
       try (SolrCore core = cores.getCore(cname)) {
         if (core != null) {
-          info.add("name", core.getName());
+          info.add(NAME, core.getName());
           info.add("instanceDir", normalizePath(core.getResourceLoader().getInstanceDir()));
           info.add("dataDir", normalizePath(core.getDataDir()));
           info.add("config", core.getConfigResource());
@@ -1304,5 +1344,12 @@ public class CoreAdminHandler extends RequestHandlerBase {
   public void shutdown() {
     if (parallelExecutor != null && !parallelExecutor.isShutdown())
       ExecutorUtil.shutdownAndAwaitTermination(parallelExecutor);
+  }
+
+  /**
+   * used by the INVOKE action of core admin handler
+   */
+  public static interface Invocable {
+    public Map<String, Object> invoke(SolrQueryRequest req);
   }
 }

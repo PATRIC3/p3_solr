@@ -44,14 +44,12 @@ import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrResponse;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
-import org.apache.solr.cloud.ZkCLI;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.cloud.ZkSolrResourceLoader;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
-import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CommonParams;
@@ -59,11 +57,12 @@ import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ContentStream;
+import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.core.ConfigOverlay;
-import org.apache.solr.core.PluginInfo;
 import org.apache.solr.core.ImplicitPlugins;
+import org.apache.solr.core.PluginInfo;
 import org.apache.solr.core.RequestParams;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrCore;
@@ -76,8 +75,6 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.schema.SchemaManager;
 import org.apache.solr.util.CommandOperation;
 import org.apache.solr.util.DefaultSolrThreadFactory;
-import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -112,7 +109,7 @@ public class SolrConfigHandler extends RequestHandlerBase {
   @Override
   public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception {
 
-    setWt(req, "json");
+    setWt(req, CommonParams.JSON);
     String httpMethod = (String) req.getContext().get("httpMethod");
     Command command = new Command(req, rsp, httpMethod);
     if ("POST".equals(httpMethod)) {
@@ -604,7 +601,7 @@ public class SolrConfigHandler extends RequestHandlerBase {
   }
 
 
-  private static Set<String> subPaths = new HashSet<>(Arrays.asList("/overlay", "/params",
+  private static Set<String> subPaths = new HashSet<>(Arrays.asList("/overlay", "/params", "/updateHandler",
       "/query", "/jmx", "/requestDispatcher", "/znodeVersion"));
 
   static {
@@ -667,7 +664,7 @@ public class SolrConfigHandler extends RequestHandlerBase {
     // use an executor service to invoke schema zk version requests in parallel with a max wait time
     int poolSize = Math.min(concurrentTasks.size(), 10);
     ExecutorService parallelExecutor =
-        Executors.newFixedThreadPool(poolSize, new DefaultSolrThreadFactory("solrHandlerExecutor"));
+        ExecutorUtil.newMDCAwareFixedThreadPool(poolSize, new DefaultSolrThreadFactory("solrHandlerExecutor"));
     try {
       List<Future<Boolean>> results =
           parallelExecutor.invokeAll(concurrentTasks, maxWaitSecs, TimeUnit.SECONDS);
@@ -706,8 +703,7 @@ public class SolrConfigHandler extends RequestHandlerBase {
           prop, expectedVersion, concurrentTasks.size(), collection));
       Thread.currentThread().interrupt();
     } finally {
-      if (!parallelExecutor.isShutdown())
-        parallelExecutor.shutdownNow();
+      ExecutorUtil.shutdownNowAndAwaitTermination(parallelExecutor);
     }
 
     long diffMs = (System.currentTimeMillis() - startMs);
@@ -728,8 +724,7 @@ public class SolrConfigHandler extends RequestHandlerBase {
         if (replicasMap != null) {
           for (Map.Entry<String, Replica> entry : replicasMap.entrySet()) {
             Replica replica = entry.getValue();
-            if (ZkStateReader.ACTIVE.equals(replica.getStr(ZkStateReader.STATE_PROP)) &&
-                liveNodes.contains(replica.getNodeName())) {
+            if (replica.getState() == Replica.State.ACTIVE && liveNodes.contains(replica.getNodeName())) {
               activeReplicaCoreUrls.add(replica.getCoreUrl());
             }
           }

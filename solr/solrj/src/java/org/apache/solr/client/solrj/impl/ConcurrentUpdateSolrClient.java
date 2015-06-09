@@ -36,10 +36,13 @@ import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.params.UpdateParams;
+import org.apache.solr.common.util.ExecutorUtil;
+import org.apache.solr.common.util.IOUtils;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SolrjNamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -102,7 +105,7 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
   
   public ConcurrentUpdateSolrClient(String solrServerUrl,
                                     HttpClient client, int queueSize, int threadCount) {
-    this(solrServerUrl, client, queueSize, threadCount, Executors.newCachedThreadPool(
+    this(solrServerUrl, client, queueSize, threadCount, ExecutorUtil.newMDCAwareCachedThreadPool(
         new SolrjNamedThreadFactory("concurrentUpdateScheduler")));
     shutdownExecutor = true;
   }
@@ -153,7 +156,7 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
 
       log.debug("starting runner: {}", this);
       HttpPost method = null;
-      HttpResponse response = null;            
+      HttpResponse response = null;
       try {
         while (!queue.isEmpty()) {
           try {
@@ -204,7 +207,14 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
                       }
                     }
                     out.flush();
-                    req = queue.poll(pollQueueTime, TimeUnit.MILLISECONDS);
+
+                    if (pollQueueTime > 0 && threadCount == 1 && req.isLastDocInBatch()) {
+                      // no need to wait to see another doc in the queue if we've hit the last doc in a batch
+                      req = queue.poll(0, TimeUnit.MILLISECONDS);
+                    } else {
+                      req = queue.poll(pollQueueTime, TimeUnit.MILLISECONDS);
+                    }
+
                   }
                   
                   if (isXml) {
@@ -341,9 +351,14 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
           if (runners.isEmpty() || (queue.remainingCapacity() < queue.size() && runners.size() < threadCount))
           {
             // We need more runners, so start a new one.
-            Runner r = new Runner();
-            runners.add(r);
-            scheduler.execute(r);
+            MDC.put("ConcurrentUpdateSolrClient.url", client.getBaseURL());
+            try {
+              Runner r = new Runner();
+              runners.add(r);
+              scheduler.execute(r);
+            } finally {
+              MDC.remove("ConcurrentUpdateSolrClient.url");
+            }
           } else {
             // break out of the retry loop if we added the element to the queue
             // successfully, *and*
@@ -400,9 +415,14 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
           if (queueSize > 0) {
             log.warn("No more runners, but queue still has "+
               queueSize+" adding more runners to process remaining requests on queue");
-            Runner r = new Runner();
-            runners.add(r);
-            scheduler.execute(r);
+            MDC.put("ConcurrentUpdateSolrClient.url", client.getBaseURL());
+            try {
+              Runner r = new Runner();
+              runners.add(r);
+              scheduler.execute(r);
+            } finally {
+              MDC.remove("ConcurrentUpdateSolrClient.url");
+            }
           }
         }
       }

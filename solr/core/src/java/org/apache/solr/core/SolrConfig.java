@@ -19,7 +19,32 @@ package org.apache.solr.core;
 
 
 import com.google.common.base.Charsets;
+
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.xpath.XPathConstants;
+
+import java.io.File;
+import java.io.FileFilter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import com.google.common.collect.ImmutableList;
+
 import org.apache.lucene.index.IndexDeletionPolicy;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.util.Version;
@@ -27,6 +52,7 @@ import org.apache.solr.cloud.ZkSolrResourceLoader;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.cloud.ZkNodeProps;
+import org.apache.solr.common.util.IOUtils;
 import org.apache.solr.handler.component.SearchComponent;
 import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.response.QueryResponseWriter;
@@ -56,27 +82,9 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.xpath.XPathConstants;
-import java.io.File;
-import java.io.FileFilter;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
+import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+import static org.apache.solr.common.params.CommonParams.NAME;
+import static org.apache.solr.common.params.CommonParams.PATH;
 import static org.apache.solr.core.ConfigOverlay.ZNODEVER;
 import static org.apache.solr.core.SolrConfig.PluginOpts.LAZY;
 import static org.apache.solr.core.SolrConfig.PluginOpts.MULTI_OK;
@@ -254,7 +262,7 @@ public class SolrConfig extends Config implements MapSerializable {
     CacheConfig conf = CacheConfig.getConfig(this, "query/fieldValueCache");
     if (conf == null) {
       Map<String, String> args = new HashMap<>();
-      args.put("name", "fieldValueCache");
+      args.put(NAME, "fieldValueCache");
       args.put("size", "10000");
       args.put("initialSize", "10");
       args.put("showItems", "-1");
@@ -385,25 +393,31 @@ public class SolrConfig extends Config implements MapSerializable {
 
   public static ConfigOverlay getConfigOverlay(SolrResourceLoader loader) {
     InputStream in = null;
+    InputStreamReader isr = null;
     try {
-      in = loader.openResource(ConfigOverlay.RESOURCE_NAME);
-    } catch (IOException e) {
-      //no problem no overlay.json file
-      return new ConfigOverlay(Collections.EMPTY_MAP, -1);
-    }
-
-    try {
-      int version = 0; //will be always 0 for file based resourceloader
+      try {
+        in = loader.openResource(ConfigOverlay.RESOURCE_NAME);
+      } catch (IOException e) {
+        // TODO: we should be explicitly looking for file not found exceptions
+        // and logging if it's not the expected IOException
+        // hopefully no problem, assume no overlay.json file
+        return new ConfigOverlay(Collections.EMPTY_MAP, -1);
+      }
+      
+      int version = 0; // will be always 0 for file based resourceLoader
       if (in instanceof ZkSolrResourceLoader.ZkByteArrayInputStream) {
         version = ((ZkSolrResourceLoader.ZkByteArrayInputStream) in).getStat().getVersion();
         log.info("config overlay loaded . version : {} ", version);
       }
-      Map m = (Map) ObjectBuilder.getVal(new JSONParser(new InputStreamReader(in, Charsets.UTF_8)));
+      isr = new InputStreamReader(in, StandardCharsets.UTF_8);
+      Map m = (Map) ObjectBuilder.getVal(new JSONParser(isr));
       return new ConfigOverlay(m, version);
     } catch (Exception e) {
       throw new SolrException(ErrorCode.SERVER_ERROR, "Error reading config overlay", e);
+    } finally {
+      IOUtils.closeQuietly(isr);
+      IOUtils.closeQuietly(in);
     }
-
   }
 
   private Map<String, InitParams> initParams = Collections.emptyMap();
@@ -418,7 +432,6 @@ public class SolrConfig extends Config implements MapSerializable {
         getInt("updateHandler/autoCommit/maxTime", -1),
         getBool("updateHandler/indexWriter/closeWaitsForMerges", true),
         getBool("updateHandler/autoCommit/openSearcher", true),
-        getInt("updateHandler/commitIntervalLowerBound", -1),
         getInt("updateHandler/autoSoftCommit/maxDocs", -1),
         getInt("updateHandler/autoSoftCommit/maxTime", -1),
         getBool("updateHandler/commitWithin/softCommit", true));
@@ -551,7 +564,7 @@ public class SolrConfig extends Config implements MapSerializable {
 
     @Override
     public Map<String, Object> toMap() {
-      return ZkNodeProps.makeMap("never304", never304,
+      return makeMap("never304", never304,
           "etagSeed", etagSeed,
           "lastModFrom", lastModFrom.name().toLowerCase(Locale.ROOT),
           "cacheControl", cacheControlHeader);
@@ -638,7 +651,7 @@ public class SolrConfig extends Config implements MapSerializable {
 
   public static class UpdateHandlerInfo implements MapSerializable {
     public final String className;
-    public final int autoCommmitMaxDocs, autoCommmitMaxTime, commitIntervalLowerBound,
+    public final int autoCommmitMaxDocs, autoCommmitMaxTime,
         autoSoftCommmitMaxDocs, autoSoftCommmitMaxTime;
     public final boolean indexWriterCloseWaitsForMerges;
     public final boolean openSearcher;  // is opening a new searcher part of hard autocommit?
@@ -647,16 +660,14 @@ public class SolrConfig extends Config implements MapSerializable {
     /**
      * @param autoCommmitMaxDocs       set -1 as default
      * @param autoCommmitMaxTime       set -1 as default
-     * @param commitIntervalLowerBound set -1 as default
      */
-    public UpdateHandlerInfo(String className, int autoCommmitMaxDocs, int autoCommmitMaxTime, boolean indexWriterCloseWaitsForMerges, boolean openSearcher, int commitIntervalLowerBound,
+    public UpdateHandlerInfo(String className, int autoCommmitMaxDocs, int autoCommmitMaxTime, boolean indexWriterCloseWaitsForMerges, boolean openSearcher,
                              int autoSoftCommmitMaxDocs, int autoSoftCommmitMaxTime, boolean commitWithinSoftCommit) {
       this.className = className;
       this.autoCommmitMaxDocs = autoCommmitMaxDocs;
       this.autoCommmitMaxTime = autoCommmitMaxTime;
       this.indexWriterCloseWaitsForMerges = indexWriterCloseWaitsForMerges;
       this.openSearcher = openSearcher;
-      this.commitIntervalLowerBound = commitIntervalLowerBound;
 
       this.autoSoftCommmitMaxDocs = autoSoftCommmitMaxDocs;
       this.autoSoftCommmitMaxTime = autoSoftCommmitMaxTime;
@@ -668,19 +679,15 @@ public class SolrConfig extends Config implements MapSerializable {
     @Override
     public Map<String, Object> toMap() {
       LinkedHashMap result = new LinkedHashMap();
-      result.put("class", className);
-      result.put("autoCommmitMaxDocs", autoCommmitMaxDocs);
-      result.put("indexWriterCloseWaitsForMerges", indexWriterCloseWaitsForMerges);
-      result.put("openSearcher", openSearcher);
-      result.put("commitIntervalLowerBound", commitIntervalLowerBound);
-      result.put("commitWithinSoftCommit", commitWithinSoftCommit);
-      result.put("autoCommit", ZkNodeProps.makeMap(
+      result.put("indexWriter", makeMap("closeWaitsForMerges", indexWriterCloseWaitsForMerges));
+      result.put("commitWithin", makeMap("softCommit", commitWithinSoftCommit));
+      result.put("autoCommit", makeMap(
           "maxDocs", autoCommmitMaxDocs,
           "maxTime", autoCommmitMaxTime,
-          "commitIntervalLowerBound", commitIntervalLowerBound
+          "openSearcher", openSearcher
       ));
       result.put("autoSoftCommit",
-          ZkNodeProps.makeMap("maxDocs", autoSoftCommmitMaxDocs,
+          makeMap("maxDocs", autoSoftCommmitMaxDocs,
               "maxTime", autoSoftCommmitMaxTime));
       return result;
     }
@@ -753,7 +760,7 @@ public class SolrConfig extends Config implements MapSerializable {
         Node node = nodes.item(i);
 
         String baseDir = DOMUtil.getAttr(node, "dir");
-        String path = DOMUtil.getAttr(node, "path");
+        String path = DOMUtil.getAttr(node, PATH);
         if (null != baseDir) {
           // :TODO: add support for a simpler 'glob' mutually exclusive of regex
           String regex = DOMUtil.getAttr(node, "regex");
@@ -873,7 +880,7 @@ public class SolrConfig extends Config implements MapSerializable {
     result.put("requestDispatcher", m);
     m.put("handleSelect", handleSelect);
     if (httpCachingConfig != null) m.put("httpCaching", httpCachingConfig.toMap());
-    m.put("requestParsers", ZkNodeProps.makeMap("multipartUploadLimitKB", multipartUploadLimitKB,
+    m.put("requestParsers", makeMap("multipartUploadLimitKB", multipartUploadLimitKB,
         "formUploadLimitKB", formUploadLimitKB,
         "addHttpRequestToContext", addHttpRequestToContext));
     if (indexConfig != null) result.put("indexConfig", indexConfig.toMap());

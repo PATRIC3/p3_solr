@@ -29,6 +29,7 @@ grant {
   permission java.io.FilePermission "${junit4.childvm.cwd}", "read,execute";
   permission java.io.FilePermission "${junit4.childvm.cwd}${/}temp", "read,execute,write,delete";
   permission java.io.FilePermission "${junit4.childvm.cwd}${/}temp${/}-", "read,execute,write,delete";
+  permission java.io.FilePermission "${junit4.childvm.cwd}${/}jacoco.db", "write";
   permission java.io.FilePermission "${junit4.tempDir}${/}*", "read,execute,write,delete";
   permission java.io.FilePermission "${clover.db.dir}${/}-", "read,execute,write,delete";
   
@@ -36,10 +37,6 @@ grant {
   permission java.net.SocketPermission "localhost:1024-", "accept,listen";
   permission java.net.SocketPermission "127.0.0.1:1024-", "accept,listen";
   permission java.net.SocketPermission "[::1]:1024-", "accept,listen";
-  
-  // This is a special case, because the network config of the ASF Jenkins server is broken,
-  // see: http://freebsd.1045724.n5.nabble.com/jail-external-and-localhost-distinction-td3967320.html
-  permission java.net.SocketPermission "lucene.zones.apache.org:1024-", "accept,listen";
   
   // Allow connecting to the internet anywhere
   permission java.net.SocketPermission "*", "connect,resolve";
@@ -87,4 +84,8 @@ grant {
   permission javax.security.auth.kerberos.ServicePermission "krbtgt/EXAMPLE.COM@EXAMPLE.COM", "initiate";
   permission javax.security.auth.kerberos.ServicePermission "zookeeper/127.0.0.1@EXAMPLE.COM", "initiate";
   permission javax.security.auth.kerberos.ServicePermission "zookeeper/127.0.0.1@EXAMPLE.COM", "accept";
+  permission javax.security.auth.kerberos.ServicePermission "HTTP/127.0.0.1@EXAMPLE.COM", "initiate";
+  permission javax.security.auth.kerberos.ServicePermission "HTTP/127.0.0.1@EXAMPLE.COM", "accept";
+  permission javax.security.auth.kerberos.DelegationPermission "\"HTTP/127.0.0.1@EXAMPLE.COM\" \"krbtgt/EXAMPLE.COM@EXAMPLE.COM\"";
+
 };

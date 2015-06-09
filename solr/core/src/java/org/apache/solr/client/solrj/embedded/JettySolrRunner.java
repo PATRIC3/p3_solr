@@ -19,22 +19,24 @@ package org.apache.solr.client.solrj.embedded;
 
 import org.apache.solr.servlet.SolrDispatchFilter;
 import org.eclipse.jetty.server.Connector;
+import org.eclipse.jetty.server.HttpConfiguration;
+import org.eclipse.jetty.server.HttpConnectionFactory;
+import org.eclipse.jetty.server.LowResourceMonitor;
+import org.eclipse.jetty.server.SecureRequestCustomizer;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.bio.SocketConnector;
-import org.eclipse.jetty.server.handler.GzipHandler;
-import org.eclipse.jetty.server.nio.SelectChannelConnector;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.server.SslConnectionFactory;
 import org.eclipse.jetty.server.session.HashSessionIdManager;
-import org.eclipse.jetty.server.ssl.SslConnector;
-import org.eclipse.jetty.server.ssl.SslSelectChannelConnector;
-import org.eclipse.jetty.server.ssl.SslSocketConnector;
 import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
+import org.eclipse.jetty.servlets.GzipFilter;
 import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import javax.servlet.DispatcherType;
 import javax.servlet.Filter;
@@ -51,6 +53,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.EnumSet;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Random;
 import java.util.SortedMap;
@@ -236,17 +239,15 @@ public class JettySolrRunner {
 
   private void init(int port) {
 
-    server = new Server(port);
+    QueuedThreadPool qtp = new QueuedThreadPool();
+    qtp.setMaxThreads(10000);
+    qtp.setIdleTimeout((int) TimeUnit.SECONDS.toMillis(5));
+    qtp.setStopTimeout((int) TimeUnit.MINUTES.toMillis(1));
+    server = new Server(qtp);
+    server.manage(qtp);
     server.setStopAtShutdown(config.stopAtShutdown);
-    if (!config.stopAtShutdown) {
-      server.setGracefulShutdown(0);
-    }
-
-    System.setProperty("solr.solr.home", solrHome);
 
     if (System.getProperty("jetty.testMode") != null) {
-      final String connectorName = System.getProperty("tests.jettyConnector", "SelectChannel");
-
       // if this property is true, then jetty will be configured to use SSL
       // leveraging the same system properties as java to specify
       // the keystore/truststore if they are set unless specific config
@@ -254,56 +255,43 @@ public class JettySolrRunner {
       //
       // This means we will use the same truststore, keystore (and keys) for
       // the server as well as any client actions taken by this JVM in
-      // talking to that server, but for the purposes of testing that should 
+      // talking to that server, but for the purposes of testing that should
       // be good enough
       final SslContextFactory sslcontext = SSLConfig.createContextFactory(config.sslConfig);
 
-      final Connector connector;
-      if ("SelectChannel".equals(connectorName)) {
-        final SelectChannelConnector c = sslcontext != null
-          ? new SslSelectChannelConnector(sslcontext)
-          : new SelectChannelConnector();
-        c.setReuseAddress(true);
-        c.setLowResourcesMaxIdleTime(1500);
-        c.setSoLingerTime(0);
-        connector = c;
-      } else if ("Socket".equals(connectorName)) {
-        final SocketConnector c = sslcontext != null
-          ? new SslSocketConnector(sslcontext)
-          : new SocketConnector();
-        c.setReuseAddress(true);
-        c.setSoLingerTime(0);
-        connector = c;
+      ServerConnector connector;
+      if (sslcontext != null) {
+        HttpConfiguration configuration = new HttpConfiguration();
+        configuration.setSecureScheme("https");
+        configuration.addCustomizer(new SecureRequestCustomizer());
+        connector = new ServerConnector(server, new SslConnectionFactory(sslcontext, "http/1.1"),
+                new HttpConnectionFactory(configuration));
       } else {
-        throw new IllegalArgumentException("Illegal value for system property 'tests.jettyConnector': " + connectorName);
+        connector = new ServerConnector(server, new HttpConnectionFactory());
       }
 
+      connector.setReuseAddress(true);
+      connector.setSoLingerTime(0);
       connector.setPort(port);
       connector.setHost("127.0.0.1");
 
-      // Connectors by default inherit server's thread pool.
-      QueuedThreadPool qtp = new QueuedThreadPool();
-      qtp.setMaxThreads(10000);
-      qtp.setMaxIdleTimeMs((int) TimeUnit.MILLISECONDS.toMillis(200));
-      qtp.setMaxStopTimeMs((int) TimeUnit.MINUTES.toMillis(1));
-      server.setThreadPool(qtp);
+      // Enable Low Resources Management
+      LowResourceMonitor lowResources = new LowResourceMonitor(server);
+      lowResources.setLowResourcesIdleTimeout(1500);
+      lowResources.setMaxConnections(10000);
+      server.addBean(lowResources);
 
       server.setConnectors(new Connector[] {connector});
       server.setSessionIdManager(new HashSessionIdManager(new Random()));
     } else {
-      if (server.getThreadPool() == null) {
-        // Connectors by default inherit server's thread pool.
-        QueuedThreadPool qtp = new QueuedThreadPool();
-        qtp.setMaxThreads(10000);
-        qtp.setMaxIdleTimeMs((int) TimeUnit.SECONDS.toMillis(5));
-        qtp.setMaxStopTimeMs((int) TimeUnit.SECONDS.toMillis(1));
-        server.setThreadPool(qtp);
-      }
+      ServerConnector connector = new ServerConnector(server, new HttpConnectionFactory());
+      connector.setPort(port);
+      server.setConnectors(new Connector[] {connector});
     }
 
     // Initialize the servlets
     final ServletContextHandler root = new ServletContextHandler(server, config.context, ServletContextHandler.SESSIONS);
-    root.setHandler(new GzipHandler());
+    root.addFilter(GzipFilter.class, "*", EnumSet.of(DispatcherType.REQUEST));
     server.addLifeCycleListener(new LifeCycle.Listener() {
 
       @Override
@@ -337,14 +325,15 @@ public class JettySolrRunner {
         extraFilters = new LinkedList<>();
         for (Class<? extends Filter> filterClass : config.extraFilters.keySet()) {
           extraFilters.add(root.addFilter(filterClass, config.extraFilters.get(filterClass),
-              EnumSet.of(DispatcherType.REQUEST)));
+                  EnumSet.of(DispatcherType.REQUEST)));
         }
 
-        dispatchFilter = root.addFilter(SolrDispatchFilter.class, "*", EnumSet.of(DispatcherType.REQUEST) );
         for (ServletHolder servletHolder : config.extraServlets.keySet()) {
           String pathSpec = config.extraServlets.get(servletHolder);
           root.addServlet(servletHolder, pathSpec);
         }
+
+        dispatchFilter = root.addFilter(SolrDispatchFilter.class, "*", EnumSet.of(DispatcherType.REQUEST) );
 
       }
 
@@ -380,27 +369,37 @@ public class JettySolrRunner {
    * @throws Exception if an error occurs on startup
    */
   public void start() throws Exception {
-    // if started before, make a new server
-    if (startedBefore) {
-      waitOnSolr = false;
-      init(lastPort);
-    } else {
-      startedBefore = true;
-    }
+    // Do not let Jetty/Solr pollute the MDC for this thread
+    Map<String, String> prevContext = MDC.getCopyOfContextMap();
+    MDC.clear();
+    try {
+      // if started before, make a new server
+      if (startedBefore) {
+        waitOnSolr = false;
+        init(lastPort);
+      } else {
+        startedBefore = true;
+      }
 
-    if (!server.isRunning()) {
-      server.start();
-    }
-    synchronized (JettySolrRunner.this) {
-      int cnt = 0;
-      while (!waitOnSolr) {
-        this.wait(100);
-        if (cnt++ == 5) {
-          throw new RuntimeException("Jetty/Solr unresponsive");
+      if (!server.isRunning()) {
+        server.start();
+      }
+      synchronized (JettySolrRunner.this) {
+        int cnt = 0;
+        while (!waitOnSolr) {
+          this.wait(100);
+          if (cnt++ == 5) {
+            throw new RuntimeException("Jetty/Solr unresponsive");
+          }
         }
       }
+    } finally {
+      if (prevContext != null)  {
+        MDC.setContextMap(prevContext);
+      } else {
+        MDC.clear();
+      }
     }
-
   }
 
   /**
@@ -409,21 +408,31 @@ public class JettySolrRunner {
    * @throws Exception if an error occurs on shutdown
    */
   public void stop() throws Exception {
+    // Do not let Jetty/Solr pollute the MDC for this thread
+    Map<String, String> prevContext = MDC.getCopyOfContextMap();
+    MDC.clear();
+    try {
+      Filter filter = dispatchFilter.getFilter();
 
-    Filter filter = dispatchFilter.getFilter();
+      server.stop();
 
-    server.stop();
-
-    if (server.getState().equals(Server.FAILED)) {
-      filter.destroy();
-      if (extraFilters != null) {
-        for (FilterHolder f : extraFilters) {
-          f.getFilter().destroy();
+      if (server.getState().equals(Server.FAILED)) {
+        filter.destroy();
+        if (extraFilters != null) {
+          for (FilterHolder f : extraFilters) {
+            f.getFilter().destroy();
+          }
         }
       }
+
+      server.join();
+    } finally {
+      if (prevContext != null)  {
+        MDC.setContextMap(prevContext);
+      } else {
+        MDC.clear();
+      }
     }
-    
-    server.join();
   }
 
   /**
@@ -436,7 +445,7 @@ public class JettySolrRunner {
     if (0 == conns.length) {
       throw new RuntimeException("Jetty Server has no Connectors");
     }
-    return (proxyPort != -1) ? proxyPort : conns[0].getLocalPort();
+    return (proxyPort != -1) ? proxyPort : ((ServerConnector) conns[0]).getLocalPort();
   }
   
   /**
@@ -471,17 +480,17 @@ public class JettySolrRunner {
       if (0 == conns.length) {
         throw new IllegalStateException("Jetty Server has no Connectors");
       }
-      Connector c = conns[0];
+      ServerConnector c = (ServerConnector) conns[0];
       if (c.getLocalPort() < 0) {
-        throw new IllegalStateException("Jetty Connector is not open: " + 
-                                        c.getLocalPort());
+        throw new IllegalStateException("Jetty Connector is not open: " +
+                c.getLocalPort());
       }
-      protocol = (c instanceof SslConnector) ? "https" : "http";
+      protocol = c.getDefaultProtocol().equals("SSL-http/1.1")  ? "https" : "http";
       return new URL(protocol, c.getHost(), c.getLocalPort(), config.context);
 
     } catch (MalformedURLException e) {
       throw new  IllegalStateException
-        ("Java could not make sense of protocol: " + protocol, e);
+              ("Java could not make sense of protocol: " + protocol, e);
     }
   }
 

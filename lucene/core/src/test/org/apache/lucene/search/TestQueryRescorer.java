@@ -272,7 +272,6 @@ public class TestQueryRescorer extends LuceneTestCase {
     assertTrue(s.contains("first pass score"));
     assertTrue(s.contains("no second pass score"));
     assertFalse(s.contains("= second pass score"));
-    assertTrue(s.contains("NON-MATCH"));
     assertEquals(hits2.scoreDocs[1].score, explain.getValue(), 0.0f);
 
     r.close();
@@ -429,6 +428,10 @@ public class TestQueryRescorer extends LuceneTestCase {
       return new Weight(FixedScoreQuery.this) {
 
         @Override
+        public void extractTerms(Set<Term> terms) {
+        }
+
+        @Override
         public float getValueForNormalization() {
           return 1.0f;
         }
@@ -492,10 +495,6 @@ public class TestQueryRescorer extends LuceneTestCase {
           return null;
         }
       };
-    }
-
-    @Override
-    public void extractTerms(Set<Term> terms) {
     }
 
     @Override

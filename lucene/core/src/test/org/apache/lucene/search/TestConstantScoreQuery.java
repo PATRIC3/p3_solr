@@ -18,17 +18,22 @@ package org.apache.lucene.search;
  */
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
 
 /** This class only tests some basic functionality in CSQ, the main parts are mostly
@@ -50,7 +55,7 @@ public class TestConstantScoreQuery extends LuceneTestCase {
     QueryUtils.checkUnequal(q1, new TermQuery(new Term("a", "b")));
   }
   
-  private void checkHits(IndexSearcher searcher, Query q, final float expectedScore, final String scorerClassName, final String innerScorerClassName) throws IOException {
+  private void checkHits(IndexSearcher searcher, Query q, final float expectedScore, final Class<? extends Scorer> innerScorerClass) throws IOException {
     final int[] count = new int[1];
     searcher.search(q, new SimpleCollector() {
       private Scorer scorer;
@@ -58,10 +63,9 @@ public class TestConstantScoreQuery extends LuceneTestCase {
       @Override
       public void setScorer(Scorer scorer) {
         this.scorer = scorer;
-        assertEquals("Scorer is implemented by wrong class", scorerClassName, scorer.getClass().getName());
-        if (innerScorerClassName != null && scorer instanceof ConstantScoreQuery.ConstantScoreScorer) {
-          final ConstantScoreQuery.ConstantScoreScorer innerScorer = (ConstantScoreQuery.ConstantScoreScorer) scorer;
-          assertEquals("inner Scorer is implemented by wrong class", innerScorerClassName, innerScorer.in.getClass().getName());
+        if (innerScorerClass != null) {
+          final FilterScorer innerScorer = (FilterScorer) scorer;
+          assertEquals("inner Scorer is implemented by wrong class", innerScorerClass, innerScorer.in.getClass());
         }
       }
       
@@ -117,16 +121,14 @@ public class TestConstantScoreQuery extends LuceneTestCase {
       final Query csqbq = new ConstantScoreQuery(bq);
       csqbq.setBoost(17.0f);
       
-      checkHits(searcher, csq1, csq1.getBoost(), ConstantScoreQuery.ConstantScoreScorer.class.getName(), TermScorer.class.getName());
-      checkHits(searcher, csq2, csq2.getBoost(), ConstantScoreQuery.ConstantScoreScorer.class.getName(), TermScorer.class.getName());
+      checkHits(searcher, csq1, csq1.getBoost(), TermScorer.class);
+      checkHits(searcher, csq2, csq2.getBoost(), TermScorer.class);
       
       // for the combined BQ, the scorer should always be BooleanScorer's BucketScorer, because our scorer supports out-of order collection!
-      final String bucketScorerClass = FakeScorer.class.getName();
-      checkHits(searcher, bq, csq1.getBoost() + csq2.getBoost(), bucketScorerClass, null);
-      checkHits(searcher, csqbq, csqbq.getBoost(), ConstantScoreQuery.ConstantScoreScorer.class.getName(), bucketScorerClass);
+      final Class<FakeScorer> bucketScorerClass = FakeScorer.class;
+      checkHits(searcher, csqbq, csqbq.getBoost(), bucketScorerClass);
     } finally {
-      if (reader != null) reader.close();
-      if (directory != null) directory.close();
+      IOUtils.close(reader, directory);
     }
   }
 
@@ -149,6 +151,18 @@ public class TestConstantScoreQuery extends LuceneTestCase {
       return in.toString(field);
     }
     
+    @Override
+    public boolean equals(Object obj) {
+      if (super.equals(obj) == false) {
+        return false;
+      }
+      return in.equals(((FilterWrapper) obj).in);
+    }
+
+    @Override
+    public int hashCode() {
+      return 31 * super.hashCode() + in.hashCode();
+    }
   }
 
   public void testConstantScoreQueryAndFilter() throws Exception {
@@ -230,5 +244,19 @@ public class TestConstantScoreQuery extends LuceneTestCase {
     reader.close();
     w.close();
     dir.close();
+  }
+
+  public void testExtractTerms() throws Exception {
+    final IndexSearcher searcher = newSearcher(new MultiReader());
+    final TermQuery termQuery = new TermQuery(new Term("foo", "bar"));
+    final ConstantScoreQuery csq = new ConstantScoreQuery(termQuery);
+
+    final Set<Term> scoringTerms = new HashSet<>();
+    searcher.createNormalizedWeight(csq, true).extractTerms(scoringTerms);
+    assertEquals(Collections.emptySet(), scoringTerms);
+
+    final Set<Term> matchingTerms = new HashSet<>();
+    searcher.createNormalizedWeight(csq, false).extractTerms(matchingTerms);
+    assertEquals(Collections.singleton(new Term("foo", "bar")), matchingTerms);
   }
 }

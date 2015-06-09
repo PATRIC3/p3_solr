@@ -202,15 +202,6 @@ public class TermAutomatonQuery extends Query {
   }
 
   @Override
-  public void extractTerms(Set<Term> terms) {
-    for(BytesRef text : termToID.keySet()) {
-      if (text != null) {
-        terms.add(new Term(field, text));
-      }
-    }
-  }
-
-  @Override
   public String toString(String field) {
     // TODO: what really am I supposed to do with the incoming field...
     StringBuilder sb = new StringBuilder();
@@ -366,6 +357,15 @@ public class TermAutomatonQuery extends Query {
     }
 
     @Override
+    public void extractTerms(Set<Term> terms) {
+      for(BytesRef text : termToID.keySet()) {
+        if (text != null) {
+          terms.add(new Term(field, text));
+        }
+      }
+    }
+
+    @Override
     public String toString() {
       return "weight(" + TermAutomatonQuery.this + ")";
     }
@@ -393,7 +393,7 @@ public class TermAutomatonQuery extends Query {
         TermState state = termContext.get(context.ord);
         if (state != null) {
 
-          TermsEnum termsEnum = context.reader().terms(field).iterator(null);
+          TermsEnum termsEnum = context.reader().terms(field).iterator();
           termsEnum.seekExact(term, state);
           enums[ent.getKey()] = new EnumAndScorer(ent.getKey(), termsEnum.postings(acceptDocs, null, PostingsEnum.POSITIONS));
         }

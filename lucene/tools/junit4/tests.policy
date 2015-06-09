@@ -35,6 +35,7 @@ grant {
   // write only to sandbox
   permission java.io.FilePermission "${junit4.childvm.cwd}${/}temp", "read,write,delete";
   permission java.io.FilePermission "${junit4.childvm.cwd}${/}temp${/}-", "read,write,delete";
+  permission java.io.FilePermission "${junit4.childvm.cwd}${/}jacoco.db", "write";
   permission java.io.FilePermission "${junit4.tempDir}${/}*", "read,write,delete";
   permission java.io.FilePermission "${clover.db.dir}${/}-", "read,write,delete";
 
@@ -72,6 +73,8 @@ grant {
   permission java.lang.RuntimePermission "getClassLoader";
   // needed to test unmap hack on platforms that support it
   permission java.lang.RuntimePermission "accessClassInPackage.sun.misc";
+  // needed by jacoco to dump coverage
+  permission java.lang.RuntimePermission "shutdownHooks";
   
   // read access to all system properties:
   permission java.util.PropertyPermission "*", "read";
@@ -80,6 +83,10 @@ grant {
   permission java.util.PropertyPermission "user.language", "write";
   // timezone randomization
   permission java.util.PropertyPermission "user.timezone", "write";
+
+  // CMS randomization
+  permission java.util.PropertyPermission "lucene.cms.override_core_count", "write";
+  permission java.util.PropertyPermission "lucene.cms.override_spins", "write";
 
   // used by nested tests? (e.g. TestLeaveFilesIfTestFails). TODO: look into this
   permission java.util.PropertyPermission "tests.runnested", "write";
@@ -95,10 +102,6 @@ grant {
   permission java.net.SocketPermission "127.0.0.1:1024-", "accept,listen,connect,resolve";
   permission java.net.SocketPermission "[::1]:1024-", "accept,listen,connect,resolve";
   
-  // This is a special case, because the network config of the ASF Jenkins server is broken,
-  // see: http://freebsd.1045724.n5.nabble.com/jail-external-and-localhost-distinction-td3967320.html
-  permission java.net.SocketPermission "lucene.zones.apache.org:1024-", "accept,listen,connect,resolve";
-
   // SSL related properties for jetty
   permission java.security.SecurityPermission "getProperty.ssl.KeyManagerFactory.algorithm";
   permission java.security.SecurityPermission "getProperty.ssl.TrustManagerFactory.algorithm";

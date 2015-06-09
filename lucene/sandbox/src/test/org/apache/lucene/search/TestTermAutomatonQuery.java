@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 
@@ -38,15 +39,15 @@ import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.StoredField;
-import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
@@ -651,5 +652,83 @@ public class TestTermAutomatonQuery extends LuceneTestCase {
     public String toString(String field) {
       return "RandomFilter(seed=" + seed + ",density=" + density + ")";
     }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (super.equals(obj) == false) {
+        return false;
+      }
+      RandomFilter other = (RandomFilter) obj;
+      return seed == other.seed && density == other.density;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(super.hashCode(), seed, density);
+    }
+  }
+
+  /** See if we can create a TAQ with cycles */
+  public void testWithCycles1() throws Exception {
+    
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    doc.add(newTextField("field", "here comes here comes", Field.Store.NO));
+    w.addDocument(doc);
+
+    doc = new Document();
+    doc.add(newTextField("field", "comes here", Field.Store.NO));
+    w.addDocument(doc);
+    IndexReader r = w.getReader();
+    IndexSearcher s = newSearcher(r);
+
+    TermAutomatonQuery q = new TermAutomatonQuery("field");
+    int init = q.createState();
+    int s1 = q.createState();
+    q.addTransition(init, s1, "here");
+    q.addTransition(s1, init, "comes");
+    q.setAccept(init, true);
+    q.finish();
+
+    assertEquals(1, s.search(q, 1).totalHits);
+    w.close();
+    r.close();
+    dir.close();
+  }
+
+  /** See if we can create a TAQ with cycles */
+  public void testWithCycles2() throws Exception {
+    
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    doc.add(newTextField("field", "here comes kaoma", Field.Store.NO));
+    w.addDocument(doc);
+
+    doc = new Document();
+    doc.add(newTextField("field", "here comes sun sun sun sun kaoma", Field.Store.NO));
+    w.addDocument(doc);
+    IndexReader r = w.getReader();
+    IndexSearcher s = newSearcher(r);
+
+    TermAutomatonQuery q = new TermAutomatonQuery("field");
+    int init = q.createState();
+    int s1 = q.createState();
+    q.addTransition(init, s1, "here");
+    int s2 = q.createState();
+    q.addTransition(s1, s2, "comes");
+    int s3 = q.createState();
+    q.addTransition(s2, s3, "sun");
+    q.addTransition(s3, s3, "sun");
+    int s4 = q.createState();
+    q.addTransition(s3, s4, "kaoma");
+    q.setAccept(s4, true);
+    q.finish();
+
+    assertEquals(1, s.search(q, 1).totalHits);
+    w.close();
+    r.close();
+    dir.close();
   }
 }

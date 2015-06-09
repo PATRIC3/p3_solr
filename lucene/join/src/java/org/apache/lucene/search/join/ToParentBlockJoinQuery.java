@@ -27,7 +27,6 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.ComplexExplanation;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
@@ -143,6 +142,9 @@ public class ToParentBlockJoinQuery extends Query {
     }
 
     @Override
+    public void extractTerms(Set<Term> terms) {}
+
+    @Override
     public float getValueForNormalization() throws IOException {
       return childWeight.getValueForNormalization() * joinQuery.getBoost() * joinQuery.getBoost();
     }
@@ -187,7 +189,7 @@ public class ToParentBlockJoinQuery extends Query {
       if (scorer != null && scorer.advance(doc) == doc) {
         return scorer.explain(context.docBase);
       }
-      return new ComplexExplanation(false, 0.0f, "Not a match");
+      return Explanation.noMatch("Not a match");
     }
   }
 
@@ -294,6 +296,7 @@ public class ToParentBlockJoinQuery extends Query {
 
         float totalScore = 0;
         float maxScore = Float.NEGATIVE_INFINITY;
+        float minScore = Float.POSITIVE_INFINITY;
 
         childDocUpto = 0;
         parentFreq = 0;
@@ -317,6 +320,7 @@ public class ToParentBlockJoinQuery extends Query {
               pendingChildScores[childDocUpto] = childScore;
             }
             maxScore = Math.max(childScore, maxScore);
+            minScore = Math.min(childFreq, minScore);
             totalScore += childScore;
             parentFreq += childFreq;
           }
@@ -336,6 +340,9 @@ public class ToParentBlockJoinQuery extends Query {
           break;
         case Max:
           parentScore = maxScore;
+          break;
+        case Min:
+          parentScore = minScore;
           break;
         case Total:
           parentScore = totalScore;
@@ -406,8 +413,7 @@ public class ToParentBlockJoinQuery extends Query {
     public Explanation explain(int docBase) throws IOException {
       int start = docBase + prevParentDoc + 1; // +1 b/c prevParentDoc is previous parent doc
       int end = docBase + parentDoc - 1; // -1 b/c parentDoc is parent doc
-      return new ComplexExplanation(
-          true, score(), String.format(Locale.ROOT, "Score based on child doc range from %d to %d", start, end)
+      return Explanation.match(score(), String.format(Locale.ROOT, "Score based on child doc range from %d to %d", start, end)
       );
     }
 
@@ -425,11 +431,6 @@ public class ToParentBlockJoinQuery extends Query {
         pendingChildScores = new float[5];
       }
     }
-  }
-
-  @Override
-  public void extractTerms(Set<Term> terms) {
-    childQuery.extractTerms(terms);
   }
 
   @Override

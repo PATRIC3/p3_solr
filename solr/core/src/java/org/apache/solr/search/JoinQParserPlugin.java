@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexReader;
@@ -31,10 +30,10 @@ import org.apache.lucene.index.MultiPostingsEnum;
 import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.ComplexExplanation;
+import org.apache.lucene.search.ConstantScoreScorer;
+import org.apache.lucene.search.ConstantScoreWeight;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
@@ -50,7 +49,6 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.cloud.Aliases;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
-import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
@@ -162,11 +160,10 @@ public class JoinQParserPlugin extends QParserPlugin {
           fromReplica = replica.getStr(ZkStateReader.CORE_NAME_PROP);
 
           // found local replica, but is it Active?
-          ZkCoreNodeProps replicaCoreProps = new ZkCoreNodeProps(replica);
-          if (!ZkStateReader.ACTIVE.equals(replicaCoreProps.getState()))
+          if (replica.getState() != Replica.State.ACTIVE)
             throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
                 "SolrCloud join: "+fromIndex+" has a local replica ("+fromReplica+
-                    ") on "+nodeName+", but it is "+replicaCoreProps.getState());
+                    ") on "+nodeName+", but it is "+replica.getState());
 
           break;
         }
@@ -206,21 +203,15 @@ class JoinQuery extends Query {
   }
 
   @Override
-  public void extractTerms(Set terms) {
-  }
-
-  @Override
   public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
     return new JoinQueryWeight((SolrIndexSearcher)searcher);
   }
 
-  private class JoinQueryWeight extends Weight {
+  private class JoinQueryWeight extends ConstantScoreWeight {
     SolrIndexSearcher fromSearcher;
     RefCounted<SolrIndexSearcher> fromRef;
     SolrIndexSearcher toSearcher;
     private Similarity similarity;
-    private float queryNorm;
-    private float queryWeight;
     ResponseBuilder rb;
 
     public JoinQueryWeight(SolrIndexSearcher searcher) {
@@ -281,21 +272,8 @@ class JoinQuery extends Query {
       this.toSearcher = searcher;
     }
 
-    @Override
-    public float getValueForNormalization() throws IOException {
-      queryWeight = getBoost();
-      return queryWeight * queryWeight;
-    }
-
-    @Override
-    public void normalize(float norm, float topLevelBoost) {
-      this.queryNorm = norm * topLevelBoost;
-      queryWeight *= this.queryNorm;
-    }
-
     DocSet resultSet;
     Filter filter;
-
 
 
     @Override
@@ -332,7 +310,14 @@ class JoinQuery extends Query {
 
       // Although this set only includes live docs, other filters can be pushed down to queries.
       DocIdSet readerSet = filter.getDocIdSet(context, acceptDocs);
-      return new JoinScorer(this, readerSet == null ? DocIdSetIterator.empty() : readerSet.iterator(), getBoost());
+      if (readerSet == null) {
+        return null;
+      }
+      DocIdSetIterator readerSetIterator = readerSet.iterator();
+      if (readerSetIterator == null) {
+        return null;
+      }
+      return new ConstantScoreScorer(this, score(), readerSetIterator);
     }
 
 
@@ -381,8 +366,8 @@ class JoinQuery extends Query {
       BytesRef prefix = prefixStr == null ? null : new BytesRef(prefixStr);
 
       BytesRef term = null;
-      TermsEnum  termsEnum = terms.iterator(null);
-      TermsEnum  toTermsEnum = toTerms.iterator(null);
+      TermsEnum  termsEnum = terms.iterator();
+      TermsEnum  toTermsEnum = toTerms.iterator();
       SolrIndexSearcher.DocsEnumState fromDeState = null;
       SolrIndexSearcher.DocsEnumState toDeState = null;
 
@@ -566,73 +551,7 @@ class JoinQuery extends Query {
       return new SortedIntDocSet(dedup, dedup.length);
     }
 
-    @Override
-    public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      Scorer scorer = scorer(context, context.reader().getLiveDocs());
-      boolean exists = scorer.advance(doc) == doc;
-
-      ComplexExplanation result = new ComplexExplanation();
-
-      if (exists) {
-        result.setDescription(this.toString()
-        + " , product of:");
-        result.setValue(queryWeight);
-        result.setMatch(Boolean.TRUE);
-        result.addDetail(new Explanation(getBoost(), "boost"));
-        result.addDetail(new Explanation(queryNorm,"queryNorm"));
-      } else {
-        result.setDescription(this.toString()
-        + " doesn't match id " + doc);
-        result.setValue(0);
-        result.setMatch(Boolean.FALSE);
-      }
-      return result;
-    }
   }
-
-
-  protected static class JoinScorer extends Scorer {
-    final DocIdSetIterator iter;
-    final float score;
-    int doc = -1;
-
-    public JoinScorer(Weight w, DocIdSetIterator iter, float score) throws IOException {
-      super(w);
-      this.score = score;
-      this.iter = iter==null ? DocIdSetIterator.empty() : iter;
-    }
-
-    @Override
-    public int nextDoc() throws IOException {
-      return iter.nextDoc();
-    }
-
-    @Override
-    public int docID() {
-      return iter.docID();
-    }
-
-    @Override
-    public float score() throws IOException {
-      return score;
-    }
-    
-    @Override
-    public int freq() throws IOException {
-      return 1;
-    }
-
-    @Override
-    public int advance(int target) throws IOException {
-      return iter.advance(target);
-    }
-
-    @Override
-    public long cost() {
-      return iter.cost();
-    }
-  }
-
 
   @Override
   public String toString(String field) {

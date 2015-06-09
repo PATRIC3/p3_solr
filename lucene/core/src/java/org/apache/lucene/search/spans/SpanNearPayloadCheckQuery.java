@@ -16,11 +16,13 @@ package org.apache.lucene.search.spans;
  * limitations under the License.
  */
 
+import org.apache.lucene.search.spans.FilterSpans.AcceptStatus;
 import org.apache.lucene.util.ToStringUtils;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Objects;
 
 
 /**
@@ -36,7 +38,7 @@ public class SpanNearPayloadCheckQuery extends SpanPositionCheckQuery {
    */
   public SpanNearPayloadCheckQuery(SpanNearQuery match, Collection<byte[]> payloadToMatch) {
     super(match);
-    this.payloadToMatch = payloadToMatch;
+    this.payloadToMatch = Objects.requireNonNull(payloadToMatch);
   }
 
   @Override
@@ -94,22 +96,17 @@ public class SpanNearPayloadCheckQuery extends SpanPositionCheckQuery {
 
   @Override
   public boolean equals(Object o) {
-    if (this == o) return true;
-    if (!(o instanceof SpanNearPayloadCheckQuery)) return false;
-
+    if (! super.equals(o)) {
+      return false;
+    }
     SpanNearPayloadCheckQuery other = (SpanNearPayloadCheckQuery) o;
-    return this.payloadToMatch.equals(other.payloadToMatch)
-            && this.match.equals(other.match)
-            && this.getBoost() == other.getBoost();
+    return this.payloadToMatch.equals(other.payloadToMatch);
   }
 
   @Override
   public int hashCode() {
-    int h = match.hashCode();
-    h ^= (h << 8) | (h >>> 25);  // reversible
-    //TODO: is this right?
-    h ^= payloadToMatch.hashCode();
-    h ^= Float.floatToRawIntBits(getBoost());
+    int h = super.hashCode();
+    h = (h * 15) ^ payloadToMatch.hashCode();
     return h;
   }
 }

@@ -46,6 +46,7 @@ import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.params.UpdateParams;
+import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.Hash;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SolrjNamedThreadFactory;
@@ -53,6 +54,7 @@ import org.apache.solr.common.util.StrUtils;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.io.IOException;
 import java.net.ConnectException;
@@ -107,9 +109,9 @@ public class CloudSolrClient extends SolrClient {
   
   private final boolean updatesToLeaders;
   private boolean parallelUpdates = true;
-  private ExecutorService threadPool = Executors
-      .newCachedThreadPool(new SolrjNamedThreadFactory(
-          "CloudSolrServer ThreadPool"));
+  private ExecutorService threadPool = ExecutorUtil
+      .newMDCAwareCachedThreadPool(new SolrjNamedThreadFactory(
+          "CloudSolrClient ThreadPool"));
   private String idField = "id";
   public static final String STATE_VERSION = "_stateVer_";
   private final Set<String> NON_ROUTABLE_PARAMS;
@@ -590,12 +592,17 @@ public class CloudSolrClient extends SolrClient {
       for (final Map.Entry<String, LBHttpSolrClient.Req> entry : routes.entrySet()) {
         final String url = entry.getKey();
         final LBHttpSolrClient.Req lbRequest = entry.getValue();
-        responseFutures.put(url, threadPool.submit(new Callable<NamedList<?>>() {
-          @Override
-          public NamedList<?> call() throws Exception {
-            return lbClient.request(lbRequest).getResponse();
-          }
-        }));
+        try {
+          MDC.put("CloudSolrClient.url", url);
+          responseFutures.put(url, threadPool.submit(new Callable<NamedList<?>>() {
+            @Override
+            public NamedList<?> call() throws Exception {
+              return lbClient.request(lbRequest).getResponse();
+            }
+          }));
+        } finally {
+          MDC.remove("CloudSolrClient.url");
+        }
       }
 
       for (final Map.Entry<String, Future<NamedList<?>>> entry: responseFutures.entrySet()) {
@@ -612,7 +619,13 @@ public class CloudSolrClient extends SolrClient {
       }
 
       if (exceptions.size() > 0) {
-        throw new RouteException(ErrorCode.SERVER_ERROR, exceptions, routes);
+        Throwable firstException = exceptions.getVal(0);
+        if(firstException instanceof SolrException) {
+          SolrException e = (SolrException) firstException;
+          throw new RouteException(ErrorCode.getErrorCode(e.code()), exceptions, routes);
+        } else {
+          throw new RouteException(ErrorCode.SERVER_ERROR, exceptions, routes);
+        }
       }
     } else {
       for (Map.Entry<String, LBHttpSolrClient.Req> entry : routes.entrySet()) {
@@ -622,7 +635,11 @@ public class CloudSolrClient extends SolrClient {
           NamedList<Object> rsp = lbClient.request(lbRequest).getResponse();
           shardResponses.add(url, rsp);
         } catch (Exception e) {
-          throw new SolrServerException(e);
+          if(e instanceof SolrException) {
+            throw (SolrException) e;
+          } else {
+            throw new SolrServerException(e);
+          }
         }
       }
     }
@@ -921,7 +938,9 @@ public class CloudSolrClient extends SolrClient {
         log.warn("Re-trying request to  collection(s) "+collection+" after stale state error from server.");
         resp = requestWithRetryOnStaleState(request, retryCount+1, collection);
       } else {
-        if (exc instanceof SolrServerException) {
+        if(exc instanceof SolrException) {
+          throw exc;
+        } if (exc instanceof SolrServerException) {
           throw (SolrServerException)exc;
         } else if (exc instanceof IOException) {
           throw (IOException)exc;
@@ -1008,7 +1027,7 @@ public class CloudSolrClient extends SolrClient {
           ZkCoreNodeProps coreNodeProps = new ZkCoreNodeProps(nodeProps);
           String node = coreNodeProps.getNodeName();
           if (!liveNodes.contains(coreNodeProps.getNodeName())
-              || !coreNodeProps.getState().equals(ZkStateReader.ACTIVE)) continue;
+              || Replica.State.getState(coreNodeProps.getState()) != Replica.State.ACTIVE) continue;
           if (nodes.put(node, nodeProps) == null) {
             if (!sendToLeaders || coreNodeProps.isLeader()) {
               String url;

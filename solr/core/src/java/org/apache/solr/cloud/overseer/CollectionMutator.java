@@ -29,8 +29,12 @@ import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.handler.admin.CollectionsHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.solr.common.cloud.ZkStateReader.COLLECTION_PROP;
+import static org.apache.solr.common.params.CommonParams.NAME;
 
 public class CollectionMutator {
   private static Logger log = LoggerFactory.getLogger(CollectionMutator.class);
@@ -53,7 +57,7 @@ public class CollectionMutator {
       String shardState = message.getStr(ZkStateReader.SHARD_STATE_PROP);
       String shardParent = message.getStr(ZkStateReader.SHARD_PARENT_PROP);
       sliceProps.put(Slice.RANGE, shardRange);
-      sliceProps.put(Slice.STATE, shardState);
+      sliceProps.put(ZkStateReader.STATE_PROP, shardState);
       if (shardParent != null) {
         sliceProps.put(Slice.PARENT, shardParent);
       }
@@ -82,6 +86,17 @@ public class CollectionMutator {
     return new ZkWriteCommand(collection, newCollection);
   }
 
+  public ZkWriteCommand modifyCollection(final ClusterState clusterState, ZkNodeProps message){
+    if (!checkCollectionKeyExistence(message)) return ZkStateWriter.NO_OP;
+    DocCollection coll = clusterState.getCollection(message.getStr(COLLECTION_PROP));
+    Map<String, Object> m = coll.shallowCopy();
+    for (String prop : CollectionsHandler.MODIFIABLE_COLL_PROPS) {
+      if(message.get(prop)!= null) m.put(prop,message.get(prop));
+    }
+    return new ZkWriteCommand(coll.getName(),
+        new DocCollection(coll.getName(),coll.getSlicesMap(),m,coll.getRouter(),coll.getZNodeVersion(),coll.getZNode()));
+  }
+
   public static DocCollection updateSlice(String collectionName, DocCollection collection, Slice slice) {
     DocCollection newCollection = null;
     Map<String, Slice> slices;
@@ -92,7 +107,7 @@ public class CollectionMutator {
       slices = new LinkedHashMap<>(1);
       slices.put(slice.getName(), slice);
       Map<String, Object> props = new HashMap<>(1);
-      props.put(DocCollection.DOC_ROUTER, ZkNodeProps.makeMap("name", ImplicitDocRouter.NAME));
+      props.put(DocCollection.DOC_ROUTER, ZkNodeProps.makeMap(NAME, ImplicitDocRouter.NAME));
       newCollection = new DocCollection(collectionName, slices, props, new ImplicitDocRouter());
     } else {
       slices = new LinkedHashMap<>(collection.getSlicesMap()); // make a shallow copy

@@ -27,7 +27,6 @@ import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.ComplexExplanation;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
@@ -73,11 +72,6 @@ class TermsIncludingScoreQuery extends Query {
   @Override
   public String toString(String string) {
     return String.format(Locale.ROOT, "TermsIncludingScoreQuery{field=%s;originalQuery=%s}", field, unwrittenOriginalQuery);
-  }
-
-  @Override
-  public void extractTerms(Set<Term> terms) {
-    originalQuery.extractTerms(terms);
   }
 
   @Override
@@ -127,13 +121,14 @@ class TermsIncludingScoreQuery extends Query {
     final Weight originalWeight = originalQuery.createWeight(searcher, needsScores);
     return new Weight(TermsIncludingScoreQuery.this) {
 
-      private TermsEnum segmentTermsEnum;
+      @Override
+      public void extractTerms(Set<Term> terms) {}
 
       @Override
       public Explanation explain(LeafReaderContext context, int doc) throws IOException {
         Terms terms = context.reader().terms(field);
         if (terms != null) {
-          segmentTermsEnum = terms.iterator(segmentTermsEnum);
+          TermsEnum segmentTermsEnum = terms.iterator();
           BytesRef spare = new BytesRef();
           PostingsEnum postingsEnum = null;
           for (int i = 0; i < TermsIncludingScoreQuery.this.terms.size(); i++) {
@@ -141,12 +136,12 @@ class TermsIncludingScoreQuery extends Query {
               postingsEnum = segmentTermsEnum.postings(null, postingsEnum, PostingsEnum.NONE);
               if (postingsEnum.advance(doc) == doc) {
                 final float score = TermsIncludingScoreQuery.this.scores[ords[i]];
-                return new ComplexExplanation(true, score, "Score based on join value " + segmentTermsEnum.term().utf8ToString());
+                return Explanation.match(score, "Score based on join value " + segmentTermsEnum.term().utf8ToString());
               }
             }
           }
         }
-        return new ComplexExplanation(false, 0.0f, "Not a match");
+        return Explanation.noMatch("Not a match");
       }
 
       @Override
@@ -169,7 +164,7 @@ class TermsIncludingScoreQuery extends Query {
         // what is the runtime...seems ok?
         final long cost = context.reader().maxDoc() * terms.size();
 
-        segmentTermsEnum = terms.iterator(segmentTermsEnum);
+        TermsEnum segmentTermsEnum = terms.iterator();
         if (multipleValuesPerDocument) {
           return new MVInOrderScorer(this, acceptDocs, segmentTermsEnum, context.reader().maxDoc(), cost);
         } else {

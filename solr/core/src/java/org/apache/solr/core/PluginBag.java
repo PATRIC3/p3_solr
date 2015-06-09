@@ -21,8 +21,10 @@ package org.apache.solr.core;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,6 +44,8 @@ import org.apache.solr.util.plugin.PluginInfoInitialized;
 import org.apache.solr.util.plugin.SolrCoreAware;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.solr.common.params.CommonParams.NAME;
 
 /**
  * This manages the lifecycle of a set of plugin of the same type .
@@ -95,6 +99,16 @@ public class PluginBag<T> implements AutoCloseable {
       ((RequestHandlerBase) inst).setPluginInfo(info);
     }
 
+  }
+
+  /**
+   * Check if any of the mentioned names are missing. If yes, return the Set of missing names
+   */
+  public Set<String> checkContains(Collection<String> names) {
+    if (names == null || names.isEmpty()) return Collections.EMPTY_SET;
+    HashSet<String> result = new HashSet<>();
+    for (String s : names) if (!this.registry.containsKey(s)) result.add(s);
+    return result;
   }
 
   PluginHolder<T> createPlugin(PluginInfo info) {
@@ -324,7 +338,9 @@ public class PluginBag<T> implements AutoCloseable {
     @Override
     public T get() {
       if (lazyInst != null) return lazyInst;
-      if (solrException != null) throw solrException;
+      if (solrException != null) {
+        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,"Unrecoverable error", solrException);
+      }
       if (createInst()) {
         // check if we created the instance to avoid registering it again
         registerMBean(lazyInst, core, pluginInfo.name);
@@ -372,7 +388,7 @@ public class PluginBag<T> implements AutoCloseable {
 
     @Override
     public void init(PluginInfo info) {
-      name = info.attributes.get("name");
+      name = info.attributes.get(NAME);
       Object v = info.attributes.get("version");
       if (name == null || v == null) {
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "runtimeLib must have name and version");

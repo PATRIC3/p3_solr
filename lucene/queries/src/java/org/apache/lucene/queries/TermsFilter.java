@@ -211,7 +211,7 @@ public final class TermsFilter extends Filter implements Accountable {
     PostingsEnum docs = null;
     for (TermsAndField termsAndField : this.termsAndFields) {
       if ((terms = fields.terms(termsAndField.field)) != null) {
-        termsEnum = terms.iterator(termsEnum); // this won't return null
+        termsEnum = terms.iterator(); // this won't return null
         for (int i = termsAndField.start; i < termsAndField.end; i++) {
           spare.offset = offsets[i];
           spare.length = offsets[i+1] - offsets[i];
@@ -230,7 +230,7 @@ public final class TermsFilter extends Filter implements Accountable {
     if (this == obj) {
       return true;
     }
-    if ((obj == null) || (obj.getClass() != this.getClass())) {
+    if (super.equals(obj) == false) {
       return false;
     }
     
@@ -249,7 +249,7 @@ public final class TermsFilter extends Filter implements Accountable {
 
   @Override
   public int hashCode() {
-    return hashCode;
+    return 31 * super.hashCode() + hashCode;
   }
   
   @Override

@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 import org.apache.lucene.index.IndexReader;
@@ -137,6 +138,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
    * @see #getMaxClauseCount()
    */
   public void add(BooleanClause clause) {
+    Objects.requireNonNull(clause, "BooleanClause must not be null");
     if (clauses.size() >= maxClauseCount) {
       throw new TooManyClauses();
     }
@@ -230,16 +232,6 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
       return clone;                               // some clauses rewrote
     } else {
       return this;                                // no clauses rewrote
-    }
-  }
-
-  // inherit javadoc
-  @Override
-  public void extractTerms(Set<Term> terms) {
-    for (BooleanClause clause : clauses) {
-      if (clause.isProhibited() == false) {
-        clause.getQuery().extractTerms(terms);
-      }
     }
   }
 

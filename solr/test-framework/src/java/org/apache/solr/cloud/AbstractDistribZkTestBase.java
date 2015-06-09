@@ -154,11 +154,9 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
               + shard.getValue().getStr(ZkStateReader.STATE_PROP)
               + " live:"
               + clusterState.liveNodesContain(shard.getValue().getNodeName()));
-          String state = shard.getValue().getStr(ZkStateReader.STATE_PROP);
-          if ((state.equals(ZkStateReader.RECOVERING) || state
-              .equals(ZkStateReader.SYNC) || state.equals(ZkStateReader.DOWN))
-              && clusterState.liveNodesContain(shard.getValue().getStr(
-              ZkStateReader.NODE_NAME_PROP))) {
+          final Replica.State state = shard.getValue().getState();
+          if ((state == Replica.State.RECOVERING || state == Replica.State.DOWN)
+              && clusterState.liveNodesContain(shard.getValue().getStr(ZkStateReader.NODE_NAME_PROP))) {
             sawLiveRecovering = true;
           }
         }
@@ -186,6 +184,37 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
     log.info("Recoveries finished - collection: " + collection);
   }
 
+  public static void waitForCollectionToDisappear(String collection,
+      ZkStateReader zkStateReader, boolean verbose, boolean failOnTimeout, int timeoutSeconds)
+      throws Exception {
+    log.info("Wait for collection to disappear - collection: " + collection + " failOnTimeout:" + failOnTimeout + " timeout (sec):" + timeoutSeconds);
+    boolean cont = true;
+    int cnt = 0;
+    
+    while (cont) {
+      if (verbose) System.out.println("-");
+      zkStateReader.updateClusterState(true);
+      ClusterState clusterState = zkStateReader.getClusterState();
+      if (!clusterState.hasCollection(collection)) break;
+      if (cnt == timeoutSeconds) {
+        if (verbose) System.out.println("Gave up waiting for "+collection+" to disappear..");
+        if (failOnTimeout) {
+          Diagnostics.logThreadDumps("Gave up waiting for "+collection+" to disappear.  THREAD DUMP:");
+          zkStateReader.getZkClient().printLayoutToStdOut();
+          fail("The collection ("+collection+") is still present - waited for " + timeoutSeconds + " seconds");
+          // won't get here
+          return;
+        }
+        cont = false;
+      } else {
+        Thread.sleep(1000);
+      }
+      cnt++;
+    }
+
+    log.info("Collection has disappeared - collection: " + collection);
+  }
+  
   protected void assertAllActive(String collection,ZkStateReader zkStateReader)
       throws KeeperException, InterruptedException {
 
@@ -199,9 +228,9 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
         Map<String,Replica> shards = entry.getValue().getReplicasMap();
         for (Map.Entry<String,Replica> shard : shards.entrySet()) {
 
-          String state = shard.getValue().getStr(ZkStateReader.STATE_PROP);
-          if (!state.equals(ZkStateReader.ACTIVE)) {
-            fail("Not all shards are ACTIVE - found a shard that is: " + state);
+          final Replica.State state = shard.getValue().getState();
+          if (state != Replica.State.ACTIVE) {
+            fail("Not all shards are ACTIVE - found a shard that is: " + state.toString());
           }
         }
       }

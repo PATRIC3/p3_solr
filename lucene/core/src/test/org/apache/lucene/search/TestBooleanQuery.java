@@ -21,7 +21,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -602,7 +604,9 @@ public class TestBooleanQuery extends LuceneTestCase {
     w.commit();
 
     DirectoryReader reader = w.getReader();
-    final IndexSearcher searcher = newSearcher(reader);
+    // not LuceneTestCase.newSearcher to not have the asserting wrappers
+    // and do instanceof checks
+    final IndexSearcher searcher = new IndexSearcher(reader);
     searcher.setQueryCache(null); // to still have approximations
 
     PhraseQuery pq = new PhraseQuery();
@@ -664,7 +668,9 @@ public class TestBooleanQuery extends LuceneTestCase {
     w.commit();
 
     DirectoryReader reader = w.getReader();
-    final IndexSearcher searcher = newSearcher(reader);
+    // not LuceneTestCase.newSearcher to not have the asserting wrappers
+    // and do instanceof checks
+    final IndexSearcher searcher = new IndexSearcher(reader);
     searcher.setQueryCache(null); // to still have approximations
 
     PhraseQuery pq = new PhraseQuery();
@@ -754,5 +760,26 @@ public class TestBooleanQuery extends LuceneTestCase {
     bq.add(new TermQuery(new Term("field", "c")), Occur.MUST_NOT);
     bq.add(new TermQuery(new Term("field", "d")), Occur.FILTER);
     assertEquals("a +b -c #d", bq.toString("field"));
+  }
+
+  public void testExtractTerms() throws IOException {
+    Term a = new Term("f", "a");
+    Term b = new Term("f", "b");
+    Term c = new Term("f", "c");
+    Term d = new Term("f", "d");
+    BooleanQuery bq = new BooleanQuery();
+    bq.add(new TermQuery(a), Occur.SHOULD);
+    bq.add(new TermQuery(b), Occur.MUST);
+    bq.add(new TermQuery(c), Occur.FILTER);
+    bq.add(new TermQuery(d), Occur.MUST_NOT);
+    IndexSearcher searcher = new IndexSearcher(new MultiReader());
+
+    Set<Term> scoringTerms = new HashSet<>();
+    searcher.createNormalizedWeight(bq, true).extractTerms(scoringTerms);
+    assertEquals(new HashSet<>(Arrays.asList(a, b)), scoringTerms);
+
+    Set<Term> matchingTerms = new HashSet<>();
+    searcher.createNormalizedWeight(bq, false).extractTerms(matchingTerms);
+    assertEquals(new HashSet<>(Arrays.asList(a, b, c)), matchingTerms);
   }
 }

@@ -37,7 +37,9 @@ import java.util.concurrent.TimeUnit;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.FsStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.solr.SolrTestCaseJ4;
@@ -49,16 +51,18 @@ import org.apache.solr.update.HdfsUpdateLog;
 import org.apache.solr.update.UpdateHandler;
 import org.apache.solr.update.UpdateLog;
 import org.apache.solr.update.processor.DistributedUpdateProcessor.DistribPhase;
+import org.apache.solr.util.BadHdfsThreadsFilter;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.noggit.ObjectBuilder;
 
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope.Scope;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakFilters;
 
-@ThreadLeakScope(Scope.NONE) // hdfs mini cluster currently leaks threads
+@ThreadLeakFilters(defaultFilters = true, filters = {
+    BadHdfsThreadsFilter.class // hdfs currently leaks thread(s)
+})
 // TODO: longer term this should be combined with TestRecovery somehow ??
 public class TestRecoveryHdfs extends SolrTestCaseJ4 {
 
@@ -76,12 +80,11 @@ public class TestRecoveryHdfs extends SolrTestCaseJ4 {
   @BeforeClass
   public static void beforeClass() throws Exception {
     dfsCluster = HdfsTestUtil.setupClass(createTempDir().toFile().getAbsolutePath());
-    System.setProperty("solr.hdfs.home", dfsCluster.getURI().toString() + "/solr");
-    hdfsUri = dfsCluster.getFileSystem().getUri().toString();
+    hdfsUri = HdfsTestUtil.getURI(dfsCluster);
     
     try {
       URI uri = new URI(hdfsUri);
-      Configuration conf = new Configuration();
+      Configuration conf = HdfsTestUtil.getClientConfiguration(dfsCluster);
       conf.setBoolean("fs.hdfs.impl.disable.cache", true);
       fs = FileSystem.get(uri, conf);
     } catch (IOException | URISyntaxException e) {
@@ -118,7 +121,30 @@ public class TestRecoveryHdfs extends SolrTestCaseJ4 {
     }
   }
 
+  @Test
+  public void testReplicationFactor() throws Exception {
+    clearIndex(); 
+    
+    HdfsUpdateLog ulog = (HdfsUpdateLog) h.getCore().getUpdateHandler().getUpdateLog();
+    
+    assertU(commit());
+    addAndGetVersion(sdoc("id", "REP1"), null);
+    assertU(commit());
 
+    String[] logList = ulog.getLogList(new Path(ulog.getLogDir()));
+    boolean foundRep2 = false;
+    for (String tl : logList) {
+       FileStatus status = fs.getFileStatus(new Path(ulog.getLogDir(), tl));
+       if (status.getReplication() == 2) {
+         foundRep2 = true;
+         break;
+       }
+    }
+    
+    assertTrue("Expected to find tlogs with a replication factor of 2", foundRep2);
+  }
+  
+  
   @Test
   public void testLogReplay() throws Exception {
     try {

@@ -18,6 +18,7 @@ package org.apache.lucene.search;
  */
 
 import java.io.IOException;
+import java.util.Objects;
 
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
@@ -99,6 +100,7 @@ public class AutomatonQuery extends MultiTermQuery {
     super(term.field());
     this.term = term;
     this.automaton = automaton;
+    // TODO: we could take isFinite too, to save a bit of CPU in CompiledAutomaton ctor?:
     this.compiled = new CompiledAutomaton(automaton, null, true, maxDeterminizedStates, isBinary);
   }
 

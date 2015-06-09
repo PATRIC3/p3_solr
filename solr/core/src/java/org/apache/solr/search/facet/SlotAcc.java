@@ -33,7 +33,9 @@ import org.apache.solr.search.SolrIndexSearcher;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 
@@ -61,11 +63,71 @@ public abstract class SlotAcc implements Closeable {
 
   public abstract void reset();
 
+  public abstract void resize(Resizer resizer);
+
   @Override
   public void close() throws IOException {
   }
-}
 
+  public static abstract class Resizer {
+    public abstract int getNewSize();
+
+    public abstract int getNewSlot(int oldSlot);
+
+    public double[] resize(double[] old, double defaultValue) {
+      double[] values = new double[getNewSize()];
+      if (defaultValue != 0) {
+        Arrays.fill(values, 0, values.length, defaultValue);
+      }
+      for (int i = 0; i < old.length; i++) {
+        double val = old[i];
+        if (val != defaultValue) {
+          int newSlot = getNewSlot(i);
+          if (newSlot >= 0) {
+            values[newSlot] = val;
+          }
+        }
+      }
+      return values;
+    }
+
+    public int[] resize(int[] old, int defaultValue) {
+      int[] values = new int[getNewSize()];
+      if (defaultValue != 0) {
+        Arrays.fill(values, 0, values.length, defaultValue);
+      }
+      for (int i = 0; i < old.length; i++) {
+        int val = old[i];
+        if (val != defaultValue) {
+          int newSlot = getNewSlot(i);
+          if (newSlot >= 0) {
+            values[newSlot] = val;
+          }
+        }
+      }
+      return values;
+    }
+
+    public <T> T[] resize(T[] old, T defaultValue) {
+      T[] values = (T[]) Array.newInstance(old.getClass().getComponentType(), getNewSize());
+      if (defaultValue != null) {
+        Arrays.fill(values, 0, values.length, defaultValue);
+      }
+      for (int i = 0; i < old.length; i++) {
+        T val = old[i];
+        if (val != defaultValue) {
+          int newSlot = getNewSlot(i);
+          if (newSlot >= 0) {
+            values[newSlot] = val;
+          }
+        }
+      }
+      return values;
+    }
+
+  } // end class Resizer
+
+}
 
 // TODO: we should really have a decoupled value provider...
 // This would enhance reuse and also prevent multiple lookups of same value across diff stats
@@ -125,6 +187,11 @@ abstract class DoubleFuncSlotAcc extends FuncSlotAcc {
       result[i] = initialValue;
     }
   }
+
+  @Override
+  public void resize(Resizer resizer) {
+    result = resizer.resize(result, initialValue);
+  }
 }
 
 abstract class IntSlotAcc extends SlotAcc {
@@ -155,6 +222,11 @@ abstract class IntSlotAcc extends SlotAcc {
     for (int i=0; i<result.length; i++) {
       result[i] = initialValue;
     }
+  }
+
+  @Override
+  public void resize(Resizer resizer) {
+    result = resizer.resize(result, initialValue);
   }
 }
 
@@ -270,18 +342,44 @@ class AvgSlotAcc extends DoubleFuncSlotAcc {
     }
   }
 
+  @Override
+  public void resize(Resizer resizer) {
+    super.resize(resizer);
+    counts = resizer.resize(counts, 0);
+  }
+}
+
+abstract class CountSlotAcc extends SlotAcc {
+  public CountSlotAcc(FacetContext fcontext) {
+    super(fcontext);
+  }
+
+  public abstract void incrementCount(int slot, int count);
+  public abstract int getCount(int slot);
 }
 
 
 
-class CountSlotAcc extends IntSlotAcc {
-  public CountSlotAcc(FacetContext fcontext, int numSlots) {
-    super(fcontext, numSlots, 0);
+class CountSlotArrAcc extends CountSlotAcc {
+  int[] result;
+  public CountSlotArrAcc(FacetContext fcontext, int numSlots) {
+    super(fcontext);
+    result = new int[numSlots];
   }
 
   @Override
   public void collect(int doc, int slotNum) {       // TODO: count arrays can use fewer bytes based on the number of docs in the base set (that's the upper bound for single valued) - look at ttf?
-    result[slotNum] = result[slotNum] + 1;
+    result[slotNum]++;
+  }
+
+  @Override
+  public int compare(int slotA, int slotB) {
+    return Integer.compare( result[slotA], result[slotB] );
+  }
+
+  @Override
+  public Object getValue(int slotNum) throws IOException {
+    return result[slotNum];
   }
 
   public void incrementCount(int slot, int count) {
@@ -299,7 +397,12 @@ class CountSlotAcc extends IntSlotAcc {
 
   @Override
   public void reset() {
-    super.reset();
+    Arrays.fill(result, 0);
+  }
+
+  @Override
+  public void resize(Resizer resizer) {
+    resizer.resize(result, 0);
   }
 }
 
@@ -327,297 +430,10 @@ class SortSlotAcc extends SlotAcc {
   public void reset() {
     // no-op
   }
-}
-
-
-abstract class UniqueSlotAcc extends SlotAcc {
-  SchemaField field;
-  FixedBitSet[] arr;
-  int currentDocBase;
-  int[] counts;  // populated with the cardinality once
-  int nTerms;
-
-  public UniqueSlotAcc(FacetContext fcontext, String field, int numSlots) throws IOException {
-    super(fcontext);
-    arr = new FixedBitSet[numSlots];
-    this.field = fcontext.searcher.getSchema().getField(field);
-  }
 
   @Override
-  public void reset() {
-    counts = null;
-    for (FixedBitSet bits : arr) {
-      if (bits == null) continue;
-      bits.clear(0, bits.length());
-    }
-  }
-
-  @Override
-  public void setNextReader(LeafReaderContext readerContext) throws IOException {
-    currentDocBase = readerContext.docBase;
-  }
-
-  @Override
-  public Object getValue(int slot) throws IOException {
-    if (fcontext.isShard()) {
-      return getShardValue(slot);
-    }
-    if (counts != null) {  // will only be pre-populated if this was used for sorting.
-      return counts[slot];
-    }
-
-    FixedBitSet bs = arr[slot];
-    return bs==null ? 0 : bs.cardinality();
-  }
-
-  public Object getShardValue(int slot) throws IOException {
-    FixedBitSet ords = arr[slot];
-    int unique;
-    if (counts != null) {
-      unique = counts[slot];
-    } else {
-      unique = ords==null ? 0 : ords.cardinality();
-    }
-
-    SimpleOrderedMap map = new SimpleOrderedMap();
-    map.add("unique", unique);
-    map.add("nTerms", nTerms);
-
-    int maxExplicit=100;
-    // TODO: make configurable
-    // TODO: share values across buckets
-    if (unique <= maxExplicit) {
-      List lst = new ArrayList( Math.min(unique, maxExplicit) );
-
-      if (ords != null) {
-        for (int ord=-1;;) {
-          if (++ord >= unique) break;
-          ord = ords.nextSetBit(ord);
-          if (ord == DocIdSetIterator.NO_MORE_DOCS) break;
-          BytesRef val = lookupOrd(ord);
-          Object o = field.getType().toObject(field, val);
-          lst.add(o);
-        }
-      }
-
-      map.add("vals", lst);
-    }
-
-    return map;
-  }
-
-  protected abstract BytesRef lookupOrd(int ord) throws IOException;
-
-  // we only calculate all the counts when sorting by count
-  public void calcCounts() {
-    counts = new int[arr.length];
-    for (int i=0; i<arr.length; i++) {
-      FixedBitSet bs = arr[i];
-      counts[i] = bs == null ? 0 : bs.cardinality();
-    }
-  }
-
-  @Override
-  public int compare(int slotA, int slotB) {
-    if (counts == null) {  // TODO: a more efficient way to do this?  prepareSort?
-      calcCounts();
-    }
-    return counts[slotA] - counts[slotB];
-  }
-
-}
-
-
-class UniqueSinglevaluedSlotAcc extends UniqueSlotAcc {
-  final SortedDocValues topLevel;
-  final SortedDocValues[] subDvs;
-  final MultiDocValues.OrdinalMap ordMap;
-  LongValues toGlobal;
-  SortedDocValues subDv;
-
-  public UniqueSinglevaluedSlotAcc(FacetContext fcontext, String field, int numSlots) throws IOException {
-    super(fcontext, field, numSlots);
-    SolrIndexSearcher searcher = fcontext.qcontext.searcher();
-    topLevel = FieldUtil.getSortedDocValues(fcontext.qcontext, searcher.getSchema().getField(field), null);
-    nTerms = topLevel.getValueCount();
-    if (topLevel instanceof MultiDocValues.MultiSortedDocValues) {
-      ordMap = ((MultiDocValues.MultiSortedDocValues)topLevel).mapping;
-      subDvs = ((MultiDocValues.MultiSortedDocValues)topLevel).values;
-    } else {
-      ordMap = null;
-      subDvs = null;
-    }
-  }
-
-  @Override
-  protected BytesRef lookupOrd(int ord) {
-    return topLevel.lookupOrd(ord);
-  }
-
-  @Override
-  public void setNextReader(LeafReaderContext readerContext) throws IOException {
-    super.setNextReader(readerContext);
-    if (subDvs != null) {
-      subDv = subDvs[readerContext.ord];
-      toGlobal = ordMap.getGlobalOrds(readerContext.ord);
-    } else {
-      assert readerContext.ord==0 || topLevel.getValueCount() == 0;
-      subDv = topLevel;
-    }
-  }
-
-  @Override
-  public void collect(int doc, int slotNum) {
-    int segOrd = subDv.getOrd(doc);
-    if (segOrd < 0) return;  // -1 means missing
-    int ord = toGlobal==null ? segOrd : (int)toGlobal.get(segOrd);
-
-    FixedBitSet bits = arr[slotNum];
-    if (bits == null) {
-      bits = new FixedBitSet(nTerms);
-      arr[slotNum] = bits;
-    }
-    bits.set(ord);
-  }
-}
-
-
-class UniqueMultiDvSlotAcc extends UniqueSlotAcc {
-  final SortedSetDocValues topLevel;
-  final SortedSetDocValues[] subDvs;
-  final MultiDocValues.OrdinalMap ordMap;
-  LongValues toGlobal;
-  SortedSetDocValues subDv;
-
-  public UniqueMultiDvSlotAcc(FacetContext fcontext, String field, int numSlots) throws IOException {
-    super(fcontext, field, numSlots);
-    SolrIndexSearcher searcher = fcontext.qcontext.searcher();
-    topLevel = FieldUtil.getSortedSetDocValues(fcontext.qcontext, searcher.getSchema().getField(field), null);
-    nTerms = (int) topLevel.getValueCount();
-    if (topLevel instanceof MultiDocValues.MultiSortedSetDocValues) {
-      ordMap = ((MultiDocValues.MultiSortedSetDocValues) topLevel).mapping;
-      subDvs = ((MultiDocValues.MultiSortedSetDocValues) topLevel).values;
-    } else {
-      ordMap = null;
-      subDvs = null;
-    }
-  }
-
-  @Override
-  protected BytesRef lookupOrd(int ord) {
-    return topLevel.lookupOrd(ord);
-  }
-
-  @Override
-  public void setNextReader(LeafReaderContext readerContext) throws IOException {
-    super.setNextReader(readerContext);
-    if (subDvs != null) {
-      subDv = subDvs[readerContext.ord];
-      toGlobal = ordMap.getGlobalOrds(readerContext.ord);
-    } else {
-      assert readerContext.ord==0 || topLevel.getValueCount() == 0;
-      subDv = topLevel;
-    }
-  }
-
-  @Override
-  public void collect(int doc, int slotNum) {
-    subDv.setDocument(doc);
-    int segOrd = (int) subDv.nextOrd();
-    if (segOrd < 0) return;
-
-    FixedBitSet bits = arr[slotNum];
-    if (bits == null) {
-      bits = new FixedBitSet(nTerms);
-      arr[slotNum] = bits;
-    }
-
-    do {
-      int ord = toGlobal == null ? segOrd : (int) toGlobal.get(segOrd);
-      bits.set(ord);
-      segOrd = (int) subDv.nextOrd();
-    } while (segOrd >= 0);
-  }
-}
-
-
-
-class UniqueMultivaluedSlotAcc extends UniqueSlotAcc implements UnInvertedField.Callback {
-  private UnInvertedField uif;
-  private UnInvertedField.DocToTerm docToTerm;
-
-  public UniqueMultivaluedSlotAcc(FacetContext fcontext, String field, int numSlots) throws IOException {
-    super(fcontext, field, numSlots);
-    SolrIndexSearcher searcher = fcontext.qcontext.searcher();
-    uif = UnInvertedField.getUnInvertedField(field, searcher);
-    docToTerm = uif.new DocToTerm();
-    fcontext.qcontext.addCloseHook(this);  // TODO: find way to close accumulators instead of using close hook?
-    nTerms = uif.numTerms();
-  }
-
-  @Override
-  public Object getShardValue(int slot) throws IOException {
-    FixedBitSet ords = arr[slot];
-    int unique;
-    if (counts != null) {
-      unique = counts[slot];
-    } else {
-      unique = ords == null ? 0 : ords.cardinality();
-    }
-
-    SimpleOrderedMap map = new SimpleOrderedMap();
-    map.add("unique", unique);
-    map.add("nTerms", nTerms);
-
-    int maxExplicit=100;
-    // TODO: make configurable
-    // TODO: share values across buckets
-    if (unique <= maxExplicit) {
-      List lst = new ArrayList( Math.min(unique, maxExplicit) );
-
-      if (ords != null) {
-        for (int ord=-1;;) {
-          if (++ord >= unique) break;
-          ord = ords.nextSetBit(ord);
-          if (ord == DocIdSetIterator.NO_MORE_DOCS) break;
-          BytesRef val = docToTerm.lookupOrd(ord);
-          Object o = field.getType().toObject(field, val);
-          lst.add(o);
-        }
-      }
-
-      map.add("vals", lst);
-    }
-
-    return map;
-  }
-
-  @Override
-  protected BytesRef lookupOrd(int ord) throws IOException {
-    return docToTerm.lookupOrd(ord);
-  }
-
-  private FixedBitSet bits;  // bits for the current slot, only set for the callback
-  @Override
-  public void call(int termNum) {
-    bits.set(termNum);
-  }
-
-  @Override
-  public void collect(int doc, int slotNum) throws IOException {
-    bits = arr[slotNum];
-    if (bits == null) {
-      bits = new FixedBitSet(nTerms);
-      arr[slotNum] = bits;
-    }
-    docToTerm.getTerms(doc + currentDocBase, this);  // this will call back to our Callback.call(int termNum)
-  }
-
-  @Override
-  public void close() throws IOException {
-    if (docToTerm != null) {
-      docToTerm.close();
-      docToTerm = null;
-    }
+  public void resize(Resizer resizer) {
+    // sort slot only works with direct-mapped accumulators
+    throw new UnsupportedOperationException();
   }
 }

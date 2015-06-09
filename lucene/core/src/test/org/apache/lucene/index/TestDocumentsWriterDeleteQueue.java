@@ -79,17 +79,9 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
     HashSet<Term> frozenSet = new HashSet<>();
     BytesRefBuilder bytesRef = new BytesRefBuilder();
     TermIterator iter = queue.freezeGlobalBuffer(null).termIterator();
-    String field = null;
-    while (true) {
-      boolean newField = iter.next();
-      if (newField) {
-        field = iter.field;
-        if (field == null) {
-          break;
-        }
-      }
+    while (iter.next() != null) {
       bytesRef.copyBytes(iter.bytes);
-      frozenSet.add(new Term(field, bytesRef.toBytesRef()));
+      frozenSet.add(new Term(iter.field(), bytesRef.toBytesRef()));
     }
     assertEquals(uniqueValues, frozenSet);
     assertEquals("num deletes must be 0 after freeze", 0, queue
@@ -110,16 +102,12 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
     queue.clear();
     assertFalse(queue.anyChanges());
     final int size = 200 + random().nextInt(500) * RANDOM_MULTIPLIER;
-    int termsSinceFreeze = 0;
-    int queriesSinceFreeze = 0;
     for (int i = 0; i < size; i++) {
       Term term = new Term("id", "" + i);
       if (random().nextInt(10) == 0) {
         queue.addDelete(new TermQuery(term));
-        queriesSinceFreeze++;
       } else {
         queue.addDelete(term);
-        termsSinceFreeze++;
       }
       assertTrue(queue.anyChanges());
       if (random().nextInt(10) == 0) {
@@ -148,7 +136,7 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
       assertTrue(queue.anyChanges());
       if (random().nextInt(5) == 0) {
         FrozenBufferedUpdates freezeGlobalBuffer = queue.freezeGlobalBuffer(null);
-        assertEquals(termsSinceFreeze, freezeGlobalBuffer.termCount);
+        assertEquals(termsSinceFreeze, freezeGlobalBuffer.terms.size());
         assertEquals(queriesSinceFreeze, freezeGlobalBuffer.queries.length);
         queriesSinceFreeze = 0;
         termsSinceFreeze = 0;
@@ -180,7 +168,7 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
     assertTrue("changes in global buffer", queue.anyChanges());
     FrozenBufferedUpdates freezeGlobalBuffer = queue.freezeGlobalBuffer(null);
     assertTrue(freezeGlobalBuffer.any());
-    assertEquals(1, freezeGlobalBuffer.termCount);
+    assertEquals(1, freezeGlobalBuffer.terms.size());
     assertFalse("all changes applied", queue.anyChanges());
   }
 
@@ -218,17 +206,9 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
     BytesRefBuilder builder = new BytesRefBuilder();
 
     TermIterator iter = queue.freezeGlobalBuffer(null).termIterator();
-    String field = null;
-    while (true) {
-      boolean newField = iter.next();
-      if (newField) {
-        field = iter.field;
-        if (field == null) {
-          break;
-        }
-      }
+    while (iter.next() != null) {
       builder.copyBytes(iter.bytes);
-      frozenSet.add(new Term(field, builder.toBytesRef()));
+      frozenSet.add(new Term(iter.field(), builder.toBytesRef()));
     }
 
     assertEquals("num deletes must be 0 after freeze", 0, queue

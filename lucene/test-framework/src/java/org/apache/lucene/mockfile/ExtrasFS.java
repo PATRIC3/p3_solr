@@ -22,8 +22,6 @@ import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileAttribute;
-import java.util.Random;
-import java.util.concurrent.atomic.AtomicLong;
 
 /** 
  * Adds extra files/subdirectories when directories are created.
@@ -33,30 +31,35 @@ import java.util.concurrent.atomic.AtomicLong;
  * so we add them and see what breaks. 
  * <p>
  * When a directory is created, sometimes a file or directory named 
- * "extraNNNN" will be included with it.
+ * "extra0" will be included with it.
  * All other filesystem operations are passed thru as normal.
  */
 public class ExtrasFS extends FilterFileSystemProvider {
-  final AtomicLong counter = new AtomicLong();
-  final Random random;
+  final boolean active;
+  final boolean createDirectory;
   
   /** 
    * Create a new instance, wrapping {@code delegate}.
+   * @param active {@code true} if we should create extra files
+   * @param createDirectory {@code true} if we should create directories instead of files.
+   *        Ignored if {@code active} is {@code false}.
    */
-  public ExtrasFS(FileSystem delegate, Random random) {
+  public ExtrasFS(FileSystem delegate, boolean active, boolean createDirectory) {
     super("extras://", delegate);
-    this.random = random;
+    this.active = active;
+    this.createDirectory = createDirectory;
   }
 
   @Override
   public void createDirectory(Path dir, FileAttribute<?>... attrs) throws IOException {
-    super.createDirectory(dir, attrs);
+    super.createDirectory(dir, attrs);   
     // ok, we created the directory successfully.
-    if (random.nextInt(4) == 0) {
+    
+    if (active) {
       // lets add a bogus file... if this fails, we don't care, its best effort.
       try {
-        Path target = dir.resolve("extra" + counter.incrementAndGet());
-        if (random.nextBoolean()) {
+        Path target = dir.resolve("extra0");
+        if (createDirectory) {
           super.createDirectory(target);
         } else {
           Files.createFile(target);

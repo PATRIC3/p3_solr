@@ -18,8 +18,10 @@ package org.apache.lucene.search;
  */
 
 import java.io.IOException;
+import java.util.Set;
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.util.Bits;
 
 /**
@@ -62,21 +64,11 @@ public abstract class Filter extends Query {
   //
 
   @Override
-  public boolean equals(Object that) {
-    // Query's default impl only compares boost but they do not matter in the
-    // case of filters since it does not influence scores
-    return this == that;
-  }
-
-  @Override
-  public int hashCode() {
-    // Query's default impl returns a hash of the boost but this is irrelevant to filters
-    return System.identityHashCode(this);
-  }
-
-  @Override
   public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
     return new Weight(this) {
+
+      @Override
+      public void extractTerms(Set<Term> terms) {}
 
       @Override
       public float getValueForNormalization() throws IOException {
@@ -90,14 +82,12 @@ public abstract class Filter extends Query {
       public Explanation explain(LeafReaderContext context, int doc) throws IOException {
         final Scorer scorer = scorer(context, context.reader().getLiveDocs());
         final boolean match = (scorer != null && scorer.advance(doc) == doc);
-        final String desc;
         if (match) {
           assert scorer.score() == 0f;
-          desc = "Match on id " + doc;
+          return Explanation.match(0f, "Match on id " + doc);
         } else {
-          desc = "No match on id " + doc;
+          return Explanation.match(0f, "No match on id " + doc);
         }
-        return new ComplexExplanation(match, 0f, desc);
       }
 
       @Override
@@ -110,39 +100,7 @@ public abstract class Filter extends Query {
         if (iterator == null) {
           return null;
         }
-        return new Scorer(this) {
-
-          @Override
-          public float score() throws IOException {
-            return 0f;
-          }
-
-          @Override
-          public int freq() throws IOException {
-            return 1;
-          }
-
-          @Override
-          public int docID() {
-            return iterator.docID();
-          }
-
-          @Override
-          public int nextDoc() throws IOException {
-            return iterator.nextDoc();
-          }
-
-          @Override
-          public int advance(int target) throws IOException {
-            return iterator.advance(target);
-          }
-
-          @Override
-          public long cost() {
-            return iterator.cost();
-          }
-
-        };
+        return new ConstantScoreScorer(this, 0f, iterator);
       }
 
     };

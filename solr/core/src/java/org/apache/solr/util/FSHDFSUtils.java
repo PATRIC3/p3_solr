@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.lang.reflect.Method;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -38,6 +39,9 @@ import org.slf4j.LoggerFactory;
 
 public class FSHDFSUtils {
   public static Logger log = LoggerFactory.getLogger(FSHDFSUtils.class);
+  
+  // internal, for tests
+  public static AtomicLong RECOVER_LEASE_SUCCESS_COUNT = new AtomicLong();
 
   public interface CallerInfo {
     boolean isCallerClosed();
@@ -91,7 +95,7 @@ public class FSHDFSUtils {
     // This should be set to how long it'll take for us to timeout against primary datanode if it
     // is dead.  We set it to 61 seconds, 1 second than the default READ_TIMEOUT in HDFS, the
     // default value for DFS_CLIENT_SOCKET_TIMEOUT_KEY.
-    long subsequentPause = conf.getInt("solr.hdfs.lease.recovery.dfs.timeout", 61 * 1000);
+    long subsequentPause = TimeUnit.NANOSECONDS.convert(conf.getInt("solr.hdfs.lease.recovery.dfs.timeout", 61 * 1000), TimeUnit.MILLISECONDS);
     
     Method isFileClosedMeth = null;
     // whether we need to look for isFileClosed method
@@ -135,6 +139,9 @@ public class FSHDFSUtils {
         iioe.initCause(ie);
         throw iioe;
       }
+    }
+    if (recovered) {
+      RECOVER_LEASE_SUCCESS_COUNT.incrementAndGet();
     }
     return recovered;
   }

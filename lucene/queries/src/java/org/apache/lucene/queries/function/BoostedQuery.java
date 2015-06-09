@@ -26,7 +26,6 @@ import java.util.Set;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.ComplexExplanation;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.FilterScorer;
 import org.apache.lucene.search.IndexSearcher;
@@ -63,11 +62,6 @@ public class BoostedQuery extends Query {
   }
 
   @Override
-  public void extractTerms(Set<Term> terms) {
-    q.extractTerms(terms);
-  }
-
-  @Override
   public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
     return new BoostedQuery.BoostedWeight(searcher, needsScores);
   }
@@ -83,6 +77,11 @@ public class BoostedQuery extends Query {
       this.qWeight = q.createWeight(searcher, needsScores);
       this.fcontext = ValueSource.newContext(searcher);
       boostVal.createWeight(fcontext,searcher);
+    }
+
+    @Override
+    public void extractTerms(Set<Term> terms) {
+      qWeight.extractTerms(terms);
     }
 
     @Override
@@ -115,11 +114,7 @@ public class BoostedQuery extends Query {
       }
       FunctionValues vals = boostVal.getValues(fcontext, readerContext);
       float sc = subQueryExpl.getValue() * vals.floatVal(doc);
-      Explanation res = new ComplexExplanation(
-        true, sc, BoostedQuery.this.toString() + ", product of:");
-      res.addDetail(subQueryExpl);
-      res.addDetail(vals.explain(doc));
-      return res;
+      return Explanation.match(sc, BoostedQuery.this.toString() + ", product of:", subQueryExpl, vals.explain(doc));
     }
   }
 
@@ -160,11 +155,7 @@ public class BoostedQuery extends Query {
         return subQueryExpl;
       }
       float sc = subQueryExpl.getValue() * vals.floatVal(doc);
-      Explanation res = new ComplexExplanation(
-        true, sc, BoostedQuery.this.toString() + ", product of:");
-      res.addDetail(subQueryExpl);
-      res.addDetail(vals.explain(doc));
-      return res;
+      return Explanation.match(sc, BoostedQuery.this.toString() + ", product of:", subQueryExpl, vals.explain(doc));
     }
 
   }

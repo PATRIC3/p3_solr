@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.lucene.document.FieldType.NumericType;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionQuery;
 import org.apache.lucene.queries.function.ValueSource;
@@ -54,6 +55,11 @@ import org.apache.solr.search.QParserPlugin;
 import org.apache.solr.search.QueryParsing;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.SyntaxError;
+
+import net.agkn.hll.HLL;
+import net.agkn.hll.HLLType;
+import com.google.common.hash.Hashing;
+import com.google.common.hash.HashFunction;
 
 /**
  * Models all of the information associated with a single {@link StatsParams#STATS_FIELD}
@@ -81,7 +87,8 @@ public class StatsField {
     mean(false, sum, count),
     sumOfSquares(true),
     stddev(false, sum, count, sumOfSquares),
-    calcdistinct(true),
+    distinctValues(true),
+    countDistinct(false, distinctValues),
     percentiles(true){
       /** special for percentiles **/
       boolean parseParams(StatsField sf) {
@@ -106,6 +113,19 @@ public class StatsField {
 
         }
         return false;
+      }
+    },
+    cardinality(true) { 
+      /** special for percentiles **/
+      boolean parseParams(StatsField sf) {
+        try {
+          sf.hllOpts = HllOptions.parseHllOptions(sf.localParams, sf.schemaField);
+          return (null != sf.hllOpts);
+        } catch (Exception e) {
+          throw new SolrException(ErrorCode.BAD_REQUEST, "Unable to parse "
+              + StatsParams.STATS_FIELD + " local params: " + sf.localParams + " due to: "
+              + e.getMessage(), e);
+        }
       }
     };
 
@@ -150,12 +170,22 @@ public class StatsField {
       return EnumSet.copyOf(this.distribDeps);
     }
     
-    /** return value of true means user is requesting this stat */
+    /** 
+     * Called when the name of a stat is found as a local param on this {@link StatsField}
+     * @return true if the user is requesting this stat, else false
+     */
     boolean parseParams(StatsField sf) {
       return sf.localParams.getBool(this.name(), false);
     }
     
   }
+
+  /**
+   * the equivilent stats if "calcdistinct" is specified
+   * @see Stat#countDistinct
+   * @see Stat#distinctValues
+   */
+  private static final EnumSet<Stat> CALCDISTINCT_PSUEDO_STAT = EnumSet.of(Stat.countDistinct, Stat.distinctValues);
 
   /**
    * The set of stats computed by default when no localparams are used to specify explicit stats 
@@ -180,7 +210,7 @@ public class StatsField {
   private final boolean isShard;
   
   private double tdigestCompression = 100.0D;
-  
+  private HllOptions hllOpts;
   
   /**
    * @param rb the current request/response
@@ -503,23 +533,30 @@ public class StatsField {
         statSpecifiedByLocalParam = true;
         if (stat.parseParams(this)) {
           statsInResponse.add(stat);
-          statsToCalculate.addAll(stat.getDistribDeps());
         }
       }
     }
 
-    // if no individual stat setting. 
-    if ( ! statSpecifiedByLocalParam ) {
+    // if no individual stat setting use the default set
+    if ( ! ( statSpecifiedByLocalParam
+             // calcdistinct (as a local param) is a psuedo-stat, prevents default set
+             || localParams.getBool("calcdistinct", false) ) ) {
       statsInResponse.addAll(DEFAULT_STATS);
-      for (Stat stat : statsInResponse) {
-        statsToCalculate.addAll(stat.getDistribDeps());
+    }
+
+    // calcDistinct is a psuedo-stat with optional top level param default behavior
+    // if not overridden by the specific individual stats
+    if (localParams.getBool("calcdistinct", topLevelCalcDistinct)) {
+      for (Stat stat : CALCDISTINCT_PSUEDO_STAT) {
+        // assume true, but don't include if specific stat overrides
+        if (localParams.getBool(stat.name(), true)) {
+          statsInResponse.add(stat);
+        }
       }
     }
 
-    // calcDistinct has special "default" behavior using top level CalcDistinct param
-    if (topLevelCalcDistinct && localParams.getBool(Stat.calcdistinct.toString(), true)) {
-      statsInResponse.add(Stat.calcdistinct);
-      statsToCalculate.addAll(Stat.calcdistinct.getDistribDeps());
+    for (Stat stat : statsInResponse) {
+      statsToCalculate.addAll(stat.getDistribDeps());
     }
   }
 
@@ -548,5 +585,171 @@ public class StatsField {
   
   public double getTdigestCompression() {
     return tdigestCompression;
+  }
+
+  public HllOptions getHllOptions() {
+    return hllOpts;
+  }
+
+  /**
+   * Helper Struct for parsing and encapsulating all of the options relaed to building a {@link HLL}
+   *
+   * @see Stat#cardinality
+   * @lucene.internal
+   */
+  public static final class HllOptions {
+    final HashFunction hasher;
+    
+    // NOTE: this explanation linked to from the java-hll jdocs...
+    // https://github.com/aggregateknowledge/postgresql-hll/blob/master/README.markdown#explanation-of-parameters-and-tuning
+    // ..if i'm understanding the regwidth chart correctly, a value of 6 should be a enough
+    // to support any max cardinality given that we're always dealing with hashes and 
+    // the cardinality of the set of all long values is 2**64 == 1.9e19
+    //
+    // But i guess that assumes a *perfect* hash and high log2m? ... if the hash algo is imperfect 
+    // and/or log2m is low (ie: user is less concerned about accuracy), then many diff hash values 
+    // might fall in the same register (ie: bucket) and having a wider register to count more of 
+    // them may be useful
+
+    final int log2m;  
+    final int regwidth;
+    
+    final static String ERR = "cardinality must be specified as 'true' (for default tunning) or decimal number between 0 and 1 to adjust accuracy vs memory usage (large number is more memory and more accuracy)";
+
+    private HllOptions(int log2m, int regwidth, HashFunction hasher) {
+      this.log2m = log2m;
+      this.regwidth = regwidth;
+      this.hasher = hasher;
+    }
+    /** 
+     * Creates an HllOptions based on the (local) params specified (if appropriate).
+     *
+     * @param localParams the LocalParams for this {@link StatsField}
+     * @param field the field corrisponding to this {@link StatsField}, may be null if these stats are over a value source
+     * @return the {@link HllOptions} to use basd on the params, or null if no {@link HLL} should be computed
+     * @throws SolrException if there are invalid options
+     */
+    public static HllOptions parseHllOptions(SolrParams localParams, SchemaField field) 
+      throws SolrException {
+
+      String cardinalityOpt = localParams.get(Stat.cardinality.name());
+      if (StringUtils.isBlank(cardinalityOpt)) {
+        return null;
+      }
+
+      final NumericType hashableNumType = getHashableNumericType(field);
+
+      // some sane defaults
+      int log2m = 13;   // roughly equivilent to "cardinality='0.33'"
+      int regwidth = 6; // with decent hash, this is plenty for all valid long hashes
+
+      if (NumericType.FLOAT.equals(hashableNumType) || NumericType.INT.equals(hashableNumType)) {
+        // for 32bit values, we can adjust our default regwidth down a bit
+        regwidth--;
+
+        // NOTE: EnumField uses NumericType.INT, and in theory we could be super conservative
+        // with it, but there's no point - just let the EXPLICIT HLL handle it
+      }
+
+      // TODO: we could attempt additional reductions in the default regwidth based on index
+      // statistics -- but thta doesn't seem worth the effort.  for tiny indexes, the 
+      // EXPLICIT and SPARSE HLL representations have us nicely covered, and in general we don't 
+      // want to be too aggresive about lowering regwidth or we could really poor results if 
+      // log2m is also low and  there is heavy hashkey collision
+
+      try {
+        // NFE will short out here if it's not a number
+        final double accuracyOpt = Double.parseDouble(cardinalityOpt);
+
+        // if a float between 0 and 1 is specified, treat it as a prefrence of accuracy
+        // - 0 means accuracy is not a concern, save RAM
+        // - 1 means be as accurate as possible, using as much RAM as needed.
+
+        if (accuracyOpt < 0D || 1.0D < accuracyOpt) {
+          throw new SolrException(ErrorCode.BAD_REQUEST, ERR);
+        }
+
+        // use accuracyOpt as a scaling factor between min & max legal log2m values
+        log2m = HLL.MINIMUM_LOG2M_PARAM
+          + (int) Math.round(accuracyOpt * (HLL.MAXIMUM_LOG2M_PARAM - HLL.MINIMUM_LOG2M_PARAM));
+
+        // use accuracyOpt as a scaling factor for regwidth as well, BUT...
+        // be more conservative -- HLL.MIN_REGWIDTH_PARAM is too absurdly low to be useful
+        // use previously computed (hashableNumType) default regwidth -1 as lower bound for scaling
+        final int MIN_HUERISTIC_REGWIDTH = regwidth-1;
+        regwidth = MIN_HUERISTIC_REGWIDTH
+          + (int) Math.round(accuracyOpt * (HLL.MAXIMUM_REGWIDTH_PARAM - MIN_HUERISTIC_REGWIDTH));
+
+      } catch (NumberFormatException nfe) {
+        // param value isn't a number -- let's check for simple true/false
+        if (! localParams.getBool(Stat.cardinality.name(), false)) {
+          return null;
+        }
+      }
+
+      // let explicit params override both the default and/or any accuracy specification
+      log2m = localParams.getInt("hllLog2m", log2m);
+      regwidth = localParams.getInt("hllRegwidth", regwidth);
+
+      // validate legal values
+      if (log2m < HLL.MINIMUM_LOG2M_PARAM || HLL.MAXIMUM_LOG2M_PARAM < log2m) {
+        throw new SolrException(ErrorCode.BAD_REQUEST, "hllLog2m must be at least " + 
+                                HLL.MINIMUM_LOG2M_PARAM + " and at most " + HLL.MAXIMUM_LOG2M_PARAM
+                                + " (" + log2m +")");
+      }
+      if (regwidth < HLL.MINIMUM_REGWIDTH_PARAM || HLL.MAXIMUM_REGWIDTH_PARAM < regwidth) {
+        throw new SolrException(ErrorCode.BAD_REQUEST, "hllRegwidth must be at least " + 
+                                HLL.MINIMUM_REGWIDTH_PARAM + " and at most " + HLL.MAXIMUM_REGWIDTH_PARAM);
+      }
+      
+      HashFunction hasher = localParams.getBool("hllPreHashed", false) ? null : Hashing.murmur3_128();
+
+      if (null == hasher) {
+        // if this is a function, or a non Long field, pre-hashed is invalid
+        // NOTE: we ignore hashableNumType - it's LONG for non numerics like Strings
+        if (null == field || !NumericType.LONG.equals(field.getType().getNumericType())) {
+          throw new SolrException(ErrorCode.BAD_REQUEST, "hllPreHashed is only supported with Long based fields");
+        }
+      }
+
+      // if we're still here, then we need an HLL...
+      return new HllOptions(log2m, regwidth, hasher);
+    }
+    /** @see HLL */
+    public int getLog2m() {
+      return log2m;
+    }
+    /** @see HLL */
+    public int getRegwidth() {
+      return regwidth;
+    }
+    /** May be null if user has indicated that field values are pre-hashed */
+    public HashFunction getHasher() {
+      return hasher;
+    }
+    public HLL newHLL() {
+      // Although it (in theory) saves memory for "medium" size sets, the SPARSE type seems to have
+      // some nasty impacts on response time as it gets larger - particularly in distrib requests.
+      // Merging large SPARSE HLLs is much much slower then merging FULL HLLs with the same num docs
+      //
+      // TODO: add more tunning options for this.
+      return new HLL(getLog2m(), getRegwidth(), -1 /* auto explict threshold */,
+                     false /* no sparse representation */, HLLType.EMPTY);
+                     
+    }
+  }
+
+  /**
+   * Returns the effective {@link NumericType} for the field for the purposes of hash values.  
+   * ie: If the field has an explict NumericType that is returned; If the field has no explicit 
+   * NumericType then {@link NumericType#LONG} is returned;  If field is null, then 
+   * {@link NumericType#FLOAT} is assumed for ValueSource.
+   */
+  private static NumericType getHashableNumericType(SchemaField field) {
+    if (null == field) {
+      return NumericType.FLOAT;
+    }
+    final NumericType result = field.getType().getNumericType();
+    return null == result ? NumericType.LONG : result;
   }
 }

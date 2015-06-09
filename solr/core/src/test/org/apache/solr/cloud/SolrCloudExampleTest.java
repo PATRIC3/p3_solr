@@ -19,6 +19,12 @@ package org.apache.solr.cloud;
 
 import java.io.File;
 import java.io.FilenameFilter;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 
 import org.apache.commons.cli.CommandLine;
@@ -96,20 +102,29 @@ public class SolrCloudExampleTest extends AbstractFullDistribZkTestBase {
     File exampleDocsDir = new File(ExternalPaths.SOURCE_HOME, "example/exampledocs");
     assertTrue(exampleDocsDir.getAbsolutePath()+" not found!", exampleDocsDir.isDirectory());
 
-    File[] xmlFiles = exampleDocsDir.listFiles(new FilenameFilter() {
+    List<File> xmlFiles = Arrays.asList(exampleDocsDir.listFiles(new FilenameFilter() {
       @Override
       public boolean accept(File dir, String name) {
         return name.endsWith(".xml");
       }
-    });
+    }));
+
+    // force a deterministic random ordering of the files so seeds reproduce regardless of platform/filesystem
+    Collections.sort(xmlFiles, new Comparator<File>() {
+        public int compare(File o1, File o2) {
+          // don't rely on File.compareTo, it's behavior varies by OS
+          return o1.getName().compareTo(o2.getName());
+        }
+      });
+    Collections.shuffle(xmlFiles, new Random(random().nextLong()));
 
     // if you add/remove example XML docs, you'll have to fix these expected values
     int expectedXmlFileCount = 14;
     int expectedXmlDocCount = 32;
 
-    assertTrue("Expected 14 example XML files in "+exampleDocsDir.getAbsolutePath(),
-        xmlFiles.length == expectedXmlFileCount);
-
+    assertEquals("Unexpected # of example XML files in "+exampleDocsDir.getAbsolutePath(),
+                 expectedXmlFileCount, xmlFiles.size());
+    
     for (File xml : xmlFiles) {
       ContentStreamUpdateRequest req = new ContentStreamUpdateRequest("/update");
       req.addFile(xml, "application/xml");
@@ -121,8 +136,76 @@ public class SolrCloudExampleTest extends AbstractFullDistribZkTestBase {
 
     QueryResponse qr = cloudClient.query(new SolrQuery("*:*"));
     int numFound = (int)qr.getResults().getNumFound();
-    assertTrue("Expected "+expectedXmlDocCount+" docs but *:* found "+numFound, numFound == expectedXmlDocCount);
+    assertEquals("*:* found unexpected number of documents", expectedXmlDocCount, numFound);
+
+    log.info("Updating Config for " + testCollectionName);
+    doTestConfigUpdate(testCollectionName, solrUrl);
+
+    log.info("Running healthcheck for " + testCollectionName);
+    doTestHealthcheck(testCollectionName, cloudClient.getZkHost());
+
+    // verify the delete action works too
+    log.info("Running delete for "+testCollectionName);
+    doTestDeleteAction(testCollectionName, solrUrl);
 
     log.info("testLoadDocsIntoGettingStartedCollection succeeded ... shutting down now!");
+  }
+
+  protected void doTestHealthcheck(String testCollectionName, String zkHost) throws Exception {
+    String[] args = new String[]{
+        "healthcheck",
+        "-collection", testCollectionName,
+        "-zkHost", zkHost
+    };
+    SolrCLI.HealthcheckTool tool = new SolrCLI.HealthcheckTool();
+    CommandLine cli =
+        SolrCLI.processCommandLineArgs(SolrCLI.joinCommonAndToolOptions(tool.getOptions()), args);
+    assertTrue("Healthcheck action failed!", tool.runTool(cli) == 0);
+  }
+
+  protected void doTestDeleteAction(String testCollectionName, String solrUrl) throws Exception {
+    String[] args = new String[] {
+        "delete",
+        "-name", testCollectionName,
+        "-solrUrl", solrUrl
+    };
+    SolrCLI.DeleteTool tool = new SolrCLI.DeleteTool();
+    CommandLine cli =
+        SolrCLI.processCommandLineArgs(SolrCLI.joinCommonAndToolOptions(tool.getOptions()), args);
+    assertTrue("Delete action failed!", tool.runTool(cli) == 0);
+    assertTrue(!SolrCLI.safeCheckCollectionExists(solrUrl, testCollectionName)); // it should not exist anymore
+  }
+
+  /**
+   * Uses the SolrCLI config action to activate soft auto-commits for the getting started collection.
+   */
+  protected void doTestConfigUpdate(String testCollectionName, String solrUrl) throws Exception {
+    if (!solrUrl.endsWith("/"))
+      solrUrl += "/";
+    String configUrl = solrUrl + testCollectionName + "/config";
+
+    Map<String, Object> configJson = SolrCLI.getJson(configUrl);
+    Object maxTimeFromConfig = SolrCLI.atPath("/config/updateHandler/autoSoftCommit/maxTime", configJson);
+    assertNotNull(maxTimeFromConfig);
+    assertEquals(new Long(-1L), maxTimeFromConfig);
+
+    String prop = "updateHandler.autoSoftCommit.maxTime";
+    Long maxTime = new Long(3000L);
+    String[] args = new String[]{
+        "config",
+        "-collection", testCollectionName,
+        "-property", prop,
+        "-value", maxTime.toString(),
+        "-solrUrl", solrUrl
+    };
+    SolrCLI.ConfigTool tool = new SolrCLI.ConfigTool();
+    CommandLine cli = SolrCLI.processCommandLineArgs(SolrCLI.joinCommonAndToolOptions(tool.getOptions()), args);
+    log.info("Sending set-property '" + prop + "'=" + maxTime + " to SolrCLI.ConfigTool.");
+    assertTrue("Set config property failed!", tool.runTool(cli) == 0);
+
+    configJson = SolrCLI.getJson(configUrl);
+    maxTimeFromConfig = SolrCLI.atPath("/config/updateHandler/autoSoftCommit/maxTime", configJson);
+    assertNotNull(maxTimeFromConfig);
+    assertEquals(maxTime, maxTimeFromConfig);
   }
 }

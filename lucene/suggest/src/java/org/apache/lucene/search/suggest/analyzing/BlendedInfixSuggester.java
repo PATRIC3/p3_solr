@@ -35,6 +35,7 @@ import org.apache.lucene.index.MultiDocValues;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.TopFieldDocs;
@@ -175,6 +176,12 @@ public class BlendedInfixSuggester extends AnalyzingInfixSuggester {
   }
 
   @Override
+  public List<Lookup.LookupResult> lookup(CharSequence key, BooleanQuery contextQuery, int num, boolean allTermsRequired, boolean doHighlight) throws IOException {
+    // here we multiply the number of searched element by the defined factor
+    return super.lookup(key, contextQuery, num * numFactor, allTermsRequired, doHighlight);
+  }
+  
+  @Override
   protected FieldType getTextFieldType() {
     FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
     ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
@@ -270,7 +277,7 @@ public class BlendedInfixSuggester extends AnalyzingInfixSuggester {
   private double createCoefficient(IndexSearcher searcher, int doc, Set<String> matchedTokens, String prefixToken) throws IOException {
 
     Terms tv = searcher.getIndexReader().getTermVector(doc, TEXT_FIELD_NAME);
-    TermsEnum it = tv.iterator(TermsEnum.EMPTY);
+    TermsEnum it = tv.iterator();
 
     Integer position = Integer.MAX_VALUE;
     BytesRef term;
