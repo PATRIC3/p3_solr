@@ -56,6 +56,8 @@
         <include name="solr-solrj-${version}.jar" />
         <include name="solr-core-${version}.jar" />
       </lib>
+      <lib file="${common-solr.dir}/patric-solr-plugins.jar" />
+      <lib file="${common-solr.dir}/commons-math3-3.3.jar" />
       <fileset dir="${dest}/web" excludes="${exclude.from.war}"/> <!-- contribs' additions -->
       <fileset dir="web" excludes="${exclude.from.war}"/>
       <metainf dir="${common-solr.dir}" includes="LICENSE.txt,NOTICE.txt" excludes="${exclude.from.war}"/>
