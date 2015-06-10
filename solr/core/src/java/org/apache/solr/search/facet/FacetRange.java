@@ -160,9 +160,6 @@ class FacetRangeProcessor extends FacetProcessor<FacetRange> {
         case DATE:
           calc = new DateCalc(sf, null);
           break;
-        case DATE:
-          calc = new DateRangeEndpointCalculator(sf, null);
-          break;
         default:
           throw new SolrException
               (SolrException.ErrorCode.BAD_REQUEST,
