@@ -43,7 +43,6 @@ public final class VerifyingLockFactory extends LockFactory {
 
   private class CheckedLock extends Lock {
     private final Lock lock;
-    private boolean obtained = false;
 
     public CheckedLock(Lock lock) throws IOException {
       this.lock = lock;

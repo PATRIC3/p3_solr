@@ -1164,27 +1164,6 @@ public class TestJsonFacets extends SolrTestCaseHS {
 
 
 
-    try {
-      client.testJQ(params("ignore_exception", "true", "shards.tolerant", "false", "q", "*:*"
-              , "json.facet", "{f:{type:terms, field:cat_s}}"
-          )
-          , "facets=={ count:6," +
-              "f:{ buckets:[{val:B,count:3},{val:A,count:2}] }" +
-              "}"
-      );
-      fail("we should have failed");
-    } catch (Exception e) {
-      // ok
-    }
-
-    client.testJQ(params("ignore_exception", "true", "shards.tolerant", "true", "q", "*:*"
-            , "json.facet", "{f:{type:terms, field:cat_s}}"
-        )
-        , "facets=={ count:6," +
-            "f:{ buckets:[{val:B,count:3},{val:A,count:2}] }" +
-            "}"
-    );
-  }
 
   public void XtestPercentiles() {
     AVLTreeDigest catA = new AVLTreeDigest(100);

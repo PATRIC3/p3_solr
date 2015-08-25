@@ -42,8 +42,6 @@
     });
 
   });
-
-
 </script>
 
 <style>
@@ -74,9 +72,6 @@
 
   a {
     color: #305CB3;
-  }
-  a.hidden{
-  display:none;
   }
 
   a.hidden {

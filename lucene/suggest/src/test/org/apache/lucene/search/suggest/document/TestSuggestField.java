@@ -50,7 +50,6 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.NumericUtils;
 import org.apache.lucene.util.TestUtil;
 import org.junit.After;
 import org.junit.Before;

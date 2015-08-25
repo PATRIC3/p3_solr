@@ -505,10 +505,6 @@ public class PostingsHighlighter {
       // if the segment has changed, we must initialize new enums.
       if (leaf != lastLeaf) {
         Terms t = r.terms(field);
-        if (!t.hasOffsets()) {
-          // no offsets available
-          throw new IllegalArgumentException("field '" + field + "' was indexed without offsets, cannot highlight");
-        }
         if (t != null) {
           if (!t.hasOffsets()) {
             // no offsets available

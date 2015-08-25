@@ -63,10 +63,6 @@ IF NOT "%SOLR_HOST%"=="" (
   set "SOLR_TOOL_HOST=localhost"
 )
 
-REM Which Jetty config file to use - leave blank to use the default: etc/jetty.xml
-set "SOLR_JETTY_CONFIG=%SOLR_TIP%\server\etc\jetty.xml"
-IF NOT "%SOLR_SSL_OPTS%"=="" set "SOLR_JETTY_CONFIG=%SOLR_TIP%\server\etc\jetty-https-ssl.xml"
-
 REM Verify Java is available
 IF DEFINED SOLR_JAVA_HOME set "JAVA_HOME=%SOLR_JAVA_HOME%"
 REM Try to detect JAVA_HOME from the registry
@@ -659,7 +655,7 @@ IF "%SCRIPT_CMD%"=="stop" (
                   set found_it=1
                   @echo Stopping Solr process %%k running on port !SOME_SOLR_PORT!
                   set /A STOP_PORT=!SOME_SOLR_PORT! - 1000
-                  "%JAVA%" %SOLR_SSL_OPTS% -Djetty.home="%SOLR_SERVER_DIR%" -jar "%SOLR_SERVER_DIR%\start.jar" "%SOLR_JETTY_CONFIG%" STOP.PORT=!STOP_PORT! STOP.KEY=%STOP_KEY% --stop
+                  "%JAVA%" %SOLR_SSL_OPTS% -Djetty.home="%SOLR_SERVER_DIR%" -jar "%SOLR_SERVER_DIR%\start.jar" STOP.PORT=!STOP_PORT! STOP.KEY=%STOP_KEY% --stop
                   del "%SOLR_TIP%"\bin\solr-!SOME_SOLR_PORT!.port
                   timeout /T 5
                   REM Kill it if it is still running after the graceful shutdown

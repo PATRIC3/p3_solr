@@ -73,7 +73,6 @@
       <sysproperty key="solr.solr.home" file="${example.solr.home}"/>
       <sysproperty key="jetty.port" value="${example.jetty.port}"/>
       <sysproperty key="jetty.home" value="${server.dir}"/>
-	  <sysproperty key="lucene.version" value="5.1"/>
     </java>
   </target>
  

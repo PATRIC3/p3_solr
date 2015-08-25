@@ -113,8 +113,6 @@ public final class SimpleFSLockFactory extends FSLockFactory {
       if (!creationTime.equals(ctime)) {
         throw new AlreadyClosedException("Underlying file changed by an external force at " + creationTime + ", (lock=" + this + ")");
       }
-
-      return obtained;
     }
 
     @Override
