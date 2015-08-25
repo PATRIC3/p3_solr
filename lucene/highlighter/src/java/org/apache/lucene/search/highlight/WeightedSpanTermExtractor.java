@@ -26,7 +26,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 
 import org.apache.lucene.analysis.CachingTokenFilter;
 import org.apache.lucene.analysis.TokenStream;
@@ -40,10 +39,10 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.memory.MemoryIndex;
 import org.apache.lucene.queries.CommonTermsQuery;
+import org.apache.lucene.queries.CustomScoreQuery;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.ConstantScoreQuery;
@@ -65,10 +64,10 @@ import org.apache.lucene.search.spans.SpanNotQuery;
 import org.apache.lucene.search.spans.SpanOrQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
+import org.apache.lucene.search.spans.SpanWeight;
 import org.apache.lucene.search.spans.Spans;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.IOUtils;
-
 
 /**
  * Class used to extract {@link WeightedSpanTerm}s from a {@link Query} based on whether 
@@ -106,11 +105,9 @@ public class WeightedSpanTermExtractor {
    */
   protected void extract(Query query, Map<String,WeightedSpanTerm> terms) throws IOException {
     if (query instanceof BooleanQuery) {
-      BooleanClause[] queryClauses = ((BooleanQuery) query).getClauses();
-
-      for (int i = 0; i < queryClauses.length; i++) {
-        if (!queryClauses[i].isProhibited()) {
-          extract(queryClauses[i].getQuery(), terms);
+      for (BooleanClause clause : (BooleanQuery) query) {
+        if (!clause.isProhibited()) {
+          extract(clause.getQuery(), terms);
         }
       }
     } else if (query instanceof PhraseQuery) {
@@ -223,6 +220,8 @@ public class WeightedSpanTermExtractor {
       }
     } else if (query instanceof MatchAllDocsQuery) {
       //nothing
+    } else if (query instanceof CustomScoreQuery){
+      extract(((CustomScoreQuery) query).getSubQuery(), terms);
     } else {
       Query origQuery = query;
       if (query instanceof MultiTermQuery) {
@@ -300,20 +299,18 @@ public class WeightedSpanTermExtractor {
         q = spanQuery;
       }
       LeafReaderContext context = getLeafContext();
-      Map<Term,TermContext> termContexts = new HashMap<>();
-      TreeSet<Term> extractedTerms = new TreeSet<>();
-      searcher.createNormalizedWeight(q, false).extractTerms(extractedTerms);
-      for (Term term : extractedTerms) {
-        termContexts.put(term, TermContext.build(context, term));
-      }
+      SpanWeight w = (SpanWeight) searcher.createNormalizedWeight(q, false);
       Bits acceptDocs = context.reader().getLiveDocs();
-      final Spans spans = q.getSpans(context, acceptDocs, termContexts);
+      final Spans spans = w.getSpans(context, SpanWeight.Postings.POSITIONS);
       if (spans == null) {
         return;
       }
 
       // collect span positions
       while (spans.nextDoc() != Spans.NO_MORE_DOCS) {
+        if (acceptDocs != null && acceptDocs.get(spans.docID()) == false) {
+          continue;
+        }
         while (spans.nextStartPosition() != Spans.NO_MORE_POSITIONS) {
           spanPositions.add(new PositionSpan(spans.startPosition(), spans.endPosition() - 1));
         }

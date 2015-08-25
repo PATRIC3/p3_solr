@@ -91,6 +91,67 @@ public class TestBulkSchemaAPI extends RestTestBase {
     assertTrue (((String)errorList.get(0)).contains("is a required field"));
 
   }
+  
+  public void testAnalyzerClass() throws Exception {
+
+    String addFieldTypeAnalyzerWithClass = "{\n" +
+        "'add-field-type' : {" +
+        "    'name' : 'myNewTextFieldWithAnalyzerClass',\n" +
+        "    'class':'solr.TextField',\n" +
+        "    'analyzer' : {\n" +
+        "        'luceneMatchVersion':'5.0.0',\n" +
+        "        'class':'org.apache.lucene.analysis.core.WhitespaceAnalyzer'\n";
+    String charFilters =
+        "        'charFilters' : [{\n" +
+        "            'class':'solr.PatternReplaceCharFilterFactory',\n" +
+        "            'replacement':'$1$1',\n" +
+        "            'pattern':'([a-zA-Z])\\\\\\\\1+'\n" +
+        "        }],\n";
+    String tokenizer =
+        "        'tokenizer' : { 'class':'solr.WhitespaceTokenizerFactory' },\n";
+    String filters =
+        "        'filters' : [{ 'class':'solr.ASCIIFoldingFilterFactory' }]\n";
+    String suffix =
+        "    }\n"+
+        "}}";
+
+    String response = restTestHarness.post("/schema?wt=json",
+        json(addFieldTypeAnalyzerWithClass + ',' + charFilters + tokenizer + filters + suffix));
+    Map map = (Map)ObjectBuilder.getVal(new JSONParser(new StringReader(response)));
+    List list = (List)map.get("errors");
+    List errorList = (List)((Map)list.get(0)).get("errorMessages");
+    assertEquals(1, errorList.size());
+    assertTrue (((String)errorList.get(0)).contains
+        ("An analyzer with a class property may not define any char filters!"));
+
+    response = restTestHarness.post("/schema?wt=json",
+        json(addFieldTypeAnalyzerWithClass + ',' + tokenizer + filters + suffix));
+    map = (Map)ObjectBuilder.getVal(new JSONParser(new StringReader(response)));
+    list = (List)map.get("errors");
+    errorList = (List)((Map)list.get(0)).get("errorMessages");
+    assertEquals(1, errorList.size());
+    assertTrue (((String)errorList.get(0)).contains
+        ("An analyzer with a class property may not define a tokenizer!"));
+
+    response = restTestHarness.post("/schema?wt=json",
+        json(addFieldTypeAnalyzerWithClass + ',' + filters + suffix));
+    map = (Map)ObjectBuilder.getVal(new JSONParser(new StringReader(response)));
+    list = (List)map.get("errors");
+    errorList = (List)((Map)list.get(0)).get("errorMessages");
+    assertEquals(1, errorList.size());
+    assertTrue (((String)errorList.get(0)).contains
+        ("An analyzer with a class property may not define any filters!"));
+
+    response = restTestHarness.post("/schema?wt=json", json(addFieldTypeAnalyzerWithClass + suffix));
+    map = (Map)ObjectBuilder.getVal(new JSONParser(new StringReader(response)));
+    assertNull(response, map.get("errors"));
+
+    map = getObj(restTestHarness, "myNewTextFieldWithAnalyzerClass", "fieldTypes");
+    assertNotNull(map);
+    Map analyzer = (Map)map.get("analyzer");
+    assertEquals("org.apache.lucene.analysis.core.WhitespaceAnalyzer", String.valueOf(analyzer.get("class")));
+    assertEquals("5.0.0", String.valueOf(analyzer.get("luceneMatchVersion")));
+  }
 
 
   public void testMultipleCommands() throws Exception{
@@ -192,6 +253,28 @@ public class TestBulkSchemaAPI extends RestTestBase {
         "                       'stored':true,\n" +
         "                       'indexed':true\n" +
         "                       },\n" +
+        "          'add-field-type' : {" +
+        "                       'name' : 'myWhitespaceTxtField',\n" +
+        "                       'class':'solr.TextField',\n" +
+        "                       'analyzer' : {'class' : 'org.apache.lucene.analysis.core.WhitespaceAnalyzer'}\n" +
+        "                       },\n"+
+        "          'add-field' : {\n" +
+        "                       'name':'a5',\n" +
+        "                       'type': 'myWhitespaceTxtField',\n" +
+        "                       'stored':true\n" +
+        "                       },\n" +
+        "          'add-field-type' : {" +
+        "                       'name' : 'mySimField',\n" +
+        "                       'class':'solr.TextField',\n" +
+        "                       'analyzer' : {'tokenizer':{'class':'solr.WhitespaceTokenizerFactory'}},\n" +
+        "                       'similarity' : {'class':'org.apache.lucene.misc.SweetSpotSimilarity'}\n" +
+        "                       },\n"+
+        "          'add-field' : {\n" +
+        "                       'name':'a4',\n" +
+        "                       'type': 'mySimField',\n" +
+        "                       'stored':true,\n" +
+        "                       'indexed':true\n" +
+        "                       },\n" +
         "          'delete-field' : {'name':'wdf_nocase'},\n" +
         "          'delete-field-type' : {'name':'wdf_nocase'},\n" +
         "          'delete-dynamic-field' : {'name':'*_tt'},\n" +
@@ -269,6 +352,23 @@ public class TestBulkSchemaAPI extends RestTestBase {
     assertNotNull("field a3 not created", m);
     assertEquals("myNewTxtField", m.get("type"));
 
+    m = getObj(harness, "mySimField", "fieldTypes");
+    assertNotNull(m);
+    m = (Map)m.get("similarity");
+    assertNotNull(m);
+    assertEquals("org.apache.lucene.misc.SweetSpotSimilarity", m.get("class"));
+
+    m = getObj(harness, "a4", "fields");
+    assertNotNull("field a4 not created", m);
+    assertEquals("mySimField", m.get("type"));
+
+    m = getObj(harness, "myWhitespaceTxtField", "fieldTypes");
+    assertNotNull(m);
+
+    m = getObj(harness, "a5", "fields");
+    assertNotNull("field a5 not created", m);
+    assertEquals("myWhitespaceTxtField", m.get("type"));
+
     m = getObj(harness, "wdf_nocase", "fields");
     assertNull("field 'wdf_nocase' not deleted", m);
 
@@ -329,7 +429,9 @@ public class TestBulkSchemaAPI extends RestTestBase {
         "                        {'source':'NewDynamicField1*', 'dest':'NewField2'                       },\n" +
         "                        {'source':'NewDynamicField2*', 'dest':'NewField2'                       },\n" +
         "                        {'source':'NewDynamicField3*', 'dest':'NewField3'                       },\n" +
-        "                        {'source':'NewField4',         'dest':'NewField3'                       }]\n" +
+        "                        {'source':'NewField4',         'dest':'NewField3'                       },\n" +
+        "                        {'source':'NewField4',         'dest':'NewField2', maxChars: 100        },\n" +
+        "                        {'source':'NewField4',         'dest':['NewField1'], maxChars: 3333     }]\n" +
         "}\n";
 
     String response = harness.post("/schema?wt=json", json(cmds));
@@ -374,8 +476,17 @@ public class TestBulkSchemaAPI extends RestTestBase {
     assertEquals("NewField3", ((Map)list.get(0)).get("dest"));
 
     list = getSourceCopyFields(harness, "NewField4");
-    assertEquals(1, list.size());
-    assertEquals("NewField3", ((Map)list.get(0)).get("dest"));
+    assertEquals(3, list.size());
+    map.clear();
+    for (Object obj : list) { 
+      map.put(((Map)obj).get("dest"), ((Map)obj).get("maxChars"));
+    }
+    assertTrue(map.containsKey("NewField1"));
+    assertEquals(3333L, map.get("NewField1"));
+    assertTrue(map.containsKey("NewField2"));
+    assertEquals(100L, map.get("NewField2"));
+    assertTrue(map.containsKey("NewField3"));
+    assertNull(map.get("NewField3"));
 
     cmds = "{'delete-field-type' : {'name':'NewFieldType'}}";
     response = harness.post("/schema?wt=json", json(cmds));
@@ -433,8 +544,9 @@ public class TestBulkSchemaAPI extends RestTestBase {
     for (Object obj : list) {
       set.add(((Map)obj).get("source"));
     }
-    assertEquals(3, list.size());
+    assertEquals(4, list.size());
     assertTrue(set.contains("NewField1"));
+    assertTrue(set.contains("NewField4"));
     assertTrue(set.contains("NewDynamicField1*"));
     assertTrue(set.contains("NewDynamicField2*"));
 
@@ -473,11 +585,11 @@ public class TestBulkSchemaAPI extends RestTestBase {
     assertTrue(set.contains("NewDynamicField3*"));
 
     cmds = "{\n" +
-        "  'delete-copy-field': [{'source':'NewField1',         'dest':['NewField2', 'NewDynamicField1A']},\n" +
-        "                        {'source':'NewDynamicField1*', 'dest':'NewField2'                       },\n" +
-        "                        {'source':'NewDynamicField2*', 'dest':'NewField2'                       },\n" +
-        "                        {'source':'NewDynamicField3*', 'dest':'NewField3'                       },\n" +
-        "                        {'source':'NewField4',         'dest':'NewField3'                       }]\n" +
+        "  'delete-copy-field': [{'source':'NewField1',         'dest':['NewField2', 'NewDynamicField1A']     },\n" +
+        "                        {'source':'NewDynamicField1*', 'dest':'NewField2'                            },\n" +
+        "                        {'source':'NewDynamicField2*', 'dest':'NewField2'                            },\n" +
+        "                        {'source':'NewDynamicField3*', 'dest':'NewField3'                            },\n" +
+        "                        {'source':'NewField4',         'dest':['NewField1', 'NewField2', 'NewField3']}]\n" +
         "}\n";
     response = harness.post("/schema?wt=json", json(cmds));
     map = (Map)ObjectBuilder.getVal(new JSONParser(new StringReader(response)));

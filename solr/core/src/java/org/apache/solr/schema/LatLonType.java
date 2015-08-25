@@ -99,13 +99,14 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
 
     SchemaField latSF = subField(field, LAT, parser.getReq().getSchema());
     SchemaField lonSF = subField(field, LON, parser.getReq().getSchema());
-    BooleanQuery result = new BooleanQuery(true);
+    BooleanQuery.Builder result = new BooleanQuery.Builder();
+    result.setDisableCoord(true);
     // points must currently be ordered... should we support specifying any two opposite corner points?
     result.add(latSF.getType().getRangeQuery(parser, latSF,
         Double.toString(p1.getY()), Double.toString(p2.getY()), minInclusive, maxInclusive), BooleanClause.Occur.MUST);
     result.add(lonSF.getType().getRangeQuery(parser, lonSF,
         Double.toString(p1.getX()), Double.toString(p2.getX()), minInclusive, maxInclusive), BooleanClause.Occur.MUST);
-    return result;
+    return result.build();
   }
 
   @Override
@@ -114,12 +115,13 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
 
     SchemaField latSF = subField(field, LAT, parser.getReq().getSchema());
     SchemaField lonSF = subField(field, LON, parser.getReq().getSchema());
-    BooleanQuery result = new BooleanQuery(true);
+    BooleanQuery.Builder result = new BooleanQuery.Builder();
+    result.setDisableCoord(true);
     result.add(latSF.getType().getFieldQuery(parser, latSF,
         Double.toString(p1.getY())), BooleanClause.Occur.MUST);
     result.add(lonSF.getType().getFieldQuery(parser, lonSF,
         Double.toString(p1.getX())), BooleanClause.Occur.MUST);
-    return result;
+    return result.build();
   }
 
 
@@ -159,7 +161,7 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
 
 
     if (options.bbox) {
-      BooleanQuery result = new BooleanQuery();
+      BooleanQuery.Builder result = new BooleanQuery.Builder();
 
       Query latRange = latSF.getType().getRangeQuery(parser, latSF,
                 String.valueOf(latMin),
@@ -174,7 +176,7 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
                 true, true);
         if (lon2Min != -180 || lon2Max != 180) {
           // another valid longitude range
-          BooleanQuery bothLons = new BooleanQuery();
+          BooleanQuery.Builder bothLons = new BooleanQuery.Builder();
           bothLons.add(lonRange, BooleanClause.Occur.SHOULD);
 
           lonRange = lonSF.getType().getRangeQuery(parser, lonSF,
@@ -183,13 +185,13 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
                 true, true);
           bothLons.add(lonRange, BooleanClause.Occur.SHOULD);
 
-          lonRange = bothLons;
+          lonRange = bothLons.build();
         }
 
         result.add(lonRange, BooleanClause.Occur.MUST);
       }
 
-      spatial.bboxQuery = result;
+      spatial.bboxQuery = result.build();
     }
 
 
@@ -338,13 +340,13 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
-      return new SpatialScorer(context, acceptDocs, this, queryWeight);
+    public Scorer scorer(LeafReaderContext context) throws IOException {
+      return new SpatialScorer(context, this, queryWeight);
     }
 
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      return ((SpatialScorer)scorer(context, context.reader().getLiveDocs())).explain(doc);
+      return ((SpatialScorer)scorer(context)).explain(doc);
     }
   }
 
@@ -356,7 +358,6 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     int doc=-1;
     final FunctionValues latVals;
     final FunctionValues lonVals;
-    final Bits acceptDocs;
 
 
     final double lonMin, lonMax, lon2Min, lon2Max, latMin, latMax;
@@ -372,13 +373,12 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     int lastDistDoc;
     double lastDist;
 
-    public SpatialScorer(LeafReaderContext readerContext, Bits acceptDocs, SpatialWeight w, float qWeight) throws IOException {
+    public SpatialScorer(LeafReaderContext readerContext, SpatialWeight w, float qWeight) throws IOException {
       super(w);
       this.weight = w;
       this.qWeight = qWeight;
       this.reader = readerContext.reader();
       this.maxDoc = reader.maxDoc();
-      this.acceptDocs = acceptDocs;
       latVals = latSource.getValues(weight.latContext, readerContext);
       lonVals = lonSource.getValues(weight.lonContext, readerContext);
 
@@ -456,7 +456,6 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
         if (doc>=maxDoc) {
           return doc=NO_MORE_DOCS;
         }
-        if (acceptDocs != null && !acceptDocs.get(doc)) continue;
         if (!match()) continue;
         return doc;
       }
@@ -536,7 +535,7 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     protected void doSetNextReader(LeafReaderContext context) throws IOException {
       super.doSetNextReader(context);
       maxdoc = context.reader().maxDoc();
-      spatialScorer = new SpatialScorer(context, null, weight, 1.0f);
+      spatialScorer = new SpatialScorer(context, weight, 1.0f);
     }
   }
 

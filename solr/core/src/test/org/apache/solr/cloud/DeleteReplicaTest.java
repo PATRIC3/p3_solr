@@ -32,7 +32,6 @@ import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.File;
@@ -43,26 +42,11 @@ import java.util.Map;
 
 import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.ONLY_IF_DOWN;
-import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+import static org.apache.solr.common.util.Utils.makeMap;
 import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.DELETEREPLICA;
 
 public class DeleteReplicaTest extends AbstractFullDistribZkTestBase {
-  private CloudSolrClient client;
-  
-  @Override
-  public void distribSetUp() throws Exception {
-    super.distribSetUp();
-    System.setProperty("numShards", Integer.toString(sliceCount));
-    System.setProperty("solr.xml.persist", "true");
-    client = createCloudClient(null);
-  }
-
-  @Override
-  public void distribTearDown() throws Exception {
-    super.distribTearDown();
-    client.close();
-  }
 
   protected String getSolrXml() {
     return "solr-no-core.xml";
@@ -70,7 +54,6 @@ public class DeleteReplicaTest extends AbstractFullDistribZkTestBase {
 
   public DeleteReplicaTest() {
     sliceCount = 2;
-    checkCreatedVsState = false;
   }
 
   @Test
@@ -79,15 +62,15 @@ public class DeleteReplicaTest extends AbstractFullDistribZkTestBase {
     String collectionName = "delLiveColl";
     try (CloudSolrClient client = createCloudClient(null)) {
       createCollection(collectionName, client);
-      
+
       waitForRecoveriesToFinish(collectionName, false);
-      
+
       DocCollection testcoll = getCommonCloudSolrClient().getZkStateReader()
           .getClusterState().getCollection(collectionName);
-      
+
       Slice shard1 = null;
       Replica replica1 = null;
-      
+
       // Get an active replica
       for (Slice slice : testcoll.getSlices()) {
         if(replica1 != null)

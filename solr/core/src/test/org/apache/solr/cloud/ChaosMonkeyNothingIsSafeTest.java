@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @SuppressSSL(bugUrl = "https://issues.apache.org/jira/browse/SOLR-5776")
 @ThreadLeakLingering(linger = 60000)
 public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase {
-  private static final int FAIL_TOLERANCE = 40;
+  private static final int FAIL_TOLERANCE = 60;
 
   public static Logger log = LoggerFactory.getLogger(ChaosMonkeyNothingIsSafeTest.class);
   
@@ -91,14 +91,7 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
     super.distribSetUp();
     // can help to hide this when testing and looking at logs
     //ignoreException("shard update error");
-    System.setProperty("numShards", Integer.toString(sliceCount));
     useFactory("solr.StandardDirectoryFactory");
-  }
-  
-  @Override
-  public void distribTearDown() throws Exception {
-    System.clearProperty("numShards");
-    super.distribTearDown();
   }
   
   public ChaosMonkeyNothingIsSafeTest() {
@@ -219,7 +212,7 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
       
       // TODO: assert we didnt kill everyone
       
-      zkStateReader.updateClusterState(true);
+      zkStateReader.updateClusterState();
       assertTrue(zkStateReader.getClusterState().getLiveNodes().size() > 0);
       
       

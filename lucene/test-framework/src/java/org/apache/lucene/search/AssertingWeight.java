@@ -23,21 +23,18 @@ import java.util.Set;
 
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.util.Bits;
 
 class AssertingWeight extends Weight {
 
-  static Weight wrap(Random random, Weight other) {
-    return other instanceof AssertingWeight ? other : new AssertingWeight(random, other);
-  }
-
   final Random random;
   final Weight in;
+  final boolean needsScores;
 
-  AssertingWeight(Random random, Weight in) {
+  AssertingWeight(Random random, Weight in, boolean needsScores) {
     super(in.getQuery());
     this.random = random;
     this.in = in;
+    this.needsScores = needsScores;
   }
 
   @Override
@@ -61,15 +58,15 @@ class AssertingWeight extends Weight {
   }
 
   @Override
-  public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
-    final Scorer inScorer = in.scorer(context, acceptDocs);
+  public Scorer scorer(LeafReaderContext context) throws IOException {
+    final Scorer inScorer = in.scorer(context);
     assert inScorer == null || inScorer.docID() == -1;
-    return AssertingScorer.wrap(new Random(random.nextLong()), inScorer);
+    return AssertingScorer.wrap(new Random(random.nextLong()), inScorer, needsScores);
   }
 
   @Override
-  public BulkScorer bulkScorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
-    BulkScorer inScorer = in.bulkScorer(context, acceptDocs);
+  public BulkScorer bulkScorer(LeafReaderContext context) throws IOException {
+    BulkScorer inScorer = in.bulkScorer(context);
     if (inScorer == null) {
       return null;
     }

@@ -129,8 +129,6 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   private final SolrCache<Integer,Document> documentCache;
   private final SolrCache<String,UnInvertedField> fieldValueCache;
 
-  private final LuceneQueryOptimizer optimizer;
-
   // map of generic caches - not synchronized since it's read-only after the constructor.
   private final HashMap<String, SolrCache> cacheMap;
   private static final HashMap<String, SolrCache> noGenericCaches=new HashMap<>(0);
@@ -294,10 +292,6 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       cacheMap = noGenericCaches;
       cacheList= noCaches;
     }
-    
-    // TODO: This option has been dead/noop since 3.1, should we re-enable it?
-//    optimizer = solrConfig.filtOptEnabled ? new LuceneQueryOptimizer(solrConfig.filtOptCacheSize,solrConfig.filtOptThreshold) : null;
-    optimizer = null;
 
     fieldNames = new HashSet<>();
     fieldInfos = leafReader.getFieldInfos();
@@ -805,7 +799,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     if (!termsEnum.seekExact(termBytes)) {
       return -1;
     }
-    PostingsEnum docs = termsEnum.postings(leafReader.getLiveDocs(), null, PostingsEnum.NONE);
+    PostingsEnum docs = termsEnum.postings(null, PostingsEnum.NONE);
+    docs = BitsFilteredPostingsEnum.wrap(docs, leafReader.getLiveDocs());
     int id = docs.nextDoc();
     return id == DocIdSetIterator.NO_MORE_DOCS ? -1 : id;
   }
@@ -826,7 +821,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       
       TermsEnum te = terms.iterator();
       if (te.seekExact(idBytes)) {
-        PostingsEnum docs = te.postings(reader.getLiveDocs(), null, PostingsEnum.NONE);
+        PostingsEnum docs = te.postings(null, PostingsEnum.NONE);
+        docs = BitsFilteredPostingsEnum.wrap(docs, reader.getLiveDocs());
         int id = docs.nextDoc();
         if (id == DocIdSetIterator.NO_MORE_DOCS) continue;
         assert docs.nextDoc() == DocIdSetIterator.NO_MORE_DOCS;
@@ -870,6 +866,25 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     // want this method to start using heuristics too) then
     // this needs to change.
     getDocSet(query);
+  }
+
+  public BitDocSet getDocSetBits(Query q) throws IOException {
+    DocSet answer = getDocSet(q);
+    if (answer instanceof BitDocSet) {
+      return (BitDocSet)answer;
+    }
+
+    FixedBitSet bs = new FixedBitSet(maxDoc());
+    DocIterator iter = answer.iterator();
+    while (iter.hasNext()) {
+      bs.set(iter.nextDoc());
+    }
+
+    BitDocSet answerBits = new BitDocSet(bs , answer.size());
+    if (filterCache != null) {
+      filterCache.put(q, answerBits);
+    }
+    return answerBits;
   }
 
   /**
@@ -1175,7 +1190,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     int bitsSet = 0;
     FixedBitSet fbs = null;
 
-    PostingsEnum postingsEnum = deState.termsEnum.postings(deState.liveDocs, deState.postingsEnum, PostingsEnum.NONE);
+    PostingsEnum postingsEnum = deState.termsEnum.postings(deState.postingsEnum, PostingsEnum.NONE);
+    postingsEnum = BitsFilteredPostingsEnum.wrap(postingsEnum, deState.liveDocs);
     if (deState.postingsEnum == null) {
       deState.postingsEnum = postingsEnum;
     }
@@ -2086,10 +2102,10 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       // NOTE: we cannot use FilteredQuery, because BitDocSet assumes it will never 
       // have deleted documents, but UninvertedField's doNegative has sets with deleted docs
       TotalHitCountCollector collector = new TotalHitCountCollector();
-      BooleanQuery bq = new BooleanQuery();
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
       bq.add(QueryUtils.makeQueryable(a), BooleanClause.Occur.MUST);
       bq.add(new ConstantScoreQuery(b.getTopFilter()), BooleanClause.Occur.MUST);
-      super.search(bq, collector);
+      super.search(bq.build(), collector);
       return collector.getTotalHits();
     }
   }
@@ -2173,6 +2189,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       };
 
       SolrQueryResponse rsp = new SolrQueryResponse();
+      SolrRequestInfo.clearRequestInfo();
       SolrRequestInfo.setRequestInfo(new SolrRequestInfo(req, rsp));
       try {
         this.cacheList[i].warm(this, old.cacheList[i]);
@@ -2493,7 +2510,7 @@ class FilterImpl extends Filter {
         iterators.add(iter);
       }
       for (Weight w : weights) {
-        Scorer scorer = w.scorer(context, context.reader().getLiveDocs());
+        Scorer scorer = w.scorer(context);
         if (scorer == null) return null;
         iterators.add(scorer);
       }

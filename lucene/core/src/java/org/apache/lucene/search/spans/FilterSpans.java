@@ -18,7 +18,6 @@ package org.apache.lucene.search.spans;
  */
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Objects;
 
 import org.apache.lucene.search.TwoPhaseIterator;
@@ -110,17 +109,17 @@ public abstract class FilterSpans extends Spans {
     return atFirstInCurrentDoc ? -1
           : (startPos != NO_MORE_POSITIONS) ? in.endPosition() : NO_MORE_POSITIONS;
   }
-  
+
   @Override
-  public final Collection<byte[]> getPayload() throws IOException {
-    return in.getPayload();
+  public int width() {
+    return in.width();
   }
 
   @Override
-  public final boolean isPayloadAvailable() throws IOException {
-    return in.isPayloadAvailable();
+  public void collect(SpanCollector collector) throws IOException {
+    in.collect(collector);
   }
-  
+
   @Override
   public final long cost() {
     return in.cost();

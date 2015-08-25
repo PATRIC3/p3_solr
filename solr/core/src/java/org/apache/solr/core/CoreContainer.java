@@ -27,7 +27,10 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
@@ -37,18 +40,25 @@ import org.apache.solr.client.solrj.impl.HttpClientUtil;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
+import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.IOUtils;
+import org.apache.solr.common.util.Utils;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.handler.admin.CollectionsHandler;
 import org.apache.solr.handler.admin.CoreAdminHandler;
 import org.apache.solr.handler.admin.InfoHandler;
+import org.apache.solr.handler.admin.SecurityConfHandler;
 import org.apache.solr.handler.component.HttpShardHandlerFactory;
 import org.apache.solr.handler.component.ShardHandlerFactory;
 import org.apache.solr.logging.LogWatcher;
+import org.apache.solr.logging.MDCLoggingContext;
 import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.security.AuthorizationPlugin;
 import org.apache.solr.security.AuthenticationPlugin;
+import org.apache.solr.security.HttpClientInterceptorPlugin;
+import org.apache.solr.security.PKIAuthenticationPlugin;
+import org.apache.solr.security.SecurityPluginHolder;
 import org.apache.solr.update.UpdateShardHandler;
 import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.solr.util.FileUtils;
@@ -57,6 +67,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.util.Collections.EMPTY_MAP;
+import static org.apache.solr.security.AuthenticationPlugin.AUTHENTICATION_PLUGIN_PROP;
 
 
 /**
@@ -68,10 +80,6 @@ public class CoreContainer {
   protected static final Logger log = LoggerFactory.getLogger(CoreContainer.class);
 
   final SolrCores solrCores = new SolrCores(this);
-
-  protected AuthorizationPlugin authorizationPlugin;
-
-  protected AuthenticationPlugin authenticationPlugin;
 
   public static class CoreLoadFailure {
 
@@ -90,6 +98,8 @@ public class CoreContainer {
   protected CollectionsHandler collectionsHandler = null;
   private InfoHandler infoHandler;
 
+  private PKIAuthenticationPlugin pkiAuthenticationPlugin;
+
   protected Properties containerProperties;
 
   private ConfigSetService coreConfigService;
@@ -98,6 +108,9 @@ public class CoreContainer {
   protected ShardHandlerFactory shardHandlerFactory;
   
   private UpdateShardHandler updateShardHandler;
+  
+  private ExecutorService coreContainerWorkExecutor = ExecutorUtil.newMDCAwareCachedThreadPool(
+      new DefaultSolrThreadFactory("coreContainerWorkExecutor") );
 
   protected LogWatcher logging = null;
 
@@ -117,9 +130,15 @@ public class CoreContainer {
   public static final String COLLECTIONS_HANDLER_PATH = "/admin/collections";
   public static final String INFO_HANDLER_PATH = "/admin/info";
 
-  final public static String AUTHENTICATION_PLUGIN_PROP = "authenticationPlugin";
-
   private PluginBag<SolrRequestHandler> containerHandlers = new PluginBag<>(SolrRequestHandler.class, null);
+
+  private boolean asyncSolrCoreLoad;
+
+  protected SecurityConfHandler securityConfHandler;
+
+  private SecurityPluginHolder<AuthorizationPlugin> authorizationPlugin;
+
+  private SecurityPluginHolder<AuthenticationPlugin> authenticationPlugin;
 
   public ExecutorService getCoreZkRegisterExecutorService() {
     return zkSys.getCoreZkRegisterExecutorService();
@@ -182,51 +201,63 @@ public class CoreContainer {
   public CoreContainer(NodeConfig config, Properties properties) {
     this(config, properties, new CorePropertiesLocator(config.getCoreRootDirectory()));
   }
+  
+  public CoreContainer(NodeConfig config, Properties properties, boolean asyncSolrCoreLoad) {
+    this(config, properties, new CorePropertiesLocator(config.getCoreRootDirectory()), asyncSolrCoreLoad);
+  }
 
   public CoreContainer(NodeConfig config, Properties properties, CoresLocator locator) {
+    this(config, properties, locator, false);
+  }
+  
+  public CoreContainer(NodeConfig config, Properties properties, CoresLocator locator, boolean asyncSolrCoreLoad) {
     this.loader = config.getSolrResourceLoader();
     this.solrHome = loader.getInstanceDir();
     this.cfg = checkNotNull(config);
     this.coresLocator = locator;
     this.containerProperties = new Properties(properties);
+    this.asyncSolrCoreLoad = asyncSolrCoreLoad;
   }
 
-  private void intializeAuthorizationPlugin() {
+  private synchronized void initializeAuthorizationPlugin(Map<String, Object> authorizationConf) {
+    authorizationConf = Utils.getDeepCopy(authorizationConf, 4);
     //Initialize the Authorization module
-    Map securityProps = getZkController().getZkStateReader().getSecurityProps();
-    if(securityProps != null) {
-      Map authorizationConf = (Map) securityProps.get("authorization");
-      if(authorizationConf == null) return;
+    SecurityPluginHolder<AuthorizationPlugin> old = authorizationPlugin;
+    SecurityPluginHolder<AuthorizationPlugin> authorizationPlugin = null;
+    if (authorizationConf != null) {
       String klas = (String) authorizationConf.get("class");
-      if(klas == null){
+      if (klas == null) {
         throw new SolrException(ErrorCode.SERVER_ERROR, "class is required for authorization plugin");
       }
+      if (old != null && old.getZnodeVersion() == readVersion(authorizationConf)) {
+        return;
+      }
       log.info("Initializing authorization plugin: " + klas);
-      authorizationPlugin = getResourceLoader().newInstance((String) klas,
-          AuthorizationPlugin.class);
+      authorizationPlugin = new SecurityPluginHolder<>(readVersion(authorizationConf),
+          getResourceLoader().newInstance(klas, AuthorizationPlugin.class));
 
       // Read and pass the authorization context to the plugin
-      authorizationPlugin.init(authorizationConf);
+      authorizationPlugin.plugin.init(authorizationConf);
     } else {
       log.info("Security conf doesn't exist. Skipping setup for authorization module.");
     }
+    this.authorizationPlugin = authorizationPlugin;
+    if (old != null) {
+      try {
+        old.plugin.close();
+      } catch (Exception e) {
+      }
+    }
   }
 
-  private void initializeAuthenticationPlugin() {
+  private synchronized void initializeAuthenticationPlugin(Map<String, Object> authenticationConfig) {
+    authenticationConfig = Utils.getDeepCopy(authenticationConfig, 4);
     String pluginClassName = null;
-    Map<String, Object> authenticationConfig = null;
-
-    if (isZooKeeperAware()) {
-      Map securityProps = getZkController().getZkStateReader().getSecurityProps();
-      if (securityProps != null) {
-        authenticationConfig = (Map<String, Object>) securityProps.get("authentication");
-        if (authenticationConfig!=null) {
-          if (authenticationConfig.containsKey("class")) {
-            pluginClassName = String.valueOf(authenticationConfig.get("class"));
-          } else {
-            throw new SolrException(ErrorCode.SERVER_ERROR, "No 'class' specified for authentication in ZK.");
-          }
-        }
+    if (authenticationConfig != null) {
+      if (authenticationConfig.containsKey("class")) {
+        pluginClassName = String.valueOf(authenticationConfig.get("class"));
+      } else {
+        throw new SolrException(ErrorCode.SERVER_ERROR, "No 'class' specified for authentication in ZK.");
       }
     }
 
@@ -239,21 +270,29 @@ public class CoreContainer {
     } else {
       log.info("No authentication plugin used.");
     }
+    SecurityPluginHolder<AuthenticationPlugin> old = authenticationPlugin;
+    SecurityPluginHolder<AuthenticationPlugin> authenticationPlugin = null;
 
     // Initialize the filter
     if (pluginClassName != null) {
-      try {
-        Class cl = Class.forName(pluginClassName);
-        authenticationPlugin = (AuthenticationPlugin) cl.newInstance();
-      } catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
-        throw new SolrException(ErrorCode.SERVER_ERROR, e);
-      }
+      authenticationPlugin = new SecurityPluginHolder<>(readVersion(authenticationConfig),
+          getResourceLoader().newInstance(pluginClassName, AuthenticationPlugin.class));
     }
     if (authenticationPlugin != null) {
-      authenticationPlugin.init(authenticationConfig);
+      authenticationPlugin.plugin.init(authenticationConfig);
+      addHttpConfigurer(authenticationPlugin.plugin);
+    }
+    this.authenticationPlugin = authenticationPlugin;
+    try {
+      if (old != null) old.plugin.close();
+    } catch (Exception e) {/*do nothing*/ }
 
+  }
+
+  private void addHttpConfigurer(Object authcPlugin) {
+    if (authcPlugin instanceof HttpClientInterceptorPlugin) {
       // Setup HttpClient to use the plugin's configurer for internode communication
-      HttpClientConfigurer configurer = authenticationPlugin.getDefaultConfigurer();
+      HttpClientConfigurer configurer = ((HttpClientInterceptorPlugin) authcPlugin).getClientConfigurer();
       HttpClientUtil.setConfigurer(configurer);
 
       // The default http client of the core container's shardHandlerFactory has already been created and
@@ -261,10 +300,26 @@ public class CoreContainer {
       // http client configurer to set it up for internode communication.
       log.info("Reconfiguring the shard handler factory and update shard handler.");
       if (getShardHandlerFactory() instanceof HttpShardHandlerFactory) {
-        ((HttpShardHandlerFactory)getShardHandlerFactory()).reconfigureHttpClient(configurer);
+        ((HttpShardHandlerFactory) getShardHandlerFactory()).reconfigureHttpClient(configurer);
       }
       getUpdateShardHandler().reconfigureHttpClient(configurer);
+    } else {
+      if (pkiAuthenticationPlugin != null) {
+        //this happened due to an authc plugin reload. no need to register the pkiAuthc plugin again
+        if(pkiAuthenticationPlugin.isInterceptorRegistered()) return;
+        log.info("PKIAuthenticationPlugin is managing internode requests");
+        addHttpConfigurer(pkiAuthenticationPlugin);
+        pkiAuthenticationPlugin.setInterceptorRegistered();
+      }
     }
+  }
+
+  private static int readVersion(Map<String, Object> conf) {
+    if (conf == null) return -1;
+    Map meta = (Map) conf.get("");
+    if (meta == null) return -1;
+    Number v = (Number) meta.get("v");
+    return v == null ? -1 : v.intValue();
   }
 
   /**
@@ -304,6 +359,10 @@ public class CoreContainer {
     return containerProperties;
   }
 
+  public PKIAuthenticationPlugin getPkiAuthenticationPlugin() {
+    return pkiAuthenticationPlugin;
+  }
+
   //-------------------------------------------------------------------
   // Initialization / Cleanup
   //-------------------------------------------------------------------
@@ -312,7 +371,6 @@ public class CoreContainer {
    * Load the cores defined for this CoreContainer
    */
   public void load()  {
-
     log.info("Loading cores into CoreContainer [instanceDir={}]", loader.getInstanceDir());
 
     // add the sharedLib to the shared resource loader before initializing cfg based plugins
@@ -334,22 +392,25 @@ public class CoreContainer {
     logging = LogWatcher.newRegisteredLogWatcher(cfg.getLogWatcherConfig(), loader);
 
     hostName = cfg.getNodeName();
-    log.info("Node Name: " + hostName);
 
     zkSys.initZooKeeper(this, solrHome, cfg.getCloudConfig());
+    if(isZooKeeperAware())  pkiAuthenticationPlugin = new PKIAuthenticationPlugin(this, zkSys.getZkController().getNodeName());
 
-    initializeAuthenticationPlugin();
+    ZkStateReader.ConfigData securityConfig = isZooKeeperAware() ? getZkController().getZkStateReader().getSecurityProps(false) : new ZkStateReader.ConfigData(EMPTY_MAP, -1);
+    initializeAuthorizationPlugin((Map<String, Object>) securityConfig.data.get("authorization"));
+    initializeAuthenticationPlugin((Map<String, Object>) securityConfig.data.get("authentication"));
 
-    if (isZooKeeperAware()) {
-      intializeAuthorizationPlugin();
-    }
-
+    securityConfHandler = new SecurityConfHandler(this);
     collectionsHandler = createHandler(cfg.getCollectionsHandlerClass(), CollectionsHandler.class);
     containerHandlers.put(COLLECTIONS_HANDLER_PATH, collectionsHandler);
     infoHandler        = createHandler(cfg.getInfoHandlerClass(), InfoHandler.class);
     containerHandlers.put(INFO_HANDLER_PATH, infoHandler);
     coreAdminHandler   = createHandler(cfg.getCoreAdminHandlerClass(), CoreAdminHandler.class);
     containerHandlers.put(CORES_HANDLER_PATH, coreAdminHandler);
+    containerHandlers.put("/admin/authorization", securityConfHandler);
+    containerHandlers.put("/admin/authentication", securityConfHandler);
+    if(pkiAuthenticationPlugin != null)
+      containerHandlers.put(PKIAuthenticationPlugin.PATH, pkiAuthenticationPlugin.getRequestHandler());
 
     coreConfigService = ConfigSetService.createConfigSetService(cfg, loader, zkSys.zkController);
 
@@ -357,62 +418,89 @@ public class CoreContainer {
 
     // setup executor to load cores in parallel
     // do not limit the size of the executor in zk mode since cores may try and wait for each other.
-    ExecutorService coreLoadExecutor = ExecutorUtil.newMDCAwareFixedThreadPool(
+    final ExecutorService coreLoadExecutor = ExecutorUtil.newMDCAwareFixedThreadPool(
         ( zkSys.getZkController() == null ? cfg.getCoreLoadThreadCount() : Integer.MAX_VALUE ),
         new DefaultSolrThreadFactory("coreLoadExecutor") );
-
+    final List<Future<SolrCore>> futures = new ArrayList<Future<SolrCore>>();
     try {
 
       List<CoreDescriptor> cds = coresLocator.discover(this);
       checkForDuplicateCoreNames(cds);
 
-      List<Callable<SolrCore>> creators = new ArrayList<>();
+
       for (final CoreDescriptor cd : cds) {
         if (cd.isTransient() || !cd.isLoadOnStartup()) {
           solrCores.putDynamicDescriptor(cd.getName(), cd);
+        } else if (asyncSolrCoreLoad) {
+          solrCores.markCoreAsLoading(cd);
         }
         if (cd.isLoadOnStartup()) {
-          creators.add(new Callable<SolrCore>() {
+          futures.add(coreLoadExecutor.submit(new Callable<SolrCore>() {
             @Override
             public SolrCore call() throws Exception {
-              if (zkSys.getZkController() != null) {
-                zkSys.getZkController().throwErrorIfReplicaReplaced(cd);
+              SolrCore core;
+              try {
+                if (zkSys.getZkController() != null) {
+                  zkSys.getZkController().throwErrorIfReplicaReplaced(cd);
+                }
+                
+                core = create(cd, false);
+              } finally {
+                if (asyncSolrCoreLoad) {
+                  solrCores.markCoreAsNotLoading(cd);
+                }
               }
-              return create(cd, false);   
+              try {
+                zkSys.registerInZk(core, true);
+              } catch (Throwable t) {
+                SolrException.log(log, "Error registering SolrCore", t);
+              }
+              return core;
             }
-          });
+          }));
         }
       }
 
-      try {
-        coreLoadExecutor.invokeAll(creators);
-      }
-      catch (InterruptedException e) {
-        throw new SolrException(SolrException.ErrorCode.SERVICE_UNAVAILABLE, "Interrupted while loading cores");
-      }
 
       // Start the background thread
       backgroundCloser = new CloserThread(this, solrCores, cfg);
       backgroundCloser.start();
 
     } finally {
-      ExecutorUtil.shutdownNowAndAwaitTermination(coreLoadExecutor);
+      if (asyncSolrCoreLoad && futures != null) {
+        Thread shutdownThread = new Thread() {
+          public void run() {
+            try {
+              for (Future<SolrCore> future : futures) {
+                try {
+                  future.get();
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                } catch (ExecutionException e) {
+                  log.error("Error waiting for SolrCore to be created", e);
+                }
+              }
+            } finally {
+              ExecutorUtil.shutdownNowAndAwaitTermination(coreLoadExecutor);
+            }
+          }
+        };
+        coreContainerWorkExecutor.submit(shutdownThread);
+      } else {
+        ExecutorUtil.shutdownAndAwaitTermination(coreLoadExecutor);
+      }
     }
     
     if (isZooKeeperAware()) {
-      // register in zk in background threads
-      Collection<SolrCore> cores = getCores();
-      if (cores != null) {
-        for (SolrCore core : cores) {
-          try {
-            zkSys.registerInZk(core, true);
-          } catch (Throwable t) {
-            SolrException.log(log, "Error registering SolrCore", t);
-          }
-        }
-      }
       zkSys.getZkController().checkOverseerDesignate();
     }
+  }
+
+  public void securityNodeChanged() {
+    log.info("Security node changed");
+    ZkStateReader.ConfigData securityConfig = getZkController().getZkStateReader().getSecurityProps(false);
+    initializeAuthorizationPlugin((Map<String, Object>) securityConfig.data.get("authorization"));
+    initializeAuthenticationPlugin((Map<String, Object>) securityConfig.data.get("authentication"));
   }
 
   private static void checkForDuplicateCoreNames(List<CoreDescriptor> cds) {
@@ -441,6 +529,8 @@ public class CoreContainer {
         + System.identityHashCode(this));
     
     isShutDown = true;
+    
+    ExecutorUtil.shutdownAndAwaitTermination(coreContainerWorkExecutor);
     
     if (isZooKeeperAware()) {
       cancelCoreRecoveries();
@@ -493,20 +583,20 @@ public class CoreContainer {
         }
       }
     }
-    
+
     // It should be safe to close the authorization plugin at this point.
     try {
       if(authorizationPlugin != null) {
-        authorizationPlugin.close();
+        authorizationPlugin.plugin.close();
       }
     } catch (IOException e) {
       log.warn("Exception while closing authorization plugin.", e);
     }
-    
+
     // It should be safe to close the authentication plugin at this point.
     try {
       if(authenticationPlugin != null) {
-        authenticationPlugin.close();
+        authenticationPlugin.plugin.close();
         authenticationPlugin = null;
       }
     } catch (Exception e) {
@@ -622,12 +712,12 @@ public class CoreContainer {
   public SolrCore create(CoreDescriptor dcore, boolean publishState) {
 
     if (isShutDown) {
-      throw new SolrException(ErrorCode.SERVICE_UNAVAILABLE, "Solr has close.");
+      throw new SolrException(ErrorCode.SERVICE_UNAVAILABLE, "Solr has been shutdown.");
     }
 
     SolrCore core = null;
     try {
-
+      MDCLoggingContext.setCore(core);
       if (zkSys.getZkController() != null) {
         zkSys.getZkController().preRegister(dcore);
       }
@@ -659,6 +749,8 @@ public class CoreContainer {
       if(core != null && !core.isClosed())
         IOUtils.closeQuietly(core);
       throw t;
+    } finally {
+      MDCLoggingContext.clear();
     }
 
   }
@@ -780,14 +872,16 @@ public class CoreContainer {
    */
   public void unload(String name, boolean deleteIndexDir, boolean deleteDataDir, boolean deleteInstanceDir) {
 
-    // check for core-init errors first
-    CoreLoadFailure loadFailure = coreInitFailures.remove(name);
-    if (loadFailure != null) {
-      // getting the index directory requires opening a DirectoryFactory with a SolrConfig, etc,
-      // which we may not be able to do because of the init error.  So we just go with what we
-      // can glean from the CoreDescriptor - datadir and instancedir
-      SolrCore.deleteUnloadedCore(loadFailure.cd, deleteDataDir, deleteInstanceDir);
-      return;
+    if (name != null) {
+      // check for core-init errors first
+      CoreLoadFailure loadFailure = coreInitFailures.remove(name);
+      if (loadFailure != null) {
+        // getting the index directory requires opening a DirectoryFactory with a SolrConfig, etc,
+        // which we may not be able to do because of the init error.  So we just go with what we
+        // can glean from the CoreDescriptor - datadir and instancedir
+        SolrCore.deleteUnloadedCore(loadFailure.cd, deleteDataDir, deleteInstanceDir);
+        return;
+      }
     }
 
     CoreDescriptor cd = solrCores.getCoreDescriptor(name);
@@ -913,6 +1007,20 @@ public class CoreContainer {
   public JarRepository getJarRepository(){
     return jarRepository;
   }
+  
+  /**
+   * If using asyncSolrCoreLoad=true, calling this after {@link #load()} will
+   * not return until all cores have finished loading.
+   * 
+   * @param timeoutMs timeout, upon which method simply returns
+   */
+  public void waitForLoadingCoresToFinish(long timeoutMs) {
+    solrCores.waitForLoadingCoresToFinish(timeoutMs);
+  }
+  
+  public void waitForLoadingCore(String name, long timeoutMs) {
+    solrCores.waitForLoadingCoreToFinish(name, timeoutMs);
+  }
 
   // ---------------- CoreContainer request handlers --------------
 
@@ -1002,13 +1110,17 @@ public class CoreContainer {
   public SolrResourceLoader getResourceLoader() {
     return loader;
   }
+  
+  public boolean isCoreLoading(String name) {
+    return solrCores.isCoreLoading(name);
+  }
 
   public AuthorizationPlugin getAuthorizationPlugin() {
-    return authorizationPlugin;
+    return authorizationPlugin == null ? null : authorizationPlugin.plugin;
   }
 
   public AuthenticationPlugin getAuthenticationPlugin() {
-    return authenticationPlugin;
+    return authenticationPlugin == null ? null : authenticationPlugin.plugin;
   }
 
 }

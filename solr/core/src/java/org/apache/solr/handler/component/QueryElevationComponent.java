@@ -142,8 +142,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       this.ids = new HashSet<>();
       this.excludeIds = new HashSet<>();
 
-      this.include = new BooleanQuery();
-      this.include.setBoost(0);
+      BooleanQuery.Builder include = new BooleanQuery.Builder();
       this.priority = new HashMap<>();
       int max = elevate.size() + 5;
       for (String id : elevate) {
@@ -153,6 +152,8 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         include.add(tq, BooleanClause.Occur.SHOULD);
         this.priority.put(new BytesRef(id), max--);
       }
+      this.include = include.build();
+      this.include.setBoost(0);
 
       if (exclude == null || exclude.isEmpty()) {
         this.exclude = null;
@@ -421,7 +422,8 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         //we only want these results
         rb.setQuery(booster.include);
       } else {
-        BooleanQuery newq = new BooleanQuery(true);
+        BooleanQuery.Builder newq = new BooleanQuery.Builder();
+        newq.setDisableCoord(true);
         newq.add(query, BooleanClause.Occur.SHOULD);
         newq.add(booster.include, BooleanClause.Occur.SHOULD);
         if (booster.exclude != null) {
@@ -435,7 +437,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
             rb.req.getContext().put(EXCLUDED, booster.excludeIds);
           }
         }
-        rb.setQuery(newq);
+        rb.setQuery(newq.build());
       }
 
       ElevationComparatorSource comparator = new ElevationComparatorSource(booster);
@@ -573,8 +575,11 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         while(it.hasNext()) {
           BytesRef ref = it.next();
           if(termsEnum.seekExact(ref)) {
-            postingsEnum = termsEnum.postings(liveDocs, postingsEnum);
+            postingsEnum = termsEnum.postings(postingsEnum);
             int doc = postingsEnum.nextDoc();
+            while (doc != PostingsEnum.NO_MORE_DOCS && liveDocs != null && liveDocs.get(doc) == false) {
+              doc = postingsEnum.nextDoc();
+            }
             if(doc != PostingsEnum.NO_MORE_DOCS) {
               //Found the document.
               int p = boosted.get(ref);
@@ -690,8 +695,11 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         for (String id : elevations.ids) {
           term.copyChars(id);
           if (seen.contains(id) == false  && termsEnum.seekExact(term.get())) {
-            postingsEnum = termsEnum.postings(liveDocs, postingsEnum, PostingsEnum.NONE);
+            postingsEnum = termsEnum.postings(postingsEnum, PostingsEnum.NONE);
             int docId = postingsEnum.nextDoc();
+            while (docId != DocIdSetIterator.NO_MORE_DOCS && liveDocs != null && liveDocs.get(docId) == false) {
+              docId = postingsEnum.nextDoc();
+            }
             if (docId == DocIdSetIterator.NO_MORE_DOCS ) continue;  // must have been deleted
             termValues[ordSet.put(docId)] = term.toBytesRef();
             seen.add(id);

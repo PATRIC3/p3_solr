@@ -28,38 +28,39 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.util.Bits;
 
 /**
  * Expert: the Weight for BooleanQuery, used to
  * normalize, score and explain these queries.
- *
- * @lucene.experimental
  */
-public class BooleanWeight extends Weight {
+final class BooleanWeight extends Weight {
   /** The Similarity implementation. */
-  protected Similarity similarity;
-  protected final BooleanQuery query;
-  protected ArrayList<Weight> weights;
-  protected int maxCoord;  // num optional + num required
-  private final boolean disableCoord;
-  private final boolean needsScores;
-  private final float coords[];
+  final Similarity similarity;
+  final BooleanQuery query;
+  
+  final ArrayList<Weight> weights;
+  final int maxCoord;  // num optional + num required
+  final boolean disableCoord;
+  final boolean needsScores;
+  final float coords[];
 
-  public BooleanWeight(BooleanQuery query, IndexSearcher searcher, boolean needsScores, boolean disableCoord) throws IOException {
+  BooleanWeight(BooleanQuery query, IndexSearcher searcher, boolean needsScores, boolean disableCoord) throws IOException {
     super(query);
     this.query = query;
     this.needsScores = needsScores;
     this.similarity = searcher.getSimilarity(needsScores);
-    weights = new ArrayList<>(query.clauses().size());
-    for (int i = 0 ; i < query.clauses().size(); i++) {
-      BooleanClause c = query.clauses().get(i);
+    weights = new ArrayList<>();
+    int i = 0;
+    int maxCoord = 0;
+    for (BooleanClause c : query) {
       Weight w = searcher.createWeight(c.getQuery(), needsScores && c.isScoring());
       weights.add(w);
       if (c.isScoring()) {
         maxCoord++;
       }
+      i += 1;
     }
+    this.maxCoord = maxCoord;
     
     // precompute coords (0..N, N).
     // set disableCoord when its explicit, scores are not needed, no scoring clauses, or the sim doesn't use it.
@@ -69,7 +70,7 @@ public class BooleanWeight extends Weight {
     if (maxCoord > 0 && needsScores && disableCoord == false) {
       // compute coords from the similarity, look for any actual ones.
       boolean seenActualCoord = false;
-      for (int i = 1; i < coords.length; i++) {
+      for (i = 1; i < coords.length; i++) {
         coords[i] = coord(i, maxCoord);
         seenActualCoord |= (coords[i] != 1F);
       }
@@ -82,7 +83,7 @@ public class BooleanWeight extends Weight {
   @Override
   public void extractTerms(Set<Term> terms) {
     int i = 0;
-    for (BooleanClause clause : query.clauses()) {
+    for (BooleanClause clause : query) {
       if (clause.isScoring() || (needsScores == false && clause.isProhibited() == false)) {
         weights.get(i).extractTerms(terms);
       }
@@ -93,13 +94,15 @@ public class BooleanWeight extends Weight {
   @Override
   public float getValueForNormalization() throws IOException {
     float sum = 0.0f;
-    for (int i = 0 ; i < weights.size(); i++) {
+    int i = 0;
+    for (BooleanClause clause : query) {
       // call sumOfSquaredWeights for all clauses in case of side effects
       float s = weights.get(i).getValueForNormalization();         // sum sub weights
-      if (query.clauses().get(i).isScoring()) {
+      if (clause.isScoring()) {
         // only add to sum for scoring clauses
         sum += s;
       }
+      i += 1;
     }
 
     sum *= query.getBoost() * query.getBoost();             // boost each sub-weight
@@ -141,7 +144,7 @@ public class BooleanWeight extends Weight {
     boolean fail = false;
     int matchCount = 0;
     int shouldMatchCount = 0;
-    Iterator<BooleanClause> cIter = query.clauses().iterator();
+    Iterator<BooleanClause> cIter = query.iterator();
     for (Iterator<Weight> wIter = weights.iterator(); wIter.hasNext();) {
       Weight w = wIter.next();
       BooleanClause c = cIter.next();
@@ -190,12 +193,12 @@ public class BooleanWeight extends Weight {
   /** Try to build a boolean scorer for this weight. Returns null if {@link BooleanScorer}
    *  cannot be used. */
   // pkg-private for forcing use of BooleanScorer in tests
-  BooleanScorer booleanScorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+  BooleanScorer booleanScorer(LeafReaderContext context) throws IOException {
     List<BulkScorer> optional = new ArrayList<BulkScorer>();
-    Iterator<BooleanClause> cIter = query.clauses().iterator();
+    Iterator<BooleanClause> cIter = query.iterator();
     for (Weight w  : weights) {
       BooleanClause c =  cIter.next();
-      BulkScorer subScorer = w.bulkScorer(context, acceptDocs);
+      BulkScorer subScorer = w.bulkScorer(context);
       
       if (subScorer == null) {
         if (c.isRequired()) {
@@ -218,20 +221,20 @@ public class BooleanWeight extends Weight {
       return null;
     }
 
-    if (query.minNrShouldMatch > optional.size()) {
+    if (query.getMinimumNumberShouldMatch() > optional.size()) {
       return null;
     }
 
-    return new BooleanScorer(this, disableCoord, maxCoord, optional, Math.max(1, query.minNrShouldMatch), needsScores);
+    return new BooleanScorer(this, disableCoord, maxCoord, optional, Math.max(1, query.getMinimumNumberShouldMatch()), needsScores);
   }
 
   @Override
-  public BulkScorer bulkScorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
-    final BooleanScorer bulkScorer = booleanScorer(context, acceptDocs);
+  public BulkScorer bulkScorer(LeafReaderContext context) throws IOException {
+    final BooleanScorer bulkScorer = booleanScorer(context);
     if (bulkScorer != null) { // BooleanScorer is applicable
       // TODO: what is the right heuristic here?
       final long costThreshold;
-      if (query.minNrShouldMatch <= 1) {
+      if (query.getMinimumNumberShouldMatch() <= 1) {
         // when all clauses are optional, use BooleanScorer aggressively
         // TODO: is there actually a threshold under which we should rather
         // use the regular scorer?
@@ -250,25 +253,25 @@ public class BooleanWeight extends Weight {
         return bulkScorer;
       }
     }
-    return super.bulkScorer(context, acceptDocs);
+    return super.bulkScorer(context);
   }
 
   @Override
-  public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+  public Scorer scorer(LeafReaderContext context) throws IOException {
     // initially the user provided value,
     // but if minNrShouldMatch == optional.size(),
     // we will optimize and move these to required, making this 0
-    int minShouldMatch = query.minNrShouldMatch;
+    int minShouldMatch = query.getMinimumNumberShouldMatch();
 
     List<Scorer> required = new ArrayList<>();
     // clauses that are required AND participate in scoring, subset of 'required'
     List<Scorer> requiredScoring = new ArrayList<>();
     List<Scorer> prohibited = new ArrayList<>();
     List<Scorer> optional = new ArrayList<>();
-    Iterator<BooleanClause> cIter = query.clauses().iterator();
+    Iterator<BooleanClause> cIter = query.iterator();
     for (Weight w  : weights) {
       BooleanClause c =  cIter.next();
-      Scorer subScorer = w.scorer(context, acceptDocs);
+      Scorer subScorer = w.scorer(context);
       if (subScorer == null) {
         if (c.isRequired()) {
           return null;
@@ -362,12 +365,34 @@ public class BooleanWeight extends Weight {
     if (required.size() == 1) {
       Scorer req = required.get(0);
 
-      if (needsScores == false ||
-          (requiredScoring.size() == 1 && (disableCoord || maxCoord == 1))) {
+      if (needsScores == false) {
         return req;
-      } else {
-        return new BooleanTopLevelScorers.BoostedScorer(req, coord(requiredScoring.size(), maxCoord));
       }
+
+      if (requiredScoring.isEmpty()) {
+        // Scores are needed but we only have a filter clause
+        // BooleanWeight expects that calling score() is ok so we need to wrap
+        // to prevent score() from being propagated
+        return new FilterScorer(req) {
+          @Override
+          public float score() throws IOException {
+            return 0f;
+          }
+          @Override
+          public int freq() throws IOException {
+            return 0;
+          }
+        };
+      }
+      
+      float boost = 1f;
+      if (disableCoord == false) {
+        boost = coord(1, maxCoord);
+      }
+      if (boost == 1f) {
+        return req;
+      }
+      return new BooleanTopLevelScorers.BoostedScorer(req, boost);
     } else {
       return new ConjunctionScorer(this, required, requiredScoring,
                                    disableCoord ? 1.0F : coord(requiredScoring.size(), maxCoord));

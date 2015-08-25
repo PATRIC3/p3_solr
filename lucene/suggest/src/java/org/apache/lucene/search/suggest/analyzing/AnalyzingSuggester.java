@@ -23,12 +23,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
@@ -52,6 +50,7 @@ import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.OfflineSorter;
 import org.apache.lucene.util.automaton.Automaton;
+import org.apache.lucene.util.automaton.LimitedFiniteStringsIterator;
 import org.apache.lucene.util.automaton.Operations;
 import org.apache.lucene.util.automaton.Transition;
 import org.apache.lucene.util.fst.Builder;
@@ -271,33 +270,6 @@ public class AnalyzingSuggester extends Lookup {
     }
   }
 
-  private int[] topoSortStates(Automaton a) {
-    int numStates = a.getNumStates();
-    int[] states = new int[numStates];
-    final BitSet visited = new BitSet(numStates);
-    final LinkedList<Integer> worklist = new LinkedList<>();
-    worklist.add(0);
-    visited.set(0);
-    int upto = 0;
-    states[upto] = 0;
-    upto++;
-    Transition t = new Transition();
-    while (worklist.size() > 0) {
-      int s = worklist.removeFirst();
-      int count = a.initTransition(s, t);
-      for (int i=0;i<count;i++) {
-        a.getNextTransition(t);
-        if (!visited.get(t.dest)) {
-          visited.set(t.dest);
-          worklist.add(t.dest);
-          states[upto++] = t.dest;
-        }
-      }
-    }
-    return states;
-  }
-
-
   // Replaces SEP with epsilon or remaps them if
   // we were asked to preserve them:
   private Automaton replaceSep(Automaton a) {
@@ -310,7 +282,7 @@ public class AnalyzingSuggester extends Lookup {
     // Go in reverse topo sort so we know we only have to
     // make one pass:
     Transition t = new Transition();
-    int[] topoSortStates = topoSortStates(a);
+    int[] topoSortStates = Operations.topoSortStates(a);
     for(int i=0;i<topoSortStates.length;i++) {
       int state = topoSortStates[topoSortStates.length-1-i];
       int count = a.initTransition(state, t);
@@ -441,16 +413,13 @@ public class AnalyzingSuggester extends Lookup {
     byte buffer[] = new byte[8];
     try {
       ByteArrayDataOutput output = new ByteArrayDataOutput(buffer);
-      BytesRef surfaceForm;
 
-      while ((surfaceForm = iterator.next()) != null) {
-        Set<IntsRef> paths = toFiniteStrings(surfaceForm, ts2a);
-        
-        maxAnalyzedPathsForOneInput = Math.max(maxAnalyzedPathsForOneInput, paths.size());
+      for (BytesRef surfaceForm; (surfaceForm = iterator.next()) != null;) {
+        LimitedFiniteStringsIterator finiteStrings =
+            new LimitedFiniteStringsIterator(toAutomaton(surfaceForm, ts2a), maxGraphExpansions);
 
-        for (IntsRef path : paths) {
-
-          Util.toBytesRef(path, scratch);
+        for (IntsRef string; (string = finiteStrings.next()) != null; count++) {
+          Util.toBytesRef(string, scratch);
           
           // length of the analyzed text (FST input)
           if (scratch.length() > Short.MAX_VALUE-2) {
@@ -501,7 +470,8 @@ public class AnalyzingSuggester extends Lookup {
           assert output.getPosition() == requiredLength: output.getPosition() + " vs " + requiredLength;
           writer.write(buffer, 0, output.getPosition());
         }
-        count++;
+
+        maxAnalyzedPathsForOneInput = Math.max(maxAnalyzedPathsForOneInput, finiteStrings.size());
       }
       writer.close();
 
@@ -861,9 +831,9 @@ public class AnalyzingSuggester extends Lookup {
     return prefixPaths;
   }
   
-  final Set<IntsRef> toFiniteStrings(final BytesRef surfaceForm, final TokenStreamToAutomaton ts2a) throws IOException {
+  final Automaton toAutomaton(final BytesRef surfaceForm, final TokenStreamToAutomaton ts2a) throws IOException {
     // Analyze surface form:
-    Automaton automaton = null;
+    Automaton automaton;
     try (TokenStream ts = indexAnalyzer.tokenStream("", surfaceForm.utf8ToString())) {
 
       // Create corresponding automaton: labels are bytes
@@ -881,12 +851,7 @@ public class AnalyzingSuggester extends Lookup {
     // Get all paths from the automaton (there can be
     // more than one path, eg if the analyzer created a
     // graph using SynFilter or WDF):
-
-    // TODO: we could walk & add simultaneously, so we
-    // don't have to alloc [possibly biggish]
-    // intermediate HashSet in RAM:
-
-    return Operations.getFiniteStrings(automaton, maxGraphExpansions);
+    return automaton;
   }
 
   final Automaton toLookupAutomaton(final CharSequence key) throws IOException {

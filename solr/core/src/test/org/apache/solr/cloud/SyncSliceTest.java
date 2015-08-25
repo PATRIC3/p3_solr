@@ -50,24 +50,7 @@ import java.util.Set;
 @Slow
 public class SyncSliceTest extends AbstractFullDistribZkTestBase {
   private boolean success = false;
-  
-  @BeforeClass
-  public static void beforeSuperClass() throws Exception {
-  }
-  
-  @AfterClass
-  public static void afterSuperClass() {
-    
-  }
-  
-  @Override
-  public void distribSetUp() throws Exception {
-    super.distribSetUp();
-    // we expect this time of exception as shards go up and down...
-    //ignoreException(".*");
-    System.setProperty("numShards", Integer.toString(sliceCount));
-  }
-  
+
   @Override
   public void distribTearDown() throws Exception {
     if (!success) {
@@ -75,7 +58,7 @@ public class SyncSliceTest extends AbstractFullDistribZkTestBase {
     }
     super.distribTearDown();
   }
-  
+
   public SyncSliceTest() {
     super();
     sliceCount = 1;
@@ -236,7 +219,7 @@ public class SyncSliceTest extends AbstractFullDistribZkTestBase {
     for (int i = 0; i < 60; i++) { 
       Thread.sleep(3000);
       ZkStateReader zkStateReader = cloudClient.getZkStateReader();
-      zkStateReader.updateClusterState(true);
+      zkStateReader.updateClusterState();
       ClusterState clusterState = zkStateReader.getClusterState();
       DocCollection collection1 = clusterState.getCollection("collection1");
       Slice slice = collection1.getSlice("shard1");

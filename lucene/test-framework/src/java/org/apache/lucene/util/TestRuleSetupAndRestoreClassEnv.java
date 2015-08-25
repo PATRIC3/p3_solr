@@ -19,11 +19,9 @@ package org.apache.lucene.util;
 
 import java.io.PrintStream;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Random;
-import java.util.Set;
 import java.util.TimeZone;
 
 import org.apache.lucene.codecs.Codec;
@@ -34,8 +32,8 @@ import org.apache.lucene.codecs.asserting.AssertingDocValuesFormat;
 import org.apache.lucene.codecs.asserting.AssertingPostingsFormat;
 import org.apache.lucene.codecs.cheapbastard.CheapBastardCodec;
 import org.apache.lucene.codecs.compressing.CompressingCodec;
-import org.apache.lucene.codecs.lucene50.Lucene50Codec;
 import org.apache.lucene.codecs.lucene50.Lucene50StoredFieldsFormat;
+import org.apache.lucene.codecs.lucene53.Lucene53Codec;
 import org.apache.lucene.codecs.mockrandom.MockRandomPostingsFormat;
 import org.apache.lucene.codecs.simpletext.SimpleTextCodec;
 import org.apache.lucene.index.RandomCodec;
@@ -99,7 +97,7 @@ final class TestRuleSetupAndRestoreClassEnv extends AbstractBeforeAfterRule {
       } else {
         name = Thread.currentThread().getName();
       }
-      stream.println(component + " " + messageID + " [" + new Date() + "; " + name + "]: " + message);    
+      stream.println(component + " " + messageID + " [" + getTimestamp() + "; " + name + "]: " + message);    
     }
   }
 
@@ -184,8 +182,8 @@ final class TestRuleSetupAndRestoreClassEnv extends AbstractBeforeAfterRule {
       codec = new AssertingCodec();
     } else if ("Compressing".equals(TEST_CODEC) || ("random".equals(TEST_CODEC) && randomVal == 6 && !shouldAvoidCodec("Compressing"))) {
       codec = CompressingCodec.randomInstance(random);
-    } else if ("Lucene50".equals(TEST_CODEC) || ("random".equals(TEST_CODEC) && randomVal == 5 && !shouldAvoidCodec("Lucene50"))) {
-      codec = new Lucene50Codec(RandomPicks.randomFrom(random, Lucene50StoredFieldsFormat.Mode.values()));
+    } else if ("Lucene53".equals(TEST_CODEC) || ("random".equals(TEST_CODEC) && randomVal == 5 && !shouldAvoidCodec("Lucene53"))) {
+      codec = new Lucene53Codec(RandomPicks.randomFrom(random, Lucene50StoredFieldsFormat.Mode.values()));
     } else if (!"random".equals(TEST_CODEC)) {
       codec = Codec.forName(TEST_CODEC);
     } else if ("random".equals(TEST_POSTINGSFORMAT)) {

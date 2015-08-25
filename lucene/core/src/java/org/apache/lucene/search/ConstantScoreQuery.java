@@ -83,8 +83,8 @@ public class ConstantScoreQuery extends Query {
     }
 
     @Override
-    public int score(LeafCollector collector, int min, int max) throws IOException {
-      return bulkScorer.score(wrapCollector(collector), min, max);
+    public int score(LeafCollector collector, Bits acceptDocs, int min, int max) throws IOException {
+      return bulkScorer.score(wrapCollector(collector), acceptDocs, min, max);
     }
 
     private LeafCollector wrapCollector(LeafCollector collector) {
@@ -96,6 +96,10 @@ public class ConstantScoreQuery extends Query {
             @Override
             public float score() throws IOException {
               return theScore;
+            }
+            @Override
+            public int freq() throws IOException {
+              return 1;
             }
           });
         }
@@ -115,8 +119,8 @@ public class ConstantScoreQuery extends Query {
       return new ConstantScoreWeight(this) {
 
         @Override
-        public BulkScorer bulkScorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
-          final BulkScorer innerScorer = innerWeight.bulkScorer(context, acceptDocs);
+        public BulkScorer bulkScorer(LeafReaderContext context) throws IOException {
+          final BulkScorer innerScorer = innerWeight.bulkScorer(context);
           if (innerScorer == null) {
             return null;
           }
@@ -124,8 +128,8 @@ public class ConstantScoreQuery extends Query {
         }
 
         @Override
-        public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
-          final Scorer innerScorer = innerWeight.scorer(context, acceptDocs);
+        public Scorer scorer(LeafReaderContext context) throws IOException {
+          final Scorer innerScorer = innerWeight.scorer(context);
           if (innerScorer == null) {
             return null;
           }
@@ -134,6 +138,10 @@ public class ConstantScoreQuery extends Query {
             @Override
             public float score() throws IOException {
               return score;
+            }
+            @Override
+            public int freq() throws IOException {
+              return 1;
             }
             @Override
             public Collection<ChildScorer> getChildren() {

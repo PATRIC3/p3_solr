@@ -78,8 +78,10 @@ public class ReRankQParserPlugin extends QParserPlugin {
     }
 
     public Query parse() throws SyntaxError {
-
       String reRankQueryString = localParams.get("reRankQuery");
+      if (reRankQueryString == null || reRankQueryString.trim().length() == 0)  {
+        throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "reRankQuery parameter is mandatory");
+      }
       QParser reRankParser = QParser.getParser(reRankQueryString, null, req);
       Query reRankQuery = reRankParser.parse();
 
@@ -159,8 +161,18 @@ public class ReRankQParserPlugin extends QParserPlugin {
     }
 
     public Query rewrite(IndexReader reader) throws IOException {
-      return wrap(this.mainQuery.rewrite(reader));
+      Query q = mainQuery.rewrite(reader);
+      if(q == mainQuery) {
+        return this;
+      } else {
+        return clone().wrap(q);
+      }
+    }
 
+    public ReRankQuery clone() {
+      ReRankQuery clonedQuery =  new ReRankQuery(reRankQuery, reRankDocs, reRankWeight, length);
+      clonedQuery.setBoost(getBoost());
+      return clonedQuery;
     }
 
     public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException{
@@ -192,8 +204,8 @@ public class ReRankQParserPlugin extends QParserPlugin {
       return mainWeight.getValueForNormalization();
     }
 
-    public Scorer scorer(LeafReaderContext context, Bits bits) throws IOException {
-      return mainWeight.scorer(context, bits);
+    public Scorer scorer(LeafReaderContext context) throws IOException {
+      return mainWeight.scorer(context);
     }
 
     public void normalize(float norm, float topLevelBoost) {

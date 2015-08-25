@@ -40,9 +40,13 @@ public class SpanScorer extends Scorer {
   
   private int lastScoredDoc = -1; // last doc we called setFreqCurrentDoc() for
 
-  protected SpanScorer(Spans spans, SpanWeight weight, Similarity.SimScorer docScorer) throws IOException {
+  /**
+   * Creates a new SpanScorer
+   * @lucene.internal
+   */
+  public SpanScorer(Spans spans, SpanWeight weight, Similarity.SimScorer docScorer) throws IOException {
     super(weight);
-    this.docScorer = Objects.requireNonNull(docScorer);
+    this.docScorer = docScorer;
     this.spans = Objects.requireNonNull(spans);
   }
 
@@ -72,9 +76,11 @@ public class SpanScorer extends Scorer {
    * <p>
    * This will be called at most once per document.
    */
-  protected void setFreqCurrentDoc() throws IOException {
+  protected final void setFreqCurrentDoc() throws IOException {
     freq = 0.0f;
     numMatches = 0;
+
+    doStartCurrentDoc();
 
     assert spans.startPosition() == -1 : "incorrect initial start position, spans="+spans;
     assert spans.endPosition() == -1 : "incorrect initial end position, spans="+spans;
@@ -91,8 +97,12 @@ public class SpanScorer extends Scorer {
       // assert (startPos != prevStartPos) || (endPos > prevEndPos) : "non increased endPos="+endPos;
       assert (startPos != prevStartPos) || (endPos >= prevEndPos) : "decreased endPos="+endPos;
       numMatches++;
-      int matchLength = endPos - startPos;
-      freq += docScorer.computeSlopFactor(matchLength);
+      if (docScorer == null) {  // scores not required, break out here
+        freq = 1;
+        return;
+      }
+      freq += docScorer.computeSlopFactor(spans.width());
+      doCurrentSpans();
       prevStartPos = startPos;
       prevEndPos = endPos;
       startPos = spans.nextStartPosition();
@@ -101,6 +111,16 @@ public class SpanScorer extends Scorer {
     assert spans.startPosition() == Spans.NO_MORE_POSITIONS : "incorrect final start position, spans="+spans;
     assert spans.endPosition() == Spans.NO_MORE_POSITIONS : "incorrect final end position, spans="+spans;
   }
+
+  /**
+   * Called before the current doc's frequency is calculated
+   */
+  protected void doStartCurrentDoc() throws IOException {}
+
+  /**
+   * Called each time the scorer's Spans is advanced during frequency calculation
+   */
+  protected void doCurrentSpans() throws IOException {}
   
   /**
    * Score the current doc. The default implementation scores the doc 

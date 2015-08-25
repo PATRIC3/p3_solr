@@ -114,11 +114,11 @@ public class TestConstantScoreQuery extends LuceneTestCase {
       final Query csq2 = new ConstantScoreQuery(csq1);
       csq2.setBoost(5.0f);
       
-      final BooleanQuery bq = new BooleanQuery();
+      final BooleanQuery.Builder bq = new BooleanQuery.Builder();
       bq.add(csq1, BooleanClause.Occur.SHOULD);
       bq.add(csq2, BooleanClause.Occur.SHOULD);
       
-      final Query csqbq = new ConstantScoreQuery(bq);
+      final Query csqbq = new ConstantScoreQuery(bq.build());
       csqbq.setBoost(17.0f);
       
       checkHits(searcher, csq1, csq1.getBoost(), TermScorer.class);
@@ -231,14 +231,12 @@ public class TestConstantScoreQuery extends LuceneTestCase {
     final IndexSearcher searcher = newSearcher(reader);
     searcher.setQueryCache(null); // to still have approximations
 
-    PhraseQuery pq = new PhraseQuery();
-    pq.add(new Term("field", "a"));
-    pq.add(new Term("field", "b"));
+    PhraseQuery pq = new PhraseQuery("field", "a", "b");
 
     ConstantScoreQuery q = new ConstantScoreQuery(pq);
 
     final Weight weight = searcher.createNormalizedWeight(q, true);
-    final Scorer scorer = weight.scorer(searcher.getIndexReader().leaves().get(0), null);
+    final Scorer scorer = weight.scorer(searcher.getIndexReader().leaves().get(0));
     assertNotNull(scorer.asTwoPhaseIterator());
 
     reader.close();

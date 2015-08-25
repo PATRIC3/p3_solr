@@ -56,7 +56,6 @@ public class UnloadDistributedZkTest extends BasicDistributedZkTest {
   
   public UnloadDistributedZkTest() {
     super();
-    checkCreatedVsState = false;
   }
 
   @Test
@@ -164,7 +163,7 @@ public class UnloadDistributedZkTest extends BasicDistributedZkTest {
     }
     ZkStateReader zkStateReader = getCommonCloudSolrClient().getZkStateReader();
     
-    zkStateReader.updateClusterState(true);
+    zkStateReader.updateClusterState();
 
     int slices = zkStateReader.getClusterState().getCollection("unloadcollection").getSlices().size();
     assertEquals(1, slices);
@@ -180,7 +179,7 @@ public class UnloadDistributedZkTest extends BasicDistributedZkTest {
       createCmd.setDataDir(getDataDir(core2dataDir));
       adminClient.request(createCmd);
     }
-    zkStateReader.updateClusterState(true);
+    zkStateReader.updateClusterState();
     slices = zkStateReader.getClusterState().getCollection("unloadcollection").getSlices().size();
     assertEquals(1, slices);
     
@@ -375,7 +374,7 @@ public class UnloadDistributedZkTest extends BasicDistributedZkTest {
         // create the cores
         createCores(adminClient, executor, "multiunload", 2, cnt);
       } finally {
-        ExecutorUtil.shutdownAndAwaitTermination(executor, 120, TimeUnit.SECONDS);
+        ExecutorUtil.shutdownAndAwaitTermination(executor);
       }
 
       executor = new ExecutorUtil.MDCAwareThreadPoolExecutor(0, Integer.MAX_VALUE, 5,
@@ -399,7 +398,7 @@ public class UnloadDistributedZkTest extends BasicDistributedZkTest {
           Thread.sleep(random().nextInt(50));
         }
       } finally {
-        ExecutorUtil.shutdownAndAwaitTermination(executor, 120, TimeUnit.SECONDS);
+        ExecutorUtil.shutdownAndAwaitTermination(executor);
       }
     }
   }

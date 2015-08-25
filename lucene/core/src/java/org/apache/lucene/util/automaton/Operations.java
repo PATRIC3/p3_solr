@@ -150,7 +150,7 @@ final public class Operations {
 
   /**
    * Returns an automaton that accepts the union of the empty string and the
-   * language of the given automaton.
+   * language of the given automaton.  This may create a dead state.
    * <p>
    * Complexity: linear in number of states.
    */
@@ -1130,7 +1130,6 @@ final public class Operations {
     IntsRefBuilder builder = new IntsRefBuilder();
     HashSet<Integer> visited = new HashSet<>();
     int s = 0;
-    boolean done;
     Transition t = new Transition();
     while (true) {
       visited.add(s);
@@ -1233,156 +1232,6 @@ final public class Operations {
     return result;
   }
 
-  private static class PathNode {
-
-    /** Which state the path node ends on, whose
-     *  transitions we are enumerating. */
-    public int state;
-
-    /** Which state the current transition leads to. */
-    public int to;
-
-    /** Which transition we are on. */
-    public int transition;
-
-    /** Which label we are on, in the min-max range of the
-     *  current Transition */
-    public int label;
-
-    private final Transition t = new Transition();
-
-    public void resetState(Automaton a, int state) {
-      assert a.getNumTransitions(state) != 0;
-      this.state = state;
-      transition = 0;
-      a.getTransition(state, 0, t);
-      label = t.min;
-      to = t.dest;
-    }
-
-    /** Returns next label of current transition, or
-     *  advances to next transition and returns its first
-     *  label, if current one is exhausted.  If there are
-     *  no more transitions, returns -1. */
-    public int nextLabel(Automaton a) {
-      if (label > t.max) {
-        // We've exhaused the current transition's labels;
-        // move to next transitions:
-        transition++;
-        if (transition >= a.getNumTransitions(state)) {
-          // We're done iterating transitions leaving this state
-          return -1;
-        }
-        a.getTransition(state, transition, t);
-        label = t.min;
-        to = t.dest;
-      }
-      return label++;
-    }
-  }
-
-  private static PathNode getNode(PathNode[] nodes, int index) {
-    assert index < nodes.length;
-    if (nodes[index] == null) {
-      nodes[index] = new PathNode();
-    }
-    return nodes[index];
-  }
-
-  // TODO: this is a dangerous method ... Automaton could be
-  // huge ... and it's better in general for caller to
-  // enumerate & process in a single walk:
-
-  /** Returns the set of accepted strings, up to at most
-   *  <code>limit</code> strings. If more than <code>limit</code> 
-   *  strings are accepted, the first limit strings found are returned. If <code>limit</code> == -1, then 
-   *  the limit is infinite.  If the {@link Automaton} has
-   *  cycles then this method might throw {@code
-   *  IllegalArgumentException} but that is not guaranteed
-   *  when the limit is set. */
-  public static Set<IntsRef> getFiniteStrings(Automaton a, int limit) {
-    Set<IntsRef> results = new HashSet<>();
-
-    if (limit == -1 || limit > 0) {
-      // OK
-    } else {
-      throw new IllegalArgumentException("limit must be -1 (which means no limit), or > 0; got: " + limit);
-    }
-
-    if (a.isAccept(0)) {
-      // Special case the empty string, as usual:
-      results.add(new IntsRef());
-    }
-
-    if (a.getNumTransitions(0) > 0 && (limit == -1 || results.size() < limit)) {
-
-      int numStates = a.getNumStates();
-
-      // Tracks which states are in the current path, for
-      // cycle detection:
-      BitSet pathStates = new BitSet(numStates);
-
-      // Stack to hold our current state in the
-      // recursion/iteration:
-      PathNode[] nodes = new PathNode[4];
-
-      pathStates.set(0);
-      PathNode root = getNode(nodes, 0);
-      root.resetState(a, 0);
-
-      IntsRefBuilder string = new IntsRefBuilder();
-      string.append(0);
-
-      while (string.length() > 0) {
-
-        PathNode node = nodes[string.length()-1];
-
-        // Get next label leaving the current node:
-        int label = node.nextLabel(a);
-
-        if (label != -1) {
-          string.setIntAt(string.length()-1, label);
-
-          if (a.isAccept(node.to)) {
-            // This transition leads to an accept state,
-            // so we save the current string:
-            results.add(string.toIntsRef());
-            if (results.size() == limit) {
-              break;
-            }
-          }
-
-          if (a.getNumTransitions(node.to) != 0) {
-            // Now recurse: the destination of this transition has
-            // outgoing transitions:
-            if (pathStates.get(node.to)) {
-              throw new IllegalArgumentException("automaton has cycles");
-            }
-            pathStates.set(node.to);
-
-            // Push node onto stack:
-            if (nodes.length == string.length()) {
-              PathNode[] newNodes = new PathNode[ArrayUtil.oversize(nodes.length+1, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
-              System.arraycopy(nodes, 0, newNodes, 0, nodes.length);
-              nodes = newNodes;
-            }
-            getNode(nodes, string.length()).resetState(a, node.to);
-            string.setLength(string.length() + 1);
-            string.grow(string.length());
-          }
-        } else {
-          // No more transitions leaving this state,
-          // pop/return back to previous state:
-          assert pathStates.get(node.state);
-          pathStates.clear(node.state);
-          string.setLength(string.length() - 1);
-        }
-      }
-    }
-
-    return results;
-  }
-
   /** Returns a new automaton accepting the same language with added
    *  transitions to a dead state so that from every state and every label
    *  there is a transition. */
@@ -1419,5 +1268,51 @@ final public class Operations {
 
     result.finishState();
     return result;
+  }
+
+  /** Returns the topological sort of all states reachable from
+   *  the initial state.  Behavior is undefined if this
+   *  automaton has cycles.  CPU cost is O(numTransitions),
+   *  and the implementation is recursive so an automaton
+   *  matching long strings may exhaust the java stack. */
+  public static int[] topoSortStates(Automaton a) {
+    if (a.getNumStates() == 0) {
+      return new int[0];
+    }
+    int numStates = a.getNumStates();
+    int[] states = new int[numStates];
+    final BitSet visited = new BitSet(numStates);
+    int upto = topoSortStatesRecurse(a, visited, states, 0, 0);
+
+    if (upto < states.length) {
+      // There were dead states
+      int[] newStates = new int[upto];
+      System.arraycopy(states, 0, newStates, 0, upto);
+      states = newStates;
+    }
+
+    // Reverse the order:
+    for(int i=0;i<states.length/2;i++) {
+      int s = states[i];
+      states[i] = states[states.length-1-i];
+      states[states.length-1-i] = s;
+    }
+
+    return states;
+  }
+
+  private static int topoSortStatesRecurse(Automaton a, BitSet visited, int[] states, int upto, int state) {
+    Transition t = new Transition();
+    int count = a.initTransition(state, t);
+    for (int i=0;i<count;i++) {
+      a.getNextTransition(t);
+      if (!visited.get(t.dest)) {
+        visited.set(t.dest);
+        upto = topoSortStatesRecurse(a, visited, states, upto, t.dest);
+      }
+    }
+    states[upto] = state;
+    upto++;
+    return upto;
   }
 }

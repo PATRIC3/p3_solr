@@ -13,8 +13,8 @@ import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BitDocIdSet;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LuceneTestCase;
 
@@ -45,15 +45,18 @@ public class TestScorerPerf extends LuceneTestCase {
   Directory d;
 
   // TODO: this should be setUp()....
-  public void createDummySearcher() throws Exception {
+  public void createDummySearcher(int maxDoc) throws Exception {
       // Create a dummy index with nothing in it.
     // This could possibly fail if Lucene starts checking for docid ranges...
     d = newDirectory();
     IndexWriter iw = new IndexWriter(d, newIndexWriterConfig(new MockAnalyzer(random())));
-    iw.addDocument(new Document());
-    iw.close();
-    r = DirectoryReader.open(d);
+    for (int i = 0; i < maxDoc; ++i) {
+      iw.addDocument(new Document());
+    }
+    iw.forceMerge(1);
+    r = DirectoryReader.open(iw, false);
     s = newSearcher(r);
+    iw.close();
   }
 
   public void createRandomTerms(int nDocs, int nTerms, double power, Directory dir) throws Exception {
@@ -150,6 +153,7 @@ public class TestScorerPerf extends LuceneTestCase {
     @Override
     public DocIdSet getDocIdSet(LeafReaderContext context, Bits acceptDocs) throws IOException {
       assertNull("acceptDocs should be null, as we have an index without deletions", acceptDocs);
+      assertEquals(context.reader().maxDoc(), docs.length());
       return new BitDocIdSet(docs);
     }
 
@@ -172,9 +176,9 @@ public class TestScorerPerf extends LuceneTestCase {
     }
   }
 
-  FixedBitSet addClause(BooleanQuery bq, FixedBitSet result) {
+  FixedBitSet addClause(BooleanQuery.Builder bq, FixedBitSet result) {
     final FixedBitSet rnd = sets[random().nextInt(sets.length)];
-    Query q = new ConstantScoreQuery(new BitSetFilter(rnd));
+    Query q = new BitSetFilter(rnd);
     bq.add(q, BooleanClause.Occur.MUST);
     if (validate) {
       if (result==null) result = rnd.clone();
@@ -189,7 +193,7 @@ public class TestScorerPerf extends LuceneTestCase {
 
     for (int i=0; i<iter; i++) {
       int nClauses = random().nextInt(maxClauses-1)+2; // min 2 clauses
-      BooleanQuery bq = new BooleanQuery();
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
       FixedBitSet result=null;
       for (int j=0; j<nClauses; j++) {
         result = addClause(bq,result);
@@ -197,7 +201,7 @@ public class TestScorerPerf extends LuceneTestCase {
 
       CountingHitCollector hc = validate ? new MatchingHitCollector(result)
                                          : new CountingHitCollector();
-      s.search(bq, hc);
+      s.search(bq.build(), hc);
       ret += hc.getSum();
 
       if (validate) assertEquals(result.cardinality(), hc.getCount());
@@ -213,23 +217,23 @@ public class TestScorerPerf extends LuceneTestCase {
 
     for (int i=0; i<iter; i++) {
       int oClauses = random().nextInt(maxOuterClauses-1)+2;
-      BooleanQuery oq = new BooleanQuery();
+      BooleanQuery.Builder oq = new BooleanQuery.Builder();
       FixedBitSet result=null;
 
       for (int o=0; o<oClauses; o++) {
 
       int nClauses = random().nextInt(maxClauses-1)+2; // min 2 clauses
-      BooleanQuery bq = new BooleanQuery();
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
       for (int j=0; j<nClauses; j++) {
         result = addClause(bq,result);
       }
 
-      oq.add(bq, BooleanClause.Occur.MUST);
+      oq.add(bq.build(), BooleanClause.Occur.MUST);
       } // outer
 
       CountingHitCollector hc = validate ? new MatchingHitCollector(result)
                                          : new CountingHitCollector();
-      s.search(oq, hc);
+      s.search(oq.build(), hc);
       nMatches += hc.getCount();
       ret += hc.getSum();
       if (validate) assertEquals(result.cardinality(), hc.getCount());
@@ -250,7 +254,7 @@ public class TestScorerPerf extends LuceneTestCase {
     long nMatches=0;
     for (int i=0; i<iter; i++) {
       int nClauses = random().nextInt(maxClauses-1)+2; // min 2 clauses
-      BooleanQuery bq = new BooleanQuery();
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
       BitSet termflag = new BitSet(termsInIndex);
       for (int j=0; j<nClauses; j++) {
         int tnum;
@@ -264,7 +268,7 @@ public class TestScorerPerf extends LuceneTestCase {
       }
 
       CountingHitCollector hc = new CountingHitCollector();
-      s.search(bq, hc);
+      s.search(bq.build(), hc);
       nMatches += hc.getCount();
       ret += hc.getSum();
     }
@@ -284,11 +288,11 @@ public class TestScorerPerf extends LuceneTestCase {
     long nMatches=0;
     for (int i=0; i<iter; i++) {
       int oClauses = random().nextInt(maxOuterClauses-1)+2;
-      BooleanQuery oq = new BooleanQuery();
+      BooleanQuery.Builder oq = new BooleanQuery.Builder();
       for (int o=0; o<oClauses; o++) {
 
       int nClauses = random().nextInt(maxClauses-1)+2; // min 2 clauses
-      BooleanQuery bq = new BooleanQuery();
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
       BitSet termflag = new BitSet(termsInIndex);
       for (int j=0; j<nClauses; j++) {
         int tnum;
@@ -301,12 +305,12 @@ public class TestScorerPerf extends LuceneTestCase {
         bq.add(tq, BooleanClause.Occur.MUST);
       } // inner
 
-      oq.add(bq, BooleanClause.Occur.MUST);
+      oq.add(bq.build(), BooleanClause.Occur.MUST);
       } // outer
 
 
       CountingHitCollector hc = new CountingHitCollector();
-      s.search(oq, hc);
+      s.search(oq.build(), hc);
       nMatches += hc.getCount();     
       ret += hc.getSum();
     }
@@ -324,12 +328,14 @@ public class TestScorerPerf extends LuceneTestCase {
 
     for (int i=0; i<iter; i++) {
       int nClauses = random().nextInt(maxClauses-1)+2; // min 2 clauses
-      PhraseQuery q = new PhraseQuery();
+      PhraseQuery.Builder builder = new PhraseQuery.Builder();
       for (int j=0; j<nClauses; j++) {
         int tnum = random().nextInt(termsInIndex);
-        q.add(new Term("f",Character.toString((char)(tnum+'A'))), j);
+        builder.add(new Term("f", Character.toString((char)(tnum+'A'))));
       }
-      q.setSlop(termsInIndex);  // this could be random too
+      // slop could be random too
+      builder.setSlop(termsInIndex);
+      PhraseQuery q = builder.build();
 
       CountingHitCollector hc = new CountingHitCollector();
       s.search(q, hc);
@@ -342,9 +348,10 @@ public class TestScorerPerf extends LuceneTestCase {
 
   public void testConjunctions() throws Exception {
     // test many small sets... the bugs will be found on boundary conditions
-    createDummySearcher();
     validate=true;
-    sets=randBitSets(atLeast(1000), atLeast(10));
+    final int maxDoc = atLeast(10);
+    createDummySearcher(maxDoc);
+    sets=randBitSets(atLeast(1000), maxDoc);
     doConjunctions(atLeast(10000), atLeast(5));
     doNestedConjunctions(atLeast(10000), atLeast(3), atLeast(3));
     r.close();

@@ -21,7 +21,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import net.agkn.hll.HLL;
+import org.apache.solr.util.hll.HLL;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.MultiDocValues;
 import org.apache.lucene.index.SortedDocValues;
@@ -311,7 +311,8 @@ class UniqueMultivaluedSlotAcc extends UniqueSlotAcc implements UnInvertedField.
       bits = new FixedBitSet(nTerms);
       arr[slotNum] = bits;
     }
-    docToTerm.getTerms(doc + currentDocBase, this);  // this will call back to our Callback.call(int termNum)
+    docToTerm.getBigTerms(doc + currentDocBase, this);  // this will call back to our Callback.call(int termNum)
+    docToTerm.getSmallTerms(doc + currentDocBase, this);
   }
 
   @Override

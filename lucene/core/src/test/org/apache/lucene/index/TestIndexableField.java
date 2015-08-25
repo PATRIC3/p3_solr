@@ -267,14 +267,14 @@ public class TestIndexableField extends LuceneTestCase {
             TermsEnum termsEnum = tfv.iterator();
             assertEquals(new BytesRef(""+counter), termsEnum.next());
             assertEquals(1, termsEnum.totalTermFreq());
-            PostingsEnum dpEnum = termsEnum.postings(null, null, PostingsEnum.ALL);
+            PostingsEnum dpEnum = termsEnum.postings(null, PostingsEnum.ALL);
             assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
             assertEquals(1, dpEnum.freq());
             assertEquals(1, dpEnum.nextPosition());
 
             assertEquals(new BytesRef("text"), termsEnum.next());
             assertEquals(1, termsEnum.totalTermFreq());
-            dpEnum = termsEnum.postings(null, dpEnum, PostingsEnum.ALL);
+            dpEnum = termsEnum.postings(dpEnum, PostingsEnum.ALL);
             assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
             assertEquals(1, dpEnum.freq());
             assertEquals(0, dpEnum.nextPosition());
@@ -288,17 +288,17 @@ public class TestIndexableField extends LuceneTestCase {
             assertTrue(vectors == null || vectors.terms(name) == null);
           }
 
-          BooleanQuery bq = new BooleanQuery();
+          BooleanQuery.Builder bq = new BooleanQuery.Builder();
           bq.add(new TermQuery(new Term("id", ""+id)), BooleanClause.Occur.MUST);
           bq.add(new TermQuery(new Term(name, "text")), BooleanClause.Occur.MUST);
-          final TopDocs hits2 = s.search(bq, 1);
+          final TopDocs hits2 = s.search(bq.build(), 1);
           assertEquals(1, hits2.totalHits);
           assertEquals(docID, hits2.scoreDocs[0].doc);
 
-          bq = new BooleanQuery();
+          bq = new BooleanQuery.Builder();
           bq.add(new TermQuery(new Term("id", ""+id)), BooleanClause.Occur.MUST);
           bq.add(new TermQuery(new Term(name, ""+counter)), BooleanClause.Occur.MUST);
-          final TopDocs hits3 = s.search(bq, 1);
+          final TopDocs hits3 = s.search(bq.build(), 1);
           assertEquals(1, hits3.totalHits);
           assertEquals(docID, hits3.scoreDocs[0].doc);
         }

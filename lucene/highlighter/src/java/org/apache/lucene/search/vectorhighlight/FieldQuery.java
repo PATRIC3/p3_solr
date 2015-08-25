@@ -29,6 +29,7 @@ import java.util.Set;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.CommonTermsQuery;
+import org.apache.lucene.queries.CustomScoreQuery;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.ConstantScoreQuery;
@@ -127,7 +128,12 @@ public class FieldQuery {
       if (q != null) {
         flatten( applyParentBoost( q, sourceQuery ), reader, flatQueries);
       }
-    } else if (reader != null){
+    } else if (sourceQuery instanceof CustomScoreQuery) {
+      final Query q = ((CustomScoreQuery) sourceQuery).getSubQuery();
+      if (q != null) {
+        flatten( applyParentBoost( q, sourceQuery ), reader, flatQueries);
+      }
+    } else if (reader != null) {
       Query query = sourceQuery;
       if (sourceQuery instanceof MultiTermQuery) {
         MultiTermQuery copy = (MultiTermQuery) sourceQuery.clone();
@@ -226,13 +232,14 @@ public class FieldQuery {
         }
       }
       if( overlap && src.length - i < dest.length ){
-        PhraseQuery pq = new PhraseQuery();
+        PhraseQuery.Builder pqBuilder = new PhraseQuery.Builder();
         for( Term srcTerm : src )
-          pq.add( srcTerm );
+          pqBuilder.add( srcTerm );
         for( int k = src.length - i; k < dest.length; k++ ){
-          pq.add( new Term( src[0].field(), dest[k].text() ) );
+          pqBuilder.add( new Term( src[0].field(), dest[k].text() ) );
         }
-        pq.setSlop( slop );
+        pqBuilder.setSlop( slop );
+        PhraseQuery pq = pqBuilder.build();
         pq.setBoost( boost );
         if(!expandQueries.contains( pq ) )
           expandQueries.add( pq );
@@ -303,7 +310,7 @@ public class FieldQuery {
       }
       else if (query instanceof MultiTermQuery && reader != null) {
         BooleanQuery mtqTerms = (BooleanQuery) query.rewrite(reader);
-        for (BooleanClause clause : mtqTerms.getClauses()) {
+        for (BooleanClause clause : mtqTerms) {
           termSet.add (((TermQuery) clause.getQuery()).getTerm().text());
         }
       }

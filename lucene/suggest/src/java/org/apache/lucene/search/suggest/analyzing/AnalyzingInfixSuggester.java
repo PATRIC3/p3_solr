@@ -53,7 +53,6 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.MergePolicy;
 import org.apache.lucene.index.MultiDocValues;
 import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.index.SegmentReader;
@@ -382,7 +381,7 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
 
   /** Updates a previous suggestion, matching the exact same
    *  text as before.  Use this to change the weight or
-   *  payload of an already added suggstion.  If you know
+   *  payload of an already added suggestion.  If you know
    *  this text is not already present you can use {@link
    *  #add} instead.  After adding or updating a batch of
    *  new suggestions, you must call {@link #refresh} in the
@@ -476,12 +475,12 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
       return null;
     }
     
-    BooleanQuery contextFilter = new BooleanQuery();
+    BooleanQuery.Builder contextFilter = new BooleanQuery.Builder();
     for (Map.Entry<BytesRef,BooleanClause.Occur> entry : contextInfo.entrySet()) {
       addContextToQuery(contextFilter, entry.getKey(), entry.getValue());
     }
     
-    return contextFilter;
+    return contextFilter.build();
   }
 
   private BooleanQuery toQuery(Set<BytesRef> contextInfo) {
@@ -489,11 +488,11 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
       return null;
     }
     
-    BooleanQuery contextFilter = new BooleanQuery();
+    BooleanQuery.Builder contextFilter = new BooleanQuery.Builder();
     for (BytesRef context : contextInfo) {
       addContextToQuery(contextFilter, context, BooleanClause.Occur.SHOULD);
     }
-    return contextFilter;
+    return contextFilter.build();
   }
 
   
@@ -505,7 +504,7 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
    * @param context the context
    * @param clause one of {@link Occur}
    */
-  public void addContextToQuery(BooleanQuery query, BytesRef context, BooleanClause.Occur clause) {
+  public void addContextToQuery(BooleanQuery.Builder query, BytesRef context, BooleanClause.Occur clause) {
     // NOTE: we "should" wrap this in
     // ConstantScoreQuery, or maybe send this as a
     // Filter instead to search.
@@ -540,7 +539,7 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
       occur = BooleanClause.Occur.SHOULD;
     }
 
-    BooleanQuery query;
+    BooleanQuery.Builder query;
     Set<String> matchedTokens;
     String prefixToken = null;
 
@@ -550,7 +549,7 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
       final CharTermAttribute termAtt = ts.addAttribute(CharTermAttribute.class);
       final OffsetAttribute offsetAtt = ts.addAttribute(OffsetAttribute.class);
       String lastToken = null;
-      query = new BooleanQuery();
+      query = new BooleanQuery.Builder();
       int maxEndOffset = -1;
       matchedTokens = new HashSet<>();
       while (ts.incrementToken()) {
@@ -623,8 +622,8 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
 
     // We sorted postings by weight during indexing, so we
     // only retrieve the first num hits now:
-    final MergePolicy mergePolicy = writer.getConfig().getMergePolicy();
-    Collector c2 = new EarlyTerminatingSortingCollector(c, SORT, num, (SortingMergePolicy) mergePolicy);
+    final SortingMergePolicy sortingMergePolicy = (SortingMergePolicy) writer.getConfig().getMergePolicy();
+    Collector c2 = new EarlyTerminatingSortingCollector(c, SORT, num, sortingMergePolicy.getSort());
     IndexSearcher searcher = searcherMgr.acquire();
     List<LookupResult> results = null;
     try {
@@ -712,8 +711,8 @@ public class AnalyzingInfixSuggester extends Lookup implements Closeable {
 
   /** Subclass can override this to tweak the Query before
    *  searching. */
-  protected Query finishQuery(BooleanQuery in, boolean allTermsRequired) {
-    return in;
+  protected Query finishQuery(BooleanQuery.Builder in, boolean allTermsRequired) {
+    return in.build();
   }
 
   /** Override this method to customize the Object

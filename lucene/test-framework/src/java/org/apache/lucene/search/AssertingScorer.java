@@ -27,23 +27,26 @@ public class AssertingScorer extends Scorer {
 
   static enum IteratorState { START, APPROXIMATING, ITERATING, FINISHED };
 
-  public static Scorer wrap(Random random, Scorer other) {
-    if (other == null || other instanceof AssertingScorer) {
-      return other;
+  public static Scorer wrap(Random random, Scorer other, boolean canScore) {
+    if (other == null) {
+      return null;
     }
-    return new AssertingScorer(random, other);
+    return new AssertingScorer(random, other, canScore);
   }
 
   final Random random;
   final Scorer in;
+  final boolean needsScores;
 
   IteratorState state = IteratorState.START;
-  int doc = -1;
+  int doc;
 
-  private AssertingScorer(Random random, Scorer in) {
+  private AssertingScorer(Random random, Scorer in, boolean needsScores) {
     super(in.weight);
     this.random = random;
     this.in = in;
+    this.needsScores = needsScores;
+    this.doc = in.docID();
   }
 
   public Scorer getIn() {
@@ -63,6 +66,7 @@ public class AssertingScorer extends Scorer {
 
   @Override
   public float score() throws IOException {
+    assert needsScores;
     assert iterating();
     final float score = in.score();
     assert !Float.isNaN(score) : "NaN score for in="+in;
@@ -80,13 +84,13 @@ public class AssertingScorer extends Scorer {
 
   @Override
   public int freq() throws IOException {
+    assert needsScores;
     assert iterating();
     return in.freq();
   }
 
   @Override
   public int docID() {
-    assert state != IteratorState.APPROXIMATING : "calling docId() on the Scorer while the match has not been confirmed";
     return in.docID();
   }
 
@@ -155,7 +159,7 @@ public class AssertingScorer extends Scorer {
           state = IteratorState.APPROXIMATING;
         }
         assert inApproximation.docID() == nextDoc;
-        return nextDoc;
+        return doc = nextDoc;
       }
 
       @Override
@@ -170,7 +174,7 @@ public class AssertingScorer extends Scorer {
           state = IteratorState.APPROXIMATING;
         }
         assert inApproximation.docID() == advanced;
-        return advanced;
+        return doc = advanced;
       }
 
       @Override

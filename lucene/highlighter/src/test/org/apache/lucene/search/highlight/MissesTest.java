@@ -46,10 +46,10 @@ public class MissesTest extends LuceneTestCase {
 
   public void testBooleanQuery() throws IOException, InvalidTokenOffsetsException {
     try (Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)) {
-      final BooleanQuery query = new BooleanQuery();
+      final BooleanQuery.Builder query = new BooleanQuery.Builder();
       query.add(new TermQuery(new Term("test", "foo")), Occur.MUST);
       query.add(new TermQuery(new Term("test", "bar")), Occur.MUST);
-      final Highlighter highlighter = new Highlighter(new SimpleHTMLFormatter(), new QueryScorer(query));
+      final Highlighter highlighter = new Highlighter(new SimpleHTMLFormatter(), new QueryScorer(query.build()));
       assertEquals("this is a <B>foo</B> <B>bar</B> example",
           highlighter.getBestFragment(analyzer, "test", "this is a foo bar example"));
       assertNull(highlighter.getBestFragment(analyzer, "test", "this does not match"));
@@ -58,9 +58,7 @@ public class MissesTest extends LuceneTestCase {
 
   public void testPhraseQuery() throws IOException, InvalidTokenOffsetsException {
     try (Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)) {
-      final PhraseQuery query = new PhraseQuery();
-      query.add(new Term("test", "foo"));
-      query.add(new Term("test", "bar"));
+      final PhraseQuery query = new PhraseQuery("test", "foo", "bar");
       final Highlighter highlighter = new Highlighter(new SimpleHTMLFormatter(), new QueryScorer(query));
       assertEquals("this is a <B>foo</B> <B>bar</B> example",
           highlighter.getBestFragment(analyzer, "test", "this is a foo bar example"));

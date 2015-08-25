@@ -20,6 +20,7 @@ package org.apache.solr.client.solrj.embedded;
 import org.eclipse.jetty.servlet.ServletHolder;
 
 import javax.servlet.Filter;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -30,6 +31,8 @@ public class JettyConfig {
   public final String context;
 
   public final boolean stopAtShutdown;
+  
+  public final Long waitForLoadingCoresToFinishMs;
 
   public final Map<ServletHolder, String> extraServlets;
 
@@ -37,11 +40,12 @@ public class JettyConfig {
 
   public final SSLConfig sslConfig;
 
-  private JettyConfig(int port, String context, boolean stopAtShutdown, Map<ServletHolder, String> extraServlets,
+  private JettyConfig(int port, String context, boolean stopAtShutdown, Long waitForLoadingCoresToFinishMs, Map<ServletHolder, String> extraServlets,
                       Map<Class<? extends Filter>, String> extraFilters, SSLConfig sslConfig) {
     this.port = port;
     this.context = context;
     this.stopAtShutdown = stopAtShutdown;
+    this.waitForLoadingCoresToFinishMs = waitForLoadingCoresToFinishMs;
     this.extraServlets = extraServlets;
     this.extraFilters = extraFilters;
     this.sslConfig = sslConfig;
@@ -67,8 +71,9 @@ public class JettyConfig {
     int port = 0;
     String context = "/solr";
     boolean stopAtShutdown = true;
+    Long waitForLoadingCoresToFinishMs = 300000L;
     Map<ServletHolder, String> extraServlets = new TreeMap<>();
-    Map<Class<? extends Filter>, String> extraFilters = new TreeMap<>();
+    Map<Class<? extends Filter>, String> extraFilters = new LinkedHashMap<>();
     SSLConfig sslConfig = null;
 
     public Builder setPort(int port) {
@@ -85,9 +90,14 @@ public class JettyConfig {
       this.stopAtShutdown = stopAtShutdown;
       return this;
     }
+    
+    public Builder waitForLoadingCoresToFinish(Long waitForLoadingCoresToFinishMs) {
+      this.waitForLoadingCoresToFinishMs = waitForLoadingCoresToFinishMs;
+      return this;
+    }
 
-    public Builder withServlet(ServletHolder servlet, String servletName) {
-      extraServlets.put(servlet, servletName);
+    public Builder withServlet(ServletHolder servlet, String pathSpec) {
+      extraServlets.put(servlet, pathSpec);
       return this;
     }
 
@@ -97,8 +107,8 @@ public class JettyConfig {
       return this;
     }
 
-    public Builder withFilter(Class<? extends Filter> filterClass, String filterName) {
-      extraFilters.put(filterClass, filterName);
+    public Builder withFilter(Class<? extends Filter> filterClass, String pathSpec) {
+      extraFilters.put(filterClass, pathSpec);
       return this;
     }
 
@@ -114,7 +124,7 @@ public class JettyConfig {
     }
 
     public JettyConfig build() {
-      return new JettyConfig(port, context, stopAtShutdown, extraServlets, extraFilters, sslConfig);
+      return new JettyConfig(port, context, stopAtShutdown, waitForLoadingCoresToFinishMs, extraServlets, extraFilters, sslConfig);
     }
 
   }

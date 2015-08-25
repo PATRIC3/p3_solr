@@ -52,6 +52,7 @@ import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CollectionParams;
 import org.apache.solr.common.util.IOUtils;
+import org.apache.solr.common.util.Utils;
 import org.apache.solr.core.CloudConfig;
 import org.apache.solr.handler.admin.CollectionsHandler;
 import org.apache.solr.handler.component.ShardHandler;
@@ -67,7 +68,6 @@ import org.slf4j.LoggerFactory;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.ONLY_ACTIVE_NODES;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.SHARD_UNIQUE;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.BALANCESHARDUNIQUE;
-import static org.apache.solr.common.params.CommonParams.NAME;
 
 /**
  * Cluster leader. Responsible for processing state updates, node assignments, creating/deleting
@@ -78,9 +78,11 @@ public class Overseer implements Closeable {
 
   public static final int STATE_UPDATE_DELAY = 1500;  // delay between cloud state updates
 
+  public static final int NUM_RESPONSES_TO_STORE = 10000;
+  
   private static Logger log = LoggerFactory.getLogger(Overseer.class);
 
-  static enum LeaderStatus {DONT_KNOW, NO, YES}
+  enum LeaderStatus {DONT_KNOW, NO, YES}
 
   private class ClusterStateUpdater implements Runnable, Closeable {
     
@@ -149,7 +151,7 @@ public class Overseer implements Closeable {
 
           if (refreshClusterState) {
             try {
-              reader.updateClusterState(true);
+              reader.updateClusterState();
               clusterState = reader.getClusterState();
               refreshClusterState = false;
 
@@ -301,7 +303,7 @@ public class Overseer implements Closeable {
         return;
       }
       try {
-        Map m = (Map) ZkStateReader.fromJSON(data);
+        Map m = (Map) Utils.fromJSON(data);
         String id = (String) m.get("id");
         if(overseerCollectionProcessor.getId().equals(id)){
           try {
@@ -900,16 +902,16 @@ public class Overseer implements Closeable {
     return new DistributedMap(zkClient, "/overseer/collection-map-running", null);
   }
 
-  /* Internal map for successfully completed tasks, not to be used outside of the Overseer */
+  /* Size-limited map for successfully completed tasks*/
   static DistributedMap getCompletedMap(final SolrZkClient zkClient) {
     createOverseerNode(zkClient);
-    return new DistributedMap(zkClient, "/overseer/collection-map-completed", null);
+    return new SizeLimitedDistributedMap(zkClient, "/overseer/collection-map-completed", null, NUM_RESPONSES_TO_STORE);
   }
 
-  /* Internal map for failed tasks, not to be used outside of the Overseer */
+  /* Map for failed tasks, not to be used outside of the Overseer */
   static DistributedMap getFailureMap(final SolrZkClient zkClient) {
     createOverseerNode(zkClient);
-    return new DistributedMap(zkClient, "/overseer/collection-map-failure", null);
+    return new SizeLimitedDistributedMap(zkClient, "/overseer/collection-map-failure", null, NUM_RESPONSES_TO_STORE);
   }
   
   /* Collection creation queue */

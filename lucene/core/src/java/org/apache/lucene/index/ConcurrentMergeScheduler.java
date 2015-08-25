@@ -214,6 +214,11 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
     updateMergeThreads();
   }
 
+  /** Returns true if auto IO throttling is currently enabled. */
+  public synchronized boolean getAutoIOThrottle() {
+    return doAutoIOThrottle;
+  }
+
   /** Returns the currently set per-merge IO writes rate limit, if {@link #enableAutoIOThrottle}
    *  was called, else {@code Double.POSITIVE_INFINITY}. */
   public synchronized double getIORateLimitMBPerSec() {
@@ -409,7 +414,9 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
         MergeThread toSync = null;
         synchronized (this) {
           for (MergeThread t : mergeThreads) {
-            if (t.isAlive()) {
+            // In case a merge thread is calling us, don't try to sync on
+            // itself, since that will never finish!
+            if (t.isAlive() && t != Thread.currentThread()) {
               toSync = t;
               break;
             }
@@ -658,18 +665,6 @@ public class ConcurrentMergeScheduler extends MergeScheduler {
   /** Called when an exception is hit in a background merge
    *  thread */
   protected void handleMergeException(Directory dir, Throwable exc) {
-    try {
-      // When an exception is hit during merge, IndexWriter
-      // removes any partial files and then allows another
-      // merge to run.  If whatever caused the error is not
-      // transient then the exception will keep happening,
-      // so, we sleep here to avoid saturating CPU in such
-      // cases:
-      Thread.sleep(250);
-    } catch (InterruptedException ie) {
-      throw new ThreadInterruptedException(ie);
-    }
-
     throw new MergePolicy.MergeException(exc, dir);
   }
 

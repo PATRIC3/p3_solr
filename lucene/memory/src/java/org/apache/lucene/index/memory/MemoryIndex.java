@@ -453,18 +453,16 @@ public class MemoryIndex {
       PositionIncrementAttribute posIncrAttribute = stream.addAttribute(PositionIncrementAttribute.class);
       OffsetAttribute offsetAtt = stream.addAttribute(OffsetAttribute.class);
       PayloadAttribute payloadAtt = storePayloads ? stream.addAttribute(PayloadAttribute.class) : null;
-      BytesRef ref = termAtt.getBytesRef();
       stream.reset();
       
       while (stream.incrementToken()) {
-        termAtt.fillBytesRef();
 //        if (DEBUG) System.err.println("token='" + term + "'");
         numTokens++;
         final int posIncr = posIncrAttribute.getPositionIncrement();
         if (posIncr == 0)
           numOverlapTokens++;
         pos += posIncr;
-        int ord = terms.add(ref);
+        int ord = terms.add(termAtt.getBytesRef());
         if (ord < 0) {
           ord = (-ord) - 1;
           postingsWriter.reset(sliceArray.end[ord]);
@@ -989,12 +987,12 @@ public class MemoryIndex {
       }
 
       @Override
-      public PostingsEnum postings(Bits liveDocs, PostingsEnum reuse, int flags) {
+      public PostingsEnum postings(PostingsEnum reuse, int flags) {
         if (reuse == null || !(reuse instanceof MemoryPostingsEnum)) {
           reuse = new MemoryPostingsEnum();
         }
         final int ord = info.sortedTerms[termUpto];
-        return ((MemoryPostingsEnum) reuse).reset(liveDocs, info.sliceArray.start[ord], info.sliceArray.end[ord], info.sliceArray.freq[ord]);
+        return ((MemoryPostingsEnum) reuse).reset(info.sliceArray.start[ord], info.sliceArray.end[ord], info.sliceArray.freq[ord]);
       }
 
       @Override
@@ -1016,7 +1014,6 @@ public class MemoryIndex {
       private final SliceReader sliceReader;
       private int posUpto; // for assert
       private boolean hasNext;
-      private Bits liveDocs;
       private int doc = -1;
       private int freq;
       private int pos;
@@ -1030,8 +1027,7 @@ public class MemoryIndex {
         this.payloadBuilder = storePayloads ? new BytesRefBuilder() : null;
       }
 
-      public PostingsEnum reset(Bits liveDocs, int start, int end, int freq) {
-        this.liveDocs = liveDocs;
+      public PostingsEnum reset(int start, int end, int freq) {
         this.sliceReader.reset(start, end);
         posUpto = 0; // for assert
         hasNext = true;
@@ -1049,7 +1045,7 @@ public class MemoryIndex {
       @Override
       public int nextDoc() {
         pos = -1;
-        if (hasNext && (liveDocs == null || liveDocs.get(0))) {
+        if (hasNext) {
           hasNext = false;
           return doc = 0;
         } else {

@@ -27,12 +27,8 @@ import org.apache.lucene.index.NoMergePolicy;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.FieldDoc;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.PrefixQuery;
-import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
@@ -189,12 +185,6 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     docs.add(document);
     w.addDocuments(docs);
 
-    // This doc will not be included, because it doesn't have nested docs
-    document = new Document();
-    document.add(new StringField("__type", "parent", Field.Store.NO));
-    document.add(new StringField("field1", "h", Field.Store.NO));
-    w.addDocument(document);
-
     docs.clear();
     document = new Document();
     document.add(new StringField("field2", "m", Field.Store.NO));
@@ -218,24 +208,14 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     w.addDocuments(docs);
     w.commit();
 
-    // Some garbage docs, just to check if the NestedFieldComparator can deal with this.
-    document = new Document();
-    document.add(new StringField("fieldXXX", "x", Field.Store.NO));
-    w.addDocument(document);
-    document = new Document();
-    document.add(new StringField("fieldXXX", "x", Field.Store.NO));
-    w.addDocument(document);
-    document = new Document();
-    document.add(new StringField("fieldXXX", "x", Field.Store.NO));
-    w.addDocument(document);
-
     IndexSearcher searcher = new IndexSearcher(DirectoryReader.open(w.w, false));
     w.close();
-    BitDocIdSetFilter parentFilter = new BitDocIdSetCachingWrapperFilter(new QueryWrapperFilter(new TermQuery(new Term("__type", "parent"))));
-    BitDocIdSetFilter childFilter = new BitDocIdSetCachingWrapperFilter(new QueryWrapperFilter(new PrefixQuery(new Term("field2"))));
+    BitSetProducer parentFilter = new QueryBitSetProducer(new TermQuery(new Term("__type", "parent")));
+    CheckJoinIndex.check(searcher.getIndexReader(), parentFilter);
+    BitSetProducer childFilter = new QueryBitSetProducer(new PrefixQuery(new Term("field2")));
     ToParentBlockJoinQuery query = new ToParentBlockJoinQuery(
-        new FilteredQuery(new MatchAllDocsQuery(), childFilter),
-        new BitDocIdSetCachingWrapperFilter(parentFilter),
+        new PrefixQuery(new Term("field2")),
+        parentFilter,
         ScoreMode.None
     );
 
@@ -285,7 +265,7 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     topDocs = searcher.search(query, 5, sort);
     assertEquals(topDocs.totalHits, 7);
     assertEquals(5, topDocs.scoreDocs.length);
-    assertEquals(28, topDocs.scoreDocs[0].doc);
+    assertEquals(27, topDocs.scoreDocs[0].doc);
     assertEquals("o", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[0]).fields[0]).utf8ToString());
     assertEquals(23, topDocs.scoreDocs[1].doc);
     assertEquals("m", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[1]).fields[0]).utf8ToString());
@@ -297,10 +277,10 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     assertEquals("g", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[4]).fields[0]).utf8ToString());
 
     // Sort by field descending, order last, sort filter (filter_1:T)
-    childFilter = new BitDocIdSetCachingWrapperFilter(new QueryWrapperFilter(new TermQuery((new Term("filter_1", "T")))));
+    childFilter = new QueryBitSetProducer(new TermQuery((new Term("filter_1", "T"))));
     query = new ToParentBlockJoinQuery(
-        new FilteredQuery(new MatchAllDocsQuery(), childFilter),
-        new BitDocIdSetCachingWrapperFilter(parentFilter),
+        new TermQuery((new Term("filter_1", "T"))),
+        parentFilter,
         ScoreMode.None
     );
     sortField = new ToParentBlockJoinSortField(
@@ -312,7 +292,7 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     assertEquals(5, topDocs.scoreDocs.length);
     assertEquals(23, topDocs.scoreDocs[0].doc);
     assertEquals("m", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[0]).fields[0]).utf8ToString());
-    assertEquals(28, topDocs.scoreDocs[1].doc);
+    assertEquals(27, topDocs.scoreDocs[1].doc);
     assertEquals("m", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[1]).fields[0]).utf8ToString());
     assertEquals(11, topDocs.scoreDocs[2].doc);
     assertEquals("g", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[2]).fields[0]).utf8ToString());

@@ -51,12 +51,6 @@ public class SolrCloudExampleTest extends AbstractFullDistribZkTestBase {
     sliceCount = 2;
   }
 
-  @Override
-  public void distribSetUp() throws Exception {
-    super.distribSetUp();
-    System.setProperty("numShards", Integer.toString(sliceCount));
-  }
-
   @Test
   public void testLoadDocsIntoGettingStartedCollection() throws Exception {
     waitForThingsToLevelOut(30000);
@@ -75,7 +69,6 @@ public class SolrCloudExampleTest extends AbstractFullDistribZkTestBase {
 
     // create the gettingstarted collection just like the bin/solr script would do
     String[] args = new String[] {
-        "create_collection",
         "-name", testCollectionName,
         "-shards", "2",
         "-replicationFactor", "2",
@@ -84,6 +77,9 @@ public class SolrCloudExampleTest extends AbstractFullDistribZkTestBase {
         "-configsetsDir", data_driven_schema_configs.getParentFile().getParentFile().getAbsolutePath(),
         "-solrUrl", solrUrl
     };
+
+    // NOTE: not calling SolrCLI.main as the script does because it calls System.exit which is a no-no in a JUnit test
+
     SolrCLI.CreateCollectionTool tool = new SolrCLI.CreateCollectionTool();
     CommandLine cli = SolrCLI.processCommandLineArgs(SolrCLI.joinCommonAndToolOptions(tool.getOptions()), args);
     log.info("Creating the '"+testCollectionName+"' collection using SolrCLI with: "+solrUrl);
@@ -153,7 +149,6 @@ public class SolrCloudExampleTest extends AbstractFullDistribZkTestBase {
 
   protected void doTestHealthcheck(String testCollectionName, String zkHost) throws Exception {
     String[] args = new String[]{
-        "healthcheck",
         "-collection", testCollectionName,
         "-zkHost", zkHost
     };
@@ -165,7 +160,6 @@ public class SolrCloudExampleTest extends AbstractFullDistribZkTestBase {
 
   protected void doTestDeleteAction(String testCollectionName, String solrUrl) throws Exception {
     String[] args = new String[] {
-        "delete",
         "-name", testCollectionName,
         "-solrUrl", solrUrl
     };
@@ -192,7 +186,6 @@ public class SolrCloudExampleTest extends AbstractFullDistribZkTestBase {
     String prop = "updateHandler.autoSoftCommit.maxTime";
     Long maxTime = new Long(3000L);
     String[] args = new String[]{
-        "config",
         "-collection", testCollectionName,
         "-property", prop,
         "-value", maxTime.toString(),

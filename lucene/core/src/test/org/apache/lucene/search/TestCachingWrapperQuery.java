@@ -83,18 +83,18 @@ public class TestCachingWrapperQuery extends LuceneTestCase {
   
   /** test null iterator */
   public void testEmpty() throws Exception {
-    Query expected = new BooleanQuery();
-    Query cached = new CachingWrapperQuery(expected, MAYBE_CACHE_POLICY);
-    assertQueryEquals(expected, cached);
+    BooleanQuery.Builder expected = new BooleanQuery.Builder();
+    Query cached = new CachingWrapperQuery(expected.build(), MAYBE_CACHE_POLICY);
+    assertQueryEquals(expected.build(), cached);
   }
   
   /** test iterator returns NO_MORE_DOCS */
   public void testEmpty2() throws Exception {
-    BooleanQuery expected = new BooleanQuery();
+    BooleanQuery.Builder expected = new BooleanQuery.Builder();
     expected.add(new TermQuery(new Term("id", "0")), BooleanClause.Occur.MUST);
     expected.add(new TermQuery(new Term("id", "0")), BooleanClause.Occur.MUST_NOT);
-    Query cached = new CachingWrapperQuery(expected, MAYBE_CACHE_POLICY);
-    assertQueryEquals(expected, cached);
+    Query cached = new CachingWrapperQuery(expected.build(), MAYBE_CACHE_POLICY);
+    assertQueryEquals(expected.build(), cached);
   }
   
   /** test iterator returns single document */
@@ -139,15 +139,15 @@ public class TestCachingWrapperQuery extends LuceneTestCase {
     CachingWrapperQuery cacher = new CachingWrapperQuery(filter, QueryCachingPolicy.ALWAYS_CACHE);
 
     // first time, nested filter is called
-    cacher.createWeight(searcher, false).scorer(context, context.reader().getLiveDocs());
+    searcher.rewrite(cacher).createWeight(searcher, false).scorer(context);
     assertTrue("first time", filter.wasCalled());
 
     // make sure no exception if cache is holding the wrong docIdSet
-    cacher.createWeight(searcher, false).scorer(context, context.reader().getLiveDocs());
+    searcher.rewrite(cacher).createWeight(searcher, false).scorer(context);
 
     // second time, nested filter should not be called
     filter.clear();
-    cacher.createWeight(searcher, false).scorer(context, context.reader().getLiveDocs());
+    searcher.rewrite(cacher).createWeight(searcher, false).scorer(context);
     assertFalse("second time", filter.wasCalled());
 
     reader.close();

@@ -1,5 +1,8 @@
 package org.apache.solr.common.util;
 
+import java.util.ArrayList;
+import java.util.Collection;
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -17,8 +20,15 @@ package org.apache.solr.common.util;
  * limitations under the License.
  */
 
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionHandler;
@@ -26,6 +36,7 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,42 +45,69 @@ import org.slf4j.MDC;
 
 public class ExecutorUtil {
   public static Logger log = LoggerFactory.getLogger(ExecutorUtil.class);
-  
+
+  private static volatile List<InheritableThreadLocalProvider> providers = new ArrayList<>();
+
+  public synchronized static void addThreadLocalProvider(InheritableThreadLocalProvider provider) {
+    for (InheritableThreadLocalProvider p : providers) {//this is to avoid accidental multiple addition of providers in tests
+      if (p.getClass().equals(provider.getClass())) return;
+    }
+    List<InheritableThreadLocalProvider> copy = new ArrayList<>(providers);
+    copy.add(provider);
+    providers = copy;
+  }
+
+  /** Any class which wants to carry forward the threadlocal values to the threads run
+   * by threadpools must implement this interface and the implementation should be
+   * registered here
+   */
+  public interface InheritableThreadLocalProvider {
+    /**This is invoked in the parent thread which submitted a task.
+     * copy the necessary Objects to the ctx. The object that is passed is same
+     * across all three methods
+     */
+    public void store(AtomicReference<?> ctx);
+
+    /**This is invoked in the Threadpool thread. set the appropriate values in the threadlocal
+     * of this thread.     */
+    public void set(AtomicReference<?> ctx);
+
+    /**This method is invoked in the threadpool thread after the execution
+     * clean all the variables set in the set method
+     */
+    public void clean(AtomicReference<?> ctx);
+  }
+
+  // this will interrupt the threads! Lucene and Solr do not like this because it can close channels, so only use
+  // this if you know what you are doing - you probably want shutdownAndAwaitTermination
   public static void shutdownNowAndAwaitTermination(ExecutorService pool) {
     pool.shutdown(); // Disable new tasks from being submitted
-    pool.shutdownNow(); // Cancel currently executing tasks
+    pool.shutdownNow(); // Cancel currently executing tasks  - NOTE: this interrupts!
     boolean shutdown = false;
     while (!shutdown) {
       try {
         // Wait a while for existing tasks to terminate
-        shutdown = pool.awaitTermination(5, TimeUnit.SECONDS);
+        shutdown = pool.awaitTermination(1, TimeUnit.SECONDS);
       } catch (InterruptedException ie) {
         // Preserve interrupt status
         Thread.currentThread().interrupt();
       }
       if (!shutdown) {
-        pool.shutdownNow(); // Cancel currently executing tasks
+        pool.shutdownNow(); // Cancel currently executing tasks - NOTE: this interrupts!
       }
     }
   }
-  
-  public static void shutdownAndAwaitTermination(ExecutorService pool) {
-    shutdownAndAwaitTermination(pool, 60, TimeUnit.SECONDS);
-  }
 
-  public static void shutdownAndAwaitTermination(ExecutorService pool, long timeout, TimeUnit timeUnit) {
+  public static void shutdownAndAwaitTermination(ExecutorService pool) {
     pool.shutdown(); // Disable new tasks from being submitted
     boolean shutdown = false;
     while (!shutdown) {
       try {
         // Wait a while for existing tasks to terminate
-        shutdown = pool.awaitTermination(timeout, timeUnit);
+        shutdown = pool.awaitTermination(1, TimeUnit.SECONDS);
       } catch (InterruptedException ie) {
         // Preserve interrupt status
         Thread.currentThread().interrupt();
-      }
-      if (!shutdown) {
-        pool.shutdownNow(); // Cancel currently executing tasks
       }
     }
   }
@@ -128,13 +166,37 @@ public class ExecutorUtil {
     @Override
     public void execute(final Runnable command) {
       final Map<String, String> submitterContext = MDC.getCopyOfContextMap();
-      String ctxStr = submitterContext != null && !submitterContext.isEmpty() ?
-          submitterContext.toString().replace("/", "//") : "";
+      StringBuilder contextString = new StringBuilder();
+      if (submitterContext != null) {
+        Collection<String> values = submitterContext.values();
+
+        for (String value : values) {
+          contextString.append(value + " ");
+        }
+        if (contextString.length() > 1) {
+          contextString.setLength(contextString.length() - 1);
+        }
+      }
+
+      String ctxStr = contextString.toString().replace("/", "//");
       final String submitterContextStr = ctxStr.length() <= MAX_THREAD_NAME_LEN ? ctxStr : ctxStr.substring(0, MAX_THREAD_NAME_LEN);
       final Exception submitterStackTrace = new Exception("Submitter stack trace");
+      final List<InheritableThreadLocalProvider> providersCopy = providers;
+      final ArrayList<AtomicReference> ctx = providersCopy.isEmpty() ? null : new ArrayList<AtomicReference>(providersCopy.size());
+      if (ctx != null) {
+        for (int i = 0; i < providers.size(); i++) {
+          AtomicReference reference = new AtomicReference();
+          ctx.add(reference);
+          providersCopy.get(i).store(reference);
+        }
+      }
       super.execute(new Runnable() {
         @Override
         public void run() {
+          isServerPool.set(Boolean.TRUE);
+          if (ctx != null) {
+            for (int i = 0; i < providersCopy.size(); i++) providersCopy.get(i).set(ctx.get(i));
+          }
           Map<String, String> threadContext = MDC.getCopyOfContextMap();
           final Thread currentThread = Thread.currentThread();
           final String oldName = currentThread.getName();
@@ -147,16 +209,20 @@ public class ExecutorUtil {
           try {
             command.run();
           } catch (Throwable t) {
-            if (t instanceof OutOfMemoryError)  {
+            if (t instanceof OutOfMemoryError) {
               throw t;
             }
             log.error("Uncaught exception {} thrown by thread: {}", t, currentThread.getName(), submitterStackTrace);
             throw t;
           } finally {
+            isServerPool.remove();
             if (threadContext != null && !threadContext.isEmpty()) {
               MDC.setContextMap(threadContext);
             } else {
               MDC.clear();
+            }
+            if (ctx != null) {
+              for (int i = 0; i < providersCopy.size(); i++) providersCopy.get(i).clean(ctx.get(i));
             }
             currentThread.setName(oldName);
           }
@@ -164,4 +230,11 @@ public class ExecutorUtil {
       });
     }
   }
+
+  private static final ThreadLocal<Boolean> isServerPool = new ThreadLocal<>();
+
+  public static boolean isSolrServerThread() {
+    return Boolean.TRUE.equals(isServerPool.get());
+  }
+
 }

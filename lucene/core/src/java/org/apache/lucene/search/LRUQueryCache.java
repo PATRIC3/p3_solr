@@ -28,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReader.CoreClosedListener;
@@ -36,7 +37,6 @@ import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.Accountables;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.RoaringDocIdSet;
 
@@ -557,11 +557,15 @@ public class LRUQueryCache implements QueryCache, Accountable {
 
     private final Weight in;
     private final QueryCachingPolicy policy;
+    // we use an AtomicBoolean because Weight.scorer may be called from multiple
+    // threads when IndexSearcher is created with threads
+    private final AtomicBoolean used;
 
     CachingWrapperWeight(Weight in, QueryCachingPolicy policy) {
       super(in.getQuery());
       this.in = in;
       this.policy = policy;
+      used = new AtomicBoolean(false);
     }
 
     @Override
@@ -582,15 +586,15 @@ public class LRUQueryCache implements QueryCache, Accountable {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, final Bits acceptDocs) throws IOException {
-      if (context.ord == 0) {
+    public Scorer scorer(LeafReaderContext context) throws IOException {
+      if (used.compareAndSet(false, true)) {
         policy.onUse(getQuery());
       }
       DocIdSet docIdSet = get(in.getQuery(), context);
       if (docIdSet == null) {
         if (cacheEntryHasReasonableWorstCaseSize(ReaderUtil.getTopLevelContext(context).reader().maxDoc())
             && policy.shouldCache(in.getQuery(), context)) {
-          final Scorer scorer = in.scorer(context, null);
+          final Scorer scorer = in.scorer(context);
           if (scorer == null) {
             docIdSet = DocIdSet.EMPTY;
           } else {
@@ -598,7 +602,7 @@ public class LRUQueryCache implements QueryCache, Accountable {
           }
           putIfAbsent(in.getQuery(), context, docIdSet);
         } else {
-          return in.scorer(context, acceptDocs);
+          return in.scorer(context);
         }
       }
 
@@ -611,19 +615,7 @@ public class LRUQueryCache implements QueryCache, Accountable {
         return null;
       }
 
-      // we apply acceptDocs as an approximation
-      if (acceptDocs == null) {
-        return new ConstantScoreScorer(this, 0f, disi);
-      } else {
-        final TwoPhaseIterator twoPhaseView = new TwoPhaseIterator(disi) {
-          @Override
-          public boolean matches() throws IOException {
-            final int doc = approximation.docID();
-            return acceptDocs.get(doc);
-          }
-        };
-        return new ConstantScoreScorer(this, 0f, twoPhaseView);
-      }
+      return new ConstantScoreScorer(this, 0f, disi);
     }
 
   }

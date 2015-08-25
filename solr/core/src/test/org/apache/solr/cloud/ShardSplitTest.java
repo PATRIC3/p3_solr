@@ -35,10 +35,10 @@ import org.apache.solr.common.cloud.HashBasedRouter;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
-import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CollectionParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.common.util.Utils;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -62,13 +62,6 @@ public class ShardSplitTest extends BasicDistributedZkTest {
 
   public ShardSplitTest() {
     schemaString = "schema15.xml";      // we need a string id
-  }
-
-  @Override
-  public void distribSetUp() throws Exception {
-    super.distribSetUp();
-    System.setProperty("numShards", Integer.toString(sliceCount));
-    System.setProperty("solr.xml.persist", "true");
   }
 
   @Test
@@ -234,7 +227,7 @@ public class ShardSplitTest extends BasicDistributedZkTest {
     HashMap<String, List<Integer>> collectionInfos = new HashMap<>();
     String shard_fld = "shard_s";
     try (CloudSolrClient client = createCloudClient(null)) {
-      Map<String, Object> props = ZkNodeProps.makeMap(
+      Map<String, Object> props = Utils.makeMap(
           REPLICATION_FACTOR, replicationFactor,
           MAX_SHARDS_PER_NODE, maxShardsPerNode,
           NUM_SLICES, numShards,
@@ -248,7 +241,7 @@ public class ShardSplitTest extends BasicDistributedZkTest {
 
     waitForRecoveriesToFinish(false);
 
-    String url = CustomCollectionTest.getUrlFromZk(getCommonCloudSolrClient().getZkStateReader().getClusterState(), collectionName);
+    String url = getUrlFromZk(getCommonCloudSolrClient().getZkStateReader().getClusterState(), collectionName);
 
     try (HttpSolrClient collectionClient = new HttpSolrClient(url)) {
 
@@ -309,7 +302,7 @@ public class ShardSplitTest extends BasicDistributedZkTest {
     HashMap<String, List<Integer>> collectionInfos = new HashMap<>();
 
     try (CloudSolrClient client = createCloudClient(null)) {
-      Map<String, Object> props = ZkNodeProps.makeMap(
+      Map<String, Object> props = Utils.makeMap(
           REPLICATION_FACTOR, replicationFactor,
           MAX_SHARDS_PER_NODE, maxShardsPerNode,
           NUM_SLICES, numShards);
@@ -322,7 +315,7 @@ public class ShardSplitTest extends BasicDistributedZkTest {
 
     waitForRecoveriesToFinish(false);
 
-    String url = CustomCollectionTest.getUrlFromZk(getCommonCloudSolrClient().getZkStateReader().getClusterState(), collectionName);
+    String url = getUrlFromZk(getCommonCloudSolrClient().getZkStateReader().getClusterState(), collectionName);
 
     try (HttpSolrClient collectionClient = new HttpSolrClient(url)) {
 
@@ -392,7 +385,7 @@ public class ShardSplitTest extends BasicDistributedZkTest {
     int i = 0;
     for (i = 0; i < 10; i++) {
       ZkStateReader zkStateReader = cloudClient.getZkStateReader();
-      zkStateReader.updateClusterState(true);
+      zkStateReader.updateClusterState();
       clusterState = zkStateReader.getClusterState();
       slice1_0 = clusterState.getSlice(AbstractDistribZkTestBase.DEFAULT_COLLECTION, "shard1_0");
       slice1_1 = clusterState.getSlice(AbstractDistribZkTestBase.DEFAULT_COLLECTION, "shard1_1");

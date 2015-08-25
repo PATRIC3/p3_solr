@@ -41,7 +41,6 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.zookeeper.KeeperException;
 
 import static org.apache.solr.cloud.Overseer.QUEUE_OPERATION;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.ASYNC;
 import static org.apache.solr.common.cloud.ZkStateReader.COLLECTION_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.CORE_NAME_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.ELECTION_NODE_PROP;
@@ -52,6 +51,7 @@ import static org.apache.solr.common.cloud.ZkStateReader.NODE_NAME_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.REJOIN_AT_HEAD_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.SHARD_ID_PROP;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.REBALANCELEADERS;
+import static org.apache.solr.common.params.CommonAdminParams.ASYNC;
 
 class RebalanceLeaders {
   final SolrQueryRequest req;
@@ -74,7 +74,7 @@ class RebalanceLeaders {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
           String.format(Locale.ROOT, "The " + COLLECTION_PROP + " is required for the REASSIGNLEADERS command."));
     }
-    coreContainer.getZkController().getZkStateReader().updateClusterState(true);
+    coreContainer.getZkController().getZkStateReader().updateClusterState();
     ClusterState clusterState = coreContainer.getZkController().getClusterState();
     DocCollection dc = clusterState.getCollection(collectionName);
     if (dc == null) {

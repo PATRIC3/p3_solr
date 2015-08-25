@@ -113,26 +113,22 @@ public class TestBasics extends LuceneTestCase {
   }
 
   public void testPhrase() throws Exception {
-    PhraseQuery query = new PhraseQuery();
-    query.add(new Term("field", "seventy"));
-    query.add(new Term("field", "seven"));
+    PhraseQuery query = new PhraseQuery("field", "seventy", "seven");
     checkHits(query, new int[]
       {77, 177, 277, 377, 477, 577, 677, 777, 877,
               977, 1077, 1177, 1277, 1377, 1477, 1577, 1677, 1777, 1877, 1977});
   }
 
   public void testPhrase2() throws Exception {
-    PhraseQuery query = new PhraseQuery();
-    query.add(new Term("field", "seventish"));
-    query.add(new Term("field", "sevenon"));
+    PhraseQuery query = new PhraseQuery("field", "seventish", "sevenon");
     checkHits(query, new int[] {});
   }
 
   public void testBoolean() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term("field", "seventy")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term("field", "seven")), BooleanClause.Occur.MUST);
-    checkHits(query, new int[]
+    checkHits(query.build(), new int[]
       {77, 177, 277, 377, 477, 577, 677, 770, 771, 772, 773, 774, 775, 776, 777,
               778, 779, 877, 977, 1077, 1177, 1277, 1377, 1477, 1577, 1677,
               1770, 1771, 1772, 1773, 1774, 1775, 1776, 1777, 1778, 1779, 1877,
@@ -140,10 +136,10 @@ public class TestBasics extends LuceneTestCase {
   }
 
   public void testBoolean2() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term("field", "sevento")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term("field", "sevenly")), BooleanClause.Occur.MUST);
-    checkHits(query, new int[] {});
+    checkHits(query.build(), new int[] {});
   }
 
   public void testSpanNearExact() throws Exception {

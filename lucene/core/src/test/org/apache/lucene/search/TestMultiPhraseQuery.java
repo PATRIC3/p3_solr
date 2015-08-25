@@ -215,7 +215,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     IndexReader reader = writer.getReader();
     IndexSearcher searcher = newSearcher(reader);
     // This query will be equivalent to +body:pie +body:"blue*"
-    BooleanQuery q = new BooleanQuery();
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
     q.add(new TermQuery(new Term("body", "pie")), BooleanClause.Occur.MUST);
     
     MultiPhraseQuery trouble = new MultiPhraseQuery();
@@ -224,12 +224,12 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     q.add(trouble, BooleanClause.Occur.MUST);
     
     // exception will be thrown here without fix
-    ScoreDoc[] hits = searcher.search(q, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(q.build(), 1000).scoreDocs;
     
     assertEquals("Wrong number of hits", 2, hits.length);
     
     // just make sure no exc:
-    searcher.explain(q, 0);
+    searcher.explain(q.build(), 0);
     
     writer.close();
     reader.close();
@@ -246,7 +246,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     IndexSearcher searcher = newSearcher(reader);
     
     // This query will be equivalent to +type:note +body:"a t*"
-    BooleanQuery q = new BooleanQuery();
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
     q.add(new TermQuery(new Term("type", "note")), BooleanClause.Occur.MUST);
     
     MultiPhraseQuery trouble = new MultiPhraseQuery();
@@ -256,7 +256,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     q.add(trouble, BooleanClause.Occur.MUST);
     
     // exception will be thrown here without fix for #35626:
-    ScoreDoc[] hits = searcher.search(q, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(q.build(), 1000).scoreDocs;
     assertEquals("Wrong number of hits", 0, hits.length);
     writer.close();
     reader.close();
@@ -496,17 +496,18 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
    * PQ AND Mode - Manually creating a phrase query
    */
   public void testZeroPosIncrSloppyPqAnd() throws IOException {
-    final PhraseQuery pq = new PhraseQuery();
+    PhraseQuery.Builder builder = new PhraseQuery.Builder();
     int pos = -1;
     for (Token tap : INCR_0_QUERY_TOKENS_AND) {
       pos += tap.getPositionIncrement();
-      pq.add(new Term("field",tap.toString()), pos);
+      builder.add(new Term("field", tap.toString()), pos);
     }
-    doTestZeroPosIncrSloppy(pq, 0);
-    pq.setSlop(1);
-    doTestZeroPosIncrSloppy(pq, 0);
-    pq.setSlop(2);
-    doTestZeroPosIncrSloppy(pq, 1);
+    builder.setSlop(0);
+    doTestZeroPosIncrSloppy(builder.build(), 0);
+    builder.setSlop(1);
+    doTestZeroPosIncrSloppy(builder.build(), 0);
+    builder.setSlop(2);
+    doTestZeroPosIncrSloppy(builder.build(), 1);
   }
 
   /**

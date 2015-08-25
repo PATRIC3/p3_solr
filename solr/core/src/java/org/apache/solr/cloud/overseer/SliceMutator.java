@@ -33,12 +33,13 @@ import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.common.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.apache.solr.cloud.OverseerCollectionProcessor.COLL_PROP_PREFIX;
 import static org.apache.solr.cloud.overseer.CollectionMutator.checkCollectionKeyExistence;
-import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+import static org.apache.solr.common.util.Utils.makeMap;
 import static org.apache.solr.common.params.CommonParams.NAME;
 
 public class SliceMutator {
@@ -72,7 +73,8 @@ public class SliceMutator {
         makeMap(
             ZkStateReader.CORE_NAME_PROP, message.getStr(ZkStateReader.CORE_NAME_PROP),
             ZkStateReader.BASE_URL_PROP, message.getStr(ZkStateReader.BASE_URL_PROP),
-            ZkStateReader.STATE_PROP, message.getStr(ZkStateReader.STATE_PROP)));
+            ZkStateReader.STATE_PROP, message.getStr(ZkStateReader.STATE_PROP),
+            ZkStateReader.NODE_NAME_PROP, message.getStr(ZkStateReader.NODE_NAME_PROP)));
     return new ZkWriteCommand(coll, updateReplica(collection, sl, replica.getName(), replica));
   }
 
@@ -123,7 +125,7 @@ public class SliceMutator {
     // if there are no slices left in the collection, remove it?
     if (newSlices.size() == 0) {
       return new ClusterStateMutator(zkStateReader).deleteCollection(clusterState,
-          new ZkNodeProps(ZkNodeProps.makeMap(NAME, collection)));
+          new ZkNodeProps(Utils.makeMap(NAME, collection)));
     } else {
       return new ZkWriteCommand(collection, coll.copyWithSlices(newSlices));
     }

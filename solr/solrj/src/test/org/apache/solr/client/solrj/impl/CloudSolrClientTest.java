@@ -45,7 +45,6 @@ import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
-import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
@@ -68,7 +67,7 @@ import java.util.Set;
 import java.util.concurrent.TimeoutException;
 
 import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+import static org.apache.solr.common.util.Utils.makeMap;
 import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.common.cloud.ZkStateReader.REPLICATION_FACTOR;
 
@@ -84,14 +83,12 @@ public class CloudSolrClientTest extends AbstractFullDistribZkTestBase {
 
   @BeforeClass
   public static void beforeSuperClass() {
-      AbstractZkTestCase.SOLRHOME = new File(SOLR_HOME());
+    // this is necessary because AbstractZkTestCase.buildZooKeeper is used by AbstractDistribZkTestBase
+    // and the auto-detected SOLRHOME=TEST_HOME() does not exist for solrj tests
+    // todo fix this
+    AbstractZkTestCase.SOLRHOME = new File(SOLR_HOME());
   }
-  
-  @AfterClass
-  public static void afterSuperClass() {
-    
-  }
-  
+
   protected String getCloudSolrConfig() {
     return "solrconfig.xml";
   }
@@ -103,15 +100,6 @@ public class CloudSolrClientTest extends AbstractFullDistribZkTestBase {
   
   public static String SOLR_HOME() {
     return SOLR_HOME;
-  }
-  
-  @Override
-  public void distribSetUp() throws Exception {
-    super.distribSetUp();
-    // we expect this time of exception as shards go up and down...
-    //ignoreException(".*");
-    
-    System.setProperty("numShards", Integer.toString(sliceCount));
   }
   
   public CloudSolrClientTest() {
@@ -434,7 +422,7 @@ public class CloudSolrClientTest extends AbstractFullDistribZkTestBase {
 
     ModifiableSolrParams qParams = new ModifiableSolrParams();
     qParams.add("preferLocalShards", Boolean.toString(preferLocalShards));
-    qParams.add("shards.info", "true");
+    qParams.add(ShardParams.SHARDS_INFO, "true");
     qRequest.add(qParams);
 
     // CloudSolrClient sends the request to some node.
@@ -443,8 +431,8 @@ public class CloudSolrClientTest extends AbstractFullDistribZkTestBase {
     // local shards only
     QueryResponse qResponse = cloudClient.query (qRequest);
 
-    Object shardsInfo = qResponse.getResponse().get("shards.info");
-    assertNotNull("Unable to obtain shards.info", shardsInfo);
+    Object shardsInfo = qResponse.getResponse().get(ShardParams.SHARDS_INFO);
+    assertNotNull("Unable to obtain "+ShardParams.SHARDS_INFO, shardsInfo);
 
     // Iterate over shards-info and check what cores responded
     SimpleOrderedMap<?> shardsInfoMap = (SimpleOrderedMap<?>)shardsInfo;
@@ -452,9 +440,9 @@ public class CloudSolrClientTest extends AbstractFullDistribZkTestBase {
     List<String> shardAddresses = new ArrayList<String>();
     while (itr.hasNext()) {
       Map.Entry<String, ?> e = itr.next();
-      assertTrue("Did not find map-type value in shards.info", e.getValue() instanceof Map);
+      assertTrue("Did not find map-type value in "+ShardParams.SHARDS_INFO, e.getValue() instanceof Map);
       String shardAddress = (String)((Map)e.getValue()).get("shardAddress");
-      assertNotNull("shards.info did not return 'shardAddress' parameter", shardAddress);
+      assertNotNull(ShardParams.SHARDS_INFO+" did not return 'shardAddress' parameter", shardAddress);
       shardAddresses.add(shardAddress);
     }
     log.info("Shards giving the response: " + Arrays.toString(shardAddresses.toArray()));

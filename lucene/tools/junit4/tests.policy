@@ -38,6 +38,9 @@ grant {
   permission java.io.FilePermission "${junit4.childvm.cwd}${/}jacoco.db", "write";
   permission java.io.FilePermission "${junit4.tempDir}${/}*", "read,write,delete";
   permission java.io.FilePermission "${clover.db.dir}${/}-", "read,write,delete";
+  
+  // needed by SSD detection tests in TestIOUtils (creates symlinks)
+  permission java.nio.file.LinkPermission "symbolic";
 
   // needed by gson serialization of junit4 runner: TODO clean that up
   permission java.lang.RuntimePermission "accessDeclaredMembers";
@@ -73,6 +76,8 @@ grant {
   permission java.lang.RuntimePermission "getClassLoader";
   // needed to test unmap hack on platforms that support it
   permission java.lang.RuntimePermission "accessClassInPackage.sun.misc";
+  // needed by cyberneko usage by benchmarks on J9
+  permission java.lang.RuntimePermission "accessClassInPackage.org.apache.xerces.util";
   // needed by jacoco to dump coverage
   permission java.lang.RuntimePermission "shutdownHooks";
   
@@ -105,4 +110,7 @@ grant {
   // SSL related properties for jetty
   permission java.security.SecurityPermission "getProperty.ssl.KeyManagerFactory.algorithm";
   permission java.security.SecurityPermission "getProperty.ssl.TrustManagerFactory.algorithm";
+  
+  // allows LuceneTestCase#runWithRestrictedPermissions to execute with lower (or no) permission
+  permission java.security.SecurityPermission "createAccessControlContext";
 };

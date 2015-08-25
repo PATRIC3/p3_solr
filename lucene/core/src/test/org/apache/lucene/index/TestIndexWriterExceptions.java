@@ -247,7 +247,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     MockAnalyzer analyzer = new MockAnalyzer(random());
     analyzer.setEnableChecks(false); // disable workflow checking as we forcefully close() in exceptional cases.
     
-    IndexWriter writer  = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(analyzer)
+    IndexWriter writer  = RandomIndexWriter.mockIndexWriter(random(), dir, newIndexWriterConfig(analyzer)
                                                                    .setRAMBufferSizeMB(0.1)
                                                                    .setMergeScheduler(new ConcurrentMergeScheduler()), new TestPoint1());
     ((ConcurrentMergeScheduler) writer.getConfig().getMergeScheduler()).setSuppressExceptions();
@@ -291,7 +291,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     Directory dir = newDirectory();
     MockAnalyzer analyzer = new MockAnalyzer(random());
     analyzer.setEnableChecks(false); // disable workflow checking as we forcefully close() in exceptional cases.
-    IndexWriter writer  = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(analyzer)
+    IndexWriter writer  = RandomIndexWriter.mockIndexWriter(random(), dir, newIndexWriterConfig(analyzer)
                                                  .setRAMBufferSizeMB(0.2)
                                                  .setMergeScheduler(new ConcurrentMergeScheduler()), new TestPoint1());
     ((ConcurrentMergeScheduler) writer.getConfig().getMergeScheduler()).setSuppressExceptions();
@@ -373,7 +373,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   public void testExceptionDocumentsWriterInit() throws IOException {
     Directory dir = newDirectory();
     TestPoint2 testPoint = new TestPoint2();
-    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())), testPoint);
+    IndexWriter w = RandomIndexWriter.mockIndexWriter(random(), dir, newIndexWriterConfig(new MockAnalyzer(random())), testPoint);
     Document doc = new Document();
     doc.add(newTextField("field", "a field", Field.Store.YES));
     w.addDocument(doc);
@@ -407,7 +407,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       }
     };
 
-    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, 
+    IndexWriter w = RandomIndexWriter.mockIndexWriter(random(), dir, 
                                                       newIndexWriterConfig(analyzer)
                                                         .setMaxBufferedDocs(2), 
                                                       new TestPoint1());
@@ -453,18 +453,23 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     conf.setMergeScheduler(cms);
     ((LogMergePolicy) conf.getMergePolicy()).setMergeFactor(2);
     TestPoint3 testPoint = new TestPoint3();
-    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, conf, testPoint);
+    IndexWriter w = RandomIndexWriter.mockIndexWriter(random(), dir, conf, testPoint);
     testPoint.doFail = true;
     Document doc = new Document();
     doc.add(newTextField("field", "a field", Field.Store.YES));
-    for(int i=0;i<10;i++)
+    for(int i=0;i<10;i++) {
       try {
         w.addDocument(doc);
       } catch (RuntimeException re) {
         break;
       }
+    }
 
-    ((ConcurrentMergeScheduler) w.getConfig().getMergeScheduler()).sync();
+    try {
+      ((ConcurrentMergeScheduler) w.getConfig().getMergeScheduler()).sync();
+    } catch (IllegalStateException ise) {
+      // OK: merge exc causes tragedy
+    }
     assertTrue(testPoint.failed);
     w.close();
     dir.close();
@@ -532,13 +537,15 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     PostingsEnum tdocs = TestUtil.docs(random(), reader,
         t.field(),
         new BytesRef(t.text()),
-        MultiFields.getLiveDocs(reader),
         null,
         0);
 
+    final Bits liveDocs = MultiFields.getLiveDocs(reader);
     int count = 0;
     while(tdocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-      count++;
+      if (liveDocs == null || liveDocs.get(tdocs.docID())) {
+        count++;
+      }
     }
     assertEquals(2, count);
 
@@ -973,14 +980,15 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
                                .setMergePolicy(newLogMergePolicy());
     ((LogMergePolicy) conf.getMergePolicy()).setMergeFactor(100);
     IndexWriter w = new IndexWriter(startDir, conf);
-    for(int i=0;i<27;i++)
+    for(int i=0;i<27;i++) {
       addDoc(w);
+    }
     w.close();
 
     int iter = TEST_NIGHTLY ? 200 : 10;
     for(int i=0;i<iter;i++) {
       if (VERBOSE) {
-        System.out.println("TEST: iter " + i);
+        System.out.println("\nTEST: iter " + i);
       }
       MockDirectoryWrapper dir = new MockDirectoryWrapper(random(), TestUtil.ramCopyOf(startDir));
       conf = newIndexWriterConfig(new MockAnalyzer(random()))
@@ -990,12 +998,20 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       dir.setRandomIOExceptionRate(0.5);
       try {
         w.forceMerge(1);
+      } catch (IllegalStateException ise) {
+        // expected
       } catch (IOException ioe) {
-        if (ioe.getCause() == null)
+        if (ioe.getCause() == null) {
           fail("forceMerge threw IOException without root cause");
+        }
       }
       dir.setRandomIOExceptionRate(0);
-      w.close();
+      //System.out.println("TEST: now close IW");
+      try {
+        w.close();
+      } catch (IllegalStateException ise) {
+        // ok
+      }
       dir.close();
     }
     startDir.close();
@@ -1101,7 +1117,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   public void testRollbackExceptionHang() throws Throwable {
     Directory dir = newDirectory();
     TestPoint4 testPoint = new TestPoint4();
-    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())), testPoint);
+    IndexWriter w = RandomIndexWriter.mockIndexWriter(random(), dir, newIndexWriterConfig(new MockAnalyzer(random())), testPoint);
     
 
     addDoc(w);
@@ -1411,14 +1427,10 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     w.close();
 
     final IndexSearcher s = newSearcher(r);
-    PhraseQuery pq = new PhraseQuery();
-    pq.add(new Term("content", "silly"));
-    pq.add(new Term("content", "content"));
+    PhraseQuery pq = new PhraseQuery("content", "silly", "good");
     assertEquals(0, s.search(pq, 1).totalHits);
 
-    pq = new PhraseQuery();
-    pq.add(new Term("content", "good"));
-    pq.add(new Term("content", "content"));
+    pq = new PhraseQuery("content", "good", "content");
     assertEquals(numDocs1+numDocs2, s.search(pq, 1).totalHits);
     r.close();
     dir.close();
@@ -1492,14 +1504,10 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     w.close();
 
     final IndexSearcher s = newSearcher(r);
-    PhraseQuery pq = new PhraseQuery();
-    pq.add(new Term("content", "silly"));
-    pq.add(new Term("content", "content"));
+    PhraseQuery pq = new PhraseQuery("content", "silly", "content");
     assertEquals(numDocs2, s.search(pq, 1).totalHits);
 
-    pq = new PhraseQuery();
-    pq.add(new Term("content", "good"));
-    pq.add(new Term("content", "content"));
+    pq = new PhraseQuery("content", "good", "content");
     assertEquals(numDocs1+numDocs3+numDocs4, s.search(pq, 1).totalHits);
     r.close();
     dir.close();
@@ -1868,7 +1876,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   // full), and then the exception stops (e.g., disk frees
   // up), so we successfully close IW or open an NRT
   // reader, we don't lose any deletes or updates:
-  public void testNoLostDeletesOrUpdates() throws Exception {
+  public void testNoLostDeletesOrUpdates() throws Throwable {
     int deleteCount = 0;
     int docBase = 0;
     int docCount = 0;
@@ -1918,6 +1926,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     });
     
     RandomIndexWriter w = null;
+
+    boolean tragic = false;
 
     for(int iter=0;iter<10*RANDOM_MULTIPLIER;iter++) {
       int numDocs = atLeast(100);
@@ -2022,17 +2032,22 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
           w = null;
         }
 
-      } catch (IOException ioe) {
+      } catch (Throwable t) {
         // FakeIOException can be thrown from mergeMiddle, in which case IW
         // registers it before our CMS gets to suppress it. IW.forceMerge later
         // throws it as a wrapped IOE, so don't fail in this case.
-        if (ioe instanceof FakeIOException || (ioe.getCause() != null && ioe.getCause() instanceof FakeIOException)) {
+        if (t instanceof FakeIOException || (t.getCause() instanceof FakeIOException)) {
           // expected
           if (VERBOSE) {
-            System.out.println("TEST: w.close() hit expected IOE");
+            System.out.println("TEST: hit expected IOE");
+          }
+          if (t instanceof AlreadyClosedException) {
+            // FakeIOExc struck during merge and writer is now closed:
+            w = null;
+            tragic = true;
           }
         } else {
-          throw ioe;
+          throw t;
         }
       }
       shouldFail.set(false);
@@ -2063,7 +2078,9 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         }
         r = w.getReader();
       }
-      assertEquals(docCount-deleteCount, r.numDocs());
+      if (tragic == false) {
+        assertEquals(docCount-deleteCount, r.numDocs());
+      }
       BytesRef scratch = new BytesRef();
       for (LeafReaderContext context : r.leaves()) {
         LeafReader reader = context.reader();
@@ -2099,9 +2116,11 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     }
 
     // Final verify:
-    IndexReader r = DirectoryReader.open(dir);
-    assertEquals(docCount-deleteCount, r.numDocs());
-    r.close();
+    if (tragic == false) {
+      IndexReader r = DirectoryReader.open(dir);
+      assertEquals(docCount-deleteCount, r.numDocs());
+      r.close();
+    }
 
     dir.close();
   }
@@ -2204,7 +2223,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     
     // even though we hit exception: we are closed, no locks or files held, index in good state
     assertTrue(iw.isClosed());
-    assertFalse(IndexWriter.isLocked(dir));
+    dir.obtainLock(IndexWriter.WRITE_LOCK_NAME).close();
     
     r = DirectoryReader.open(dir);
     assertEquals(10, r.maxDoc());
@@ -2273,7 +2292,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       
       // even though we hit exception: we are closed, no locks or files held, index in good state
       assertTrue(iw.isClosed());
-      assertFalse(IndexWriter.isLocked(dir));
+      dir.obtainLock(IndexWriter.WRITE_LOCK_NAME).close();
       
       r = DirectoryReader.open(dir);
       assertEquals(10, r.maxDoc());
@@ -2282,5 +2301,73 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       // no leaks
       dir.close();
     }
+  }
+
+  public void testMergeExceptionIsTragic() throws Exception {
+    MockDirectoryWrapper dir = newMockDirectory();
+    final AtomicBoolean didFail = new AtomicBoolean();
+    dir.failOn(new MockDirectoryWrapper.Failure() {
+        
+        @Override
+        public void eval(MockDirectoryWrapper dir) throws IOException {
+          if (random().nextInt(10) != 0) {
+            return;
+          }
+          if (didFail.get()) {
+            // Already failed
+            return;
+          }
+          StackTraceElement[] trace = Thread.currentThread().getStackTrace();
+          
+          for (int i = 0; i < trace.length; i++) {
+            if ("merge".equals(trace[i].getMethodName())) {
+              if (VERBOSE) {
+                System.out.println("TEST: now fail; thread=" + Thread.currentThread().getName() + " exc:");
+                new Throwable().printStackTrace(System.out);
+              }
+              didFail.set(true);
+              throw new FakeIOException();
+            }
+          }
+        }
+      });
+
+    IndexWriterConfig iwc = newIndexWriterConfig();
+    MergeScheduler ms = iwc.getMergeScheduler();
+    if (ms instanceof ConcurrentMergeScheduler) {
+      ((ConcurrentMergeScheduler) ms).setSuppressExceptions();
+    }
+    IndexWriter w = new IndexWriter(dir, iwc);
+
+    while (true) {
+      try {
+        Document doc = new Document();
+        doc.add(newStringField("field", "string", Field.Store.NO));
+        w.addDocument(doc);
+        if (random().nextInt(10) == 7) {
+          // Flush new segment:
+          DirectoryReader.open(w, true).close();
+        }
+      } catch (AlreadyClosedException ace) {
+        // OK: e.g. CMS hit the exc in BG thread and closed the writer
+        break;
+      } catch (FakeIOException fioe) {
+        // OK: e.g. SMS hit the exception
+        break;
+      }
+    }
+
+    assertNotNull(w.getTragicException());
+    assertFalse(w.isOpen());
+    assertTrue(didFail.get());
+
+    if (ms instanceof ConcurrentMergeScheduler) {
+      // Sneaky: CMS's merge thread will be concurrently rolling back IW due
+      // to the tragedy, with this main thread, so we have to wait here
+      // to ensure the rollback has finished, else MDW still sees open files:
+      ((ConcurrentMergeScheduler) ms).sync();
+    }
+
+    dir.close();
   }
 }

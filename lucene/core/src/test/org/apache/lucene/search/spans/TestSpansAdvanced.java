@@ -21,7 +21,6 @@ import java.io.IOException;
 
 import org.apache.lucene.document.Field;
 import org.apache.lucene.util.LuceneTestCase;
-
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenFilter;
 import org.apache.lucene.analysis.MockTokenizer;
@@ -99,7 +98,7 @@ public class TestSpansAdvanced extends LuceneTestCase {
    */
   public void testBooleanQueryWithSpanQueries() throws IOException {
     
-    doTestBooleanQueryWithSpanQueries(searcher, 0.3884282f);
+    doTestBooleanQueryWithSpanQueries(searcher, 0.54932045f);
   }
   
   /**
@@ -109,13 +108,13 @@ public class TestSpansAdvanced extends LuceneTestCase {
       final float expectedScore) throws IOException {
     
     final Query spanQuery = new SpanTermQuery(new Term(FIELD_TEXT, "work"));
-    final BooleanQuery query = new BooleanQuery();
+    final BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(spanQuery, BooleanClause.Occur.MUST);
     query.add(spanQuery, BooleanClause.Occur.MUST);
     final String[] expectedIds = new String[] {"1", "2", "3", "4"};
     final float[] expectedScores = new float[] {expectedScore, expectedScore,
         expectedScore, expectedScore};
-    assertHits(s, query, "two span queries", expectedIds, expectedScores);
+    assertHits(s, query.build(), "two span queries", expectedIds, expectedScores);
   }
   
   /**

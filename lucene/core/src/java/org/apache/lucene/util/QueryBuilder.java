@@ -135,7 +135,13 @@ public class QueryBuilder {
     Query query = createFieldQuery(analyzer, BooleanClause.Occur.SHOULD, field, queryText, false, 0);
     if (query instanceof BooleanQuery) {
       BooleanQuery bq = (BooleanQuery) query;
-      bq.setMinimumNumberShouldMatch((int) (fraction * bq.clauses().size()));
+      BooleanQuery.Builder builder = new BooleanQuery.Builder();
+      builder.setDisableCoord(bq.isCoordDisabled());
+      builder.setMinimumNumberShouldMatch((int) (fraction * bq.clauses().size()));
+      for (BooleanClause clause : bq) {
+        builder.add(clause);
+      }
+      query = builder.build();
     }
     return query;
   }
@@ -261,96 +267,91 @@ public class QueryBuilder {
    */
   private Query analyzeTerm(String field, TokenStream stream) throws IOException {
     TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
-    BytesRef bytes = termAtt.getBytesRef();
     
     stream.reset();
     if (!stream.incrementToken()) {
       throw new AssertionError();
     }
     
-    termAtt.fillBytesRef();
-    return newTermQuery(new Term(field, BytesRef.deepCopyOf(bytes)));
+    return newTermQuery(new Term(field, BytesRef.deepCopyOf(termAtt.getBytesRef())));
   }
   
   /** 
    * Creates simple boolean query from the cached tokenstream contents 
    */
   private Query analyzeBoolean(String field, TokenStream stream) throws IOException {
-    BooleanQuery q = newBooleanQuery(true);
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
+    q.setDisableCoord(true);
 
     TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
-    BytesRef bytes = termAtt.getBytesRef();
     
     stream.reset();
     while (stream.incrementToken()) {
-      termAtt.fillBytesRef();
-      Query currentQuery = newTermQuery(new Term(field, BytesRef.deepCopyOf(bytes)));
+      Query currentQuery = newTermQuery(new Term(field, BytesRef.deepCopyOf(termAtt.getBytesRef())));
       q.add(currentQuery, BooleanClause.Occur.SHOULD);
     }
     
-    return q;
+    return q.build();
   }
-  
+
+  private void add(BooleanQuery.Builder q, BooleanQuery current, BooleanClause.Occur operator) {
+    if (current.clauses().isEmpty()) {
+      return;
+    }
+    if (current.clauses().size() == 1) {
+      q.add(current.clauses().iterator().next().getQuery(), operator);
+    } else {
+      q.add(current, operator);
+    }
+  }
+
   /** 
    * Creates complex boolean query from the cached tokenstream contents 
    */
   private Query analyzeMultiBoolean(String field, TokenStream stream, BooleanClause.Occur operator) throws IOException {
-    BooleanQuery q = newBooleanQuery(false);
-    Query currentQuery = null;
+    BooleanQuery.Builder q = newBooleanQuery(false);
+    BooleanQuery.Builder currentQuery = newBooleanQuery(true);
     
     TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
-    BytesRef bytes = termAtt.getBytesRef();
-
     PositionIncrementAttribute posIncrAtt = stream.getAttribute(PositionIncrementAttribute.class);
     
     stream.reset();
     while (stream.incrementToken()) {
-      termAtt.fillBytesRef();
-      if (posIncrAtt.getPositionIncrement() == 0) {
-        if (!(currentQuery instanceof BooleanQuery)) {
-          Query t = currentQuery;
-          currentQuery = newBooleanQuery(true);
-          ((BooleanQuery)currentQuery).add(t, BooleanClause.Occur.SHOULD);
-        }
-        ((BooleanQuery)currentQuery).add(newTermQuery(new Term(field, BytesRef.deepCopyOf(bytes))), BooleanClause.Occur.SHOULD);
-      } else {
-        if (currentQuery != null) {
-          q.add(currentQuery, operator);
-        }
-        currentQuery = newTermQuery(new Term(field, BytesRef.deepCopyOf(bytes)));
+      BytesRef bytes = termAtt.getBytesRef();
+      if (posIncrAtt.getPositionIncrement() != 0) {
+        add(q, currentQuery.build(), operator);
+        currentQuery = newBooleanQuery(true);
       }
+      currentQuery.add(newTermQuery(new Term(field, BytesRef.deepCopyOf(bytes))), BooleanClause.Occur.SHOULD);
     }
-    q.add(currentQuery, operator);
+    add(q, currentQuery.build(), operator);
     
-    return q;
+    return q.build();
   }
   
   /** 
    * Creates simple phrase query from the cached tokenstream contents 
    */
   private Query analyzePhrase(String field, TokenStream stream, int slop) throws IOException {
-    PhraseQuery pq = newPhraseQuery();
-    pq.setSlop(slop);
+    PhraseQuery.Builder builder = new PhraseQuery.Builder();
+    builder.setSlop(slop);
     
     TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
-    BytesRef bytes = termAtt.getBytesRef();
-
     PositionIncrementAttribute posIncrAtt = stream.getAttribute(PositionIncrementAttribute.class);
     int position = -1;    
     
     stream.reset();
     while (stream.incrementToken()) {
-      termAtt.fillBytesRef();
-      
+      BytesRef bytes = termAtt.getBytesRef();
       if (enablePositionIncrements) {
         position += posIncrAtt.getPositionIncrement();
-        pq.add(new Term(field, BytesRef.deepCopyOf(bytes)), position);
       } else {
-        pq.add(new Term(field, BytesRef.deepCopyOf(bytes)));
+        position += 1;
       }
+      builder.add(new Term(field, bytes), position);
     }
-    
-    return pq;
+
+    return builder.build();
   }
   
   /** 
@@ -361,7 +362,6 @@ public class QueryBuilder {
     mpq.setSlop(slop);
     
     TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
-    BytesRef bytes = termAtt.getBytesRef();
 
     PositionIncrementAttribute posIncrAtt = stream.getAttribute(PositionIncrementAttribute.class);
     int position = -1;  
@@ -369,7 +369,6 @@ public class QueryBuilder {
     List<Term> multiTerms = new ArrayList<>();
     stream.reset();
     while (stream.incrementToken()) {
-      termAtt.fillBytesRef();
       int positionIncrement = posIncrAtt.getPositionIncrement();
       
       if (positionIncrement > 0 && multiTerms.size() > 0) {
@@ -381,7 +380,7 @@ public class QueryBuilder {
         multiTerms.clear();
       }
       position += positionIncrement;
-      multiTerms.add(new Term(field, BytesRef.deepCopyOf(bytes)));
+      multiTerms.add(new Term(field, BytesRef.deepCopyOf(termAtt.getBytesRef())));
     }
     
     if (enablePositionIncrements) {
@@ -399,8 +398,10 @@ public class QueryBuilder {
    * @param disableCoord disable coord
    * @return new BooleanQuery instance
    */
-  protected BooleanQuery newBooleanQuery(boolean disableCoord) {
-    return new BooleanQuery(disableCoord);
+  protected BooleanQuery.Builder newBooleanQuery(boolean disableCoord) {
+    BooleanQuery.Builder builder = new BooleanQuery.Builder();
+    builder.setDisableCoord(disableCoord);
+    return builder;
   }
   
   /**
@@ -412,16 +413,6 @@ public class QueryBuilder {
    */
   protected Query newTermQuery(Term term) {
     return new TermQuery(term);
-  }
-  
-  /**
-   * Builds a new PhraseQuery instance.
-   * <p>
-   * This is intended for subclasses that wish to customize the generated queries.
-   * @return new PhraseQuery instance
-   */
-  protected PhraseQuery newPhraseQuery() {
-    return new PhraseQuery();
   }
   
   /**

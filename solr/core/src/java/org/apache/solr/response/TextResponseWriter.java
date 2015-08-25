@@ -30,12 +30,10 @@ import org.apache.solr.common.EnumFieldValue;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.util.Base64;
-import org.apache.solr.schema.TrieDateField;
+import org.apache.solr.util.DateFormatUtil;
 import org.apache.solr.util.FastWriter;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
-import org.apache.solr.response.transform.DocTransformer;
-import org.apache.solr.response.transform.TransformContext;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.DocList;
@@ -70,7 +68,7 @@ public abstract class TextResponseWriter {
 
 
   public TextResponseWriter(Writer writer, SolrQueryRequest req, SolrQueryResponse rsp) {
-    this.writer = FastWriter.wrap(writer);
+    this.writer = writer == null ? null: FastWriter.wrap(writer);
     this.schema = req.getSchema();
     this.req = req;
     this.rsp = rsp;
@@ -83,7 +81,7 @@ public abstract class TextResponseWriter {
 
   /** done with this ResponseWriter... make sure any buffers are flushed to writer */
   public void close() throws IOException {
-    writer.flushBuffer();
+    if(writer != null) writer.flushBuffer();
   }
 
   /** returns the Writer that the response is being written to */
@@ -134,40 +132,16 @@ public abstract class TextResponseWriter {
         writeStr(name, f.stringValue(), true);
       }
     } else if (val instanceof Number) {
-      if (val instanceof Integer) {
-        writeInt(name, val.toString());
-      } else if (val instanceof Long) {
-        writeLong(name, val.toString());
-      } else if (val instanceof Float) {
-        // we pass the float instead of using toString() because
-        // it may need special formatting. same for double.
-        writeFloat(name, ((Float)val).floatValue());
-      } else if (val instanceof Double) {
-        writeDouble(name, ((Double)val).doubleValue());        
-      } else if (val instanceof Short) {
-        writeInt(name, val.toString());
-      } else if (val instanceof Byte) {
-        writeInt(name, val.toString());
-      } else {
-        // default... for debugging only
-        writeStr(name, val.getClass().getName() + ':' + val.toString(), true);
-      }
+      writeNumber(name, (Number)val);
     } else if (val instanceof Boolean) {
-      writeBool(name, val.toString());
+      writeBool(name, (Boolean)val);
     } else if (val instanceof Date) {
       writeDate(name,(Date)val);
     } else if (val instanceof Document) {
-      SolrDocument doc = toSolrDocument( (Document)val );
-      DocTransformer transformer = returnFields.getTransformer();
-      if( transformer != null ) {
-        TransformContext context = new TransformContext();
-        context.req = req;
-        transformer.setContext(context);
-        transformer.transform(doc, -1);
-      }
-      writeSolrDocument(name, doc, returnFields, 0 );
+      SolrDocument doc = DocsStreamer.getDoc((Document) val, schema);
+      writeSolrDocument(name, doc,returnFields, 0 );
     } else if (val instanceof SolrDocument) {
-      writeSolrDocument(name, (SolrDocument)val, returnFields, 0);
+      writeSolrDocument(name, (SolrDocument)val,returnFields, 0);
     } else if (val instanceof ResultContext) {
       // requires access to IndexReader
       writeDocuments(name, (ResultContext)val, returnFields);
@@ -211,13 +185,38 @@ public abstract class TextResponseWriter {
     }
   }
 
+  protected void writeBool(String name , Boolean val) throws IOException {
+    writeBool(name, val.toString());
+  }
+
+  protected void writeNumber(String name, Number val) throws IOException {
+    if (val instanceof Integer) {
+      writeInt(name, val.toString());
+    } else if (val instanceof Long) {
+      writeLong(name, val.toString());
+    } else if (val instanceof Float) {
+      // we pass the float instead of using toString() because
+      // it may need special formatting. same for double.
+      writeFloat(name, ((Float)val).floatValue());
+    } else if (val instanceof Double) {
+      writeDouble(name, ((Double)val).doubleValue());
+    } else if (val instanceof Short) {
+      writeInt(name, val.toString());
+    } else if (val instanceof Byte) {
+      writeInt(name, val.toString());
+    } else {
+      // default... for debugging only
+      writeStr(name, val.getClass().getName() + ':' + val.toString(), true);
+    }
+  }
+
   // names are passed when writing primitives like writeInt to allow many different
   // types of formats, including those where the name may come after the value (like
   // some XML formats).
 
   public abstract void writeStartDocumentList(String name, long start, int size, long numFound, Float maxScore) throws IOException;  
 
-  public abstract void writeSolrDocument(String name, SolrDocument doc, ReturnFields returnFields, int idx) throws IOException;  
+  public abstract void writeSolrDocument(String name, SolrDocument doc, ReturnFields returnFields, int idx) throws IOException;
   
   public abstract void writeEndDocumentList() throws IOException;
   
@@ -231,39 +230,14 @@ public abstract class TextResponseWriter {
     writeEndDocumentList();
   }
 
-  public final SolrDocument toSolrDocument( Document doc ) 
-  {
-    return ResponseWriterUtil.toSolrDocument(doc, schema);
-  }
-  
   public final void writeDocuments(String name, ResultContext res, ReturnFields fields ) throws IOException {
     DocList ids = res.docs;
-    TransformContext context = new TransformContext();
-    context.query = res.query;
-    context.wantsScores = fields.wantsScore() && ids.hasScores();
-    context.req = req;
-    writeStartDocumentList(name, ids.offset(), ids.size(), ids.matches(), 
-        context.wantsScores ? new Float(ids.maxScore()) : null );
-    
-    DocTransformer transformer = fields.getTransformer();
-    context.searcher = req.getSearcher();
-    context.iterator = ids.iterator();
-    if( transformer != null ) {
-      transformer.setContext( context );
-    }
-    int sz = ids.size();
-    Set<String> fnames = fields.getLuceneFieldNames();
-    for (int i=0; i<sz; i++) {
-      int id = context.iterator.nextDoc();
-      Document doc = context.searcher.doc(id, fnames);
-      SolrDocument sdoc = toSolrDocument( doc );
-      if( transformer != null ) {
-        transformer.transform( sdoc, id);
-      }
-      writeSolrDocument( null, sdoc, returnFields, i );
-    }
-    if( transformer != null ) {
-      transformer.setContext( null );
+    DocsStreamer docsStreamer = new DocsStreamer(res.docs,res.query, req, fields);
+    writeStartDocumentList(name, ids.offset(), ids.size(), ids.matches(),
+        docsStreamer.hasScores() ? new Float(ids.maxScore()) : null);
+
+    while (docsStreamer.hasNext()) {
+      writeSolrDocument(null, docsStreamer.next(), returnFields, docsStreamer.currentIndex());
     }
     writeEndDocumentList();
   }
@@ -352,7 +326,7 @@ public abstract class TextResponseWriter {
 
 
   public void writeDate(String name, Date val) throws IOException {
-    writeDate(name, TrieDateField.formatExternal(val));
+    writeDate(name, DateFormatUtil.formatExternal(val));
   }
   
 

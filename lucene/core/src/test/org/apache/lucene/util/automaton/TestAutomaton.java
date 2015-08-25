@@ -505,8 +505,8 @@ public class TestAutomaton extends LuceneTestCase {
       expected.add(Util.toUTF32(s, ints));
     }
 
-    assertEquals(expected, Operations.getFiniteStrings(Operations.determinize(a,
-      DEFAULT_MAX_DETERMINIZED_STATES), -1)); 
+    assertEquals(expected, TestOperations.getFiniteStrings(
+        Operations.determinize(a, DEFAULT_MAX_DETERMINIZED_STATES)));
   }
 
   public void testConcatenatePreservesDet() throws Exception {
@@ -552,11 +552,11 @@ public class TestAutomaton extends LuceneTestCase {
     // If you concat empty automaton to anything the result should still be empty:
     Automaton a = Operations.concatenate(Automata.makeEmpty(),
                                                         Automata.makeString("foo"));
-    assertEquals(new HashSet<IntsRef>(), Operations.getFiniteStrings(a, -1));
+    assertEquals(new HashSet<IntsRef>(), TestOperations.getFiniteStrings(a));
 
     a = Operations.concatenate(Automata.makeString("foo"),
                                          Automata.makeEmpty());
-    assertEquals(new HashSet<IntsRef>(), Operations.getFiniteStrings(a, -1));
+    assertEquals(new HashSet<IntsRef>(), TestOperations.getFiniteStrings(a));
   }
 
   public void testSeemsNonEmptyButIsNot1() throws Exception {
@@ -783,6 +783,7 @@ public class TestAutomaton extends LuceneTestCase {
           if (VERBOSE) {
             System.out.println("  op=optional");
           }
+          // NOTE: This can add a dead state:
           a = Operations.optional(a);
           terms.add(new BytesRef());
         }
@@ -810,7 +811,7 @@ public class TestAutomaton extends LuceneTestCase {
               assertTrue(removed);
             }
             Automaton a2 = unionTerms(toRemove);
-            a = Operations.minus(a, a2, DEFAULT_MAX_DETERMINIZED_STATES);
+            a = Operations.minus(a, a2, Integer.MAX_VALUE);
           }
         }
         break;
@@ -1032,9 +1033,46 @@ public class TestAutomaton extends LuceneTestCase {
 
       assertSame(terms, a);
       assertEquals(AutomatonTestUtil.isDeterministicSlow(a), a.isDeterministic());
+
+      if (random().nextInt(10) == 7) {
+        a = verifyTopoSort(a);
+      }
     }
 
     assertSame(terms, a);
+  }
+
+  /** Runs topo sort, verifies transitions then only "go forwards", and
+   *  builds and returns new automaton with those remapped toposorted states. */
+  private Automaton verifyTopoSort(Automaton a) {
+    int[] sorted = Operations.topoSortStates(a);
+    // This can be < if we removed dead states:
+    assertTrue(sorted.length <= a.getNumStates());
+    Automaton a2 = new Automaton();
+    int[] stateMap = new int[a.getNumStates()];
+    Arrays.fill(stateMap, -1);
+    Transition transition = new Transition();
+    for(int state : sorted) {
+      int newState = a2.createState();
+      a2.setAccept(newState, a.isAccept(state));
+
+      // Each state should only appear once in the sort:
+      assertEquals(-1, stateMap[state]);
+      stateMap[state] = newState;
+    }
+
+    // 2nd pass: add new transitions
+    for(int state : sorted) {
+      int count = a.initTransition(state, transition);
+      for(int i=0;i<count;i++) {
+        a.getNextTransition(transition);
+        assert stateMap[transition.dest] > stateMap[state];
+        a2.addTransition(stateMap[state], stateMap[transition.dest], transition.min, transition.max);
+      }
+    }
+
+    a2.finishState();
+    return a2;
   }
 
   private void assertSame(Collection<BytesRef> terms, Automaton a) {
@@ -1059,7 +1097,7 @@ public class TestAutomaton extends LuceneTestCase {
         Util.toUTF32(term.utf8ToString(), intsRef);
         expected.add(intsRef.toIntsRef());
       }
-      Set<IntsRef> actual = Operations.getFiniteStrings(a, -1);
+      Set<IntsRef> actual = TestOperations.getFiniteStrings(a);
 
       if (expected.equals(actual) == false) {
         System.out.println("FAILED:");
@@ -1091,7 +1129,7 @@ public class TestAutomaton extends LuceneTestCase {
         Util.toIntsRef(term, intsRef);
         expected2.add(intsRef.toIntsRef());
       }
-      assertEquals(expected2, Operations.getFiniteStrings(utf8, -1));
+      assertEquals(expected2, TestOperations.getFiniteStrings(utf8));
     } catch (AssertionError ae) {
       System.out.println("TEST: FAILED: not same");
       System.out.println("  terms (count=" + terms.size() + "):");
@@ -1221,7 +1259,7 @@ public class TestAutomaton extends LuceneTestCase {
         continue;
       } else {
         // Enumerate all finite strings and verify the count matches what we expect:
-        assertEquals(expectedCount, Operations.getFiniteStrings(a, expectedCount).size());
+        assertEquals(expectedCount, TestOperations.getFiniteStrings(a, expectedCount).size());
       }
 
       b = new BytesRefBuilder();
@@ -1301,7 +1339,7 @@ public class TestAutomaton extends LuceneTestCase {
     Automaton a = Automata.makeBinaryInterval(new BytesRef("bar"), true, new BytesRef("bar"), true);
     assertTrue(Operations.run(a, intsRef("bar")));
     assertTrue(Operations.isFinite(a));
-    assertEquals(1, Operations.getFiniteStrings(a, 10).size());
+    assertEquals(1, TestOperations.getFiniteStrings(a).size());
   }
 
   public void testMakeBinaryIntervalCommonPrefix() throws Exception {

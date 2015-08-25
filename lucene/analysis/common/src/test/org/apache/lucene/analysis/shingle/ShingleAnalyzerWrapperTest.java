@@ -36,7 +36,12 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.*;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.PhraseQuery;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.Directory;
 
 /**
@@ -98,8 +103,7 @@ public class ShingleAnalyzerWrapperTest extends BaseTokenStreamTestCase {
    * This shows how to construct a phrase query containing shingles.
    */
   public void testShingleAnalyzerWrapperPhraseQuery() throws Exception {
-    PhraseQuery q = new PhraseQuery();
-
+    PhraseQuery.Builder builder = new PhraseQuery.Builder();
     try (TokenStream ts = analyzer.tokenStream("content", "this sentence")) {
       int j = -1;
     
@@ -110,11 +114,12 @@ public class ShingleAnalyzerWrapperTest extends BaseTokenStreamTestCase {
       while (ts.incrementToken()) {
         j += posIncrAtt.getPositionIncrement();
         String termText = termAtt.toString();
-        q.add(new Term("content", termText), j);
+        builder.add(new Term("content", termText), j);
       }
       ts.end();
     }
 
+    PhraseQuery q = builder.build();
     ScoreDoc[] hits = searcher.search(q, 1000).scoreDocs;
     int[] ranks = new int[] { 0 };
     compareRanks(hits, ranks);
@@ -126,7 +131,7 @@ public class ShingleAnalyzerWrapperTest extends BaseTokenStreamTestCase {
    * in the right order and adjacent to each other.
    */
   public void testShingleAnalyzerWrapperBooleanQuery() throws Exception {
-    BooleanQuery q = new BooleanQuery();
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
 
     try (TokenStream ts = analyzer.tokenStream("content", "test sentence")) {
       CharTermAttribute termAtt = ts.addAttribute(CharTermAttribute.class);
@@ -140,7 +145,7 @@ public class ShingleAnalyzerWrapperTest extends BaseTokenStreamTestCase {
       ts.end();
     }
 
-    ScoreDoc[] hits = searcher.search(q, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(q.build(), 1000).scoreDocs;
     int[] ranks = new int[] { 1, 2, 0 };
     compareRanks(hits, ranks);
   }

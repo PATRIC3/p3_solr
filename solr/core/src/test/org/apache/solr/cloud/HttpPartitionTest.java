@@ -81,12 +81,6 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     fixShardCount(3);
   }
   
-  @Override
-  public void distribSetUp() throws Exception {
-    super.distribSetUp();
-    System.setProperty("numShards", Integer.toString(sliceCount));
-  }
-  
   /**
    * Overrides the parent implementation to install a SocketProxy in-front of the Jetty server.
    */
@@ -120,7 +114,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
 
     waitForThingsToLevelOut(30000);
 
-    log.info("HttpParitionTest succeeded ... shutting down now!");
+    log.info("HttpPartitionTest succeeded ... shutting down now!");
   }
 
   /**
@@ -165,9 +159,8 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
 
     // try to clean up
     try {
-      CollectionAdminRequest.Delete req = new CollectionAdminRequest.Delete();
-      req.setCollectionName(testCollectionName);
-      req.process(cloudClient);
+      new CollectionAdminRequest.Delete()
+              .setCollectionName(testCollectionName).process(cloudClient);
     } catch (Exception e) {
       // don't fail the test
       log.warn("Could not delete collection {} after test completed", testCollectionName);
@@ -269,9 +262,8 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
 
     // try to clean up
     try {
-      CollectionAdminRequest.Delete req = new CollectionAdminRequest.Delete();
-      req.setCollectionName(testCollectionName);
-      req.process(cloudClient);
+      new CollectionAdminRequest.Delete()
+              .setCollectionName(testCollectionName).process(cloudClient);
     } catch (Exception e) {
       // don't fail the test
       log.warn("Could not delete collection {} after test completed", testCollectionName);
@@ -531,7 +523,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     long startMs = System.currentTimeMillis();
 
     ZkStateReader zkr = cloudClient.getZkStateReader();
-    zkr.updateClusterState(true); // force the state to be fresh
+    zkr.updateClusterState(); // force the state to be fresh
 
     ClusterState cs = zkr.getClusterState();
     Collection<Slice> slices = cs.getActiveSlices(testCollectionName);
@@ -541,7 +533,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     while (waitMs < maxWaitMs && !allReplicasUp) {
       // refresh state every 2 secs
       if (waitMs % 2000 == 0)
-        cloudClient.getZkStateReader().updateClusterState(true);
+        cloudClient.getZkStateReader().updateClusterState();
 
       cs = cloudClient.getZkStateReader().getClusterState();
       assertNotNull(cs);

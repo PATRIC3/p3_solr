@@ -42,8 +42,11 @@
   <!-- ============================== USER TASKS =============================== -->
   <!-- ========================================================================= -->
 
-  <target name="server" depends="dist-contrib,server-war"
+  <target name="server" depends="dist-contrib"
           description="Creates a Solr server">
+    <ant dir="webapp" target="dist" inheritall="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+    </ant>
     <jar destfile="${example}/exampledocs/post.jar"
          basedir="${dest}/solr-core/classes/java"
          includes="org/apache/solr/util/SimplePostTool*.class">
@@ -51,9 +54,6 @@
         <attribute name="Main-Class" value="org.apache.solr.util.SimplePostTool"/>
       </manifest>
     </jar>
-    <delete includeemptydirs="true">
-      <fileset dir="${server.dir}/solr-webapp" includes="**/*"/>
-    </delete>
     <echo>See ${common-solr.dir}/README.txt for how to run the Solr server.</echo>
   </target>
 
@@ -69,6 +69,7 @@
     <property name="example.heap.size" value="512M"/>
     <java jar="${server.dir}/start.jar" fork="true" dir="${server.dir}" maxmemory="${example.heap.size}">
       <jvmarg line="${example.jvm.line}"/>
+      <arg value="--module=http"/>
       <sysproperty key="solr.solr.home" file="${example.solr.home}"/>
       <sysproperty key="jetty.port" value="${example.jetty.port}"/>
       <sysproperty key="jetty.home" value="${server.dir}"/>
@@ -185,7 +186,7 @@
     depends="javadocs,changes-to-html,process-webpages"/>
   <target name="compile-core" depends="compile-solr-core" unless="solr.core.compiled"/>
   
-  <target name="process-webpages" depends="define-lucene-javadoc-url,resolve-groovy,resolve-pegdown">
+  <target name="process-webpages" depends="define-lucene-javadoc-url,resolve-pegdown">
     <makeurl property="process-webpages.buildfiles" separator="|">
       <fileset dir="." includes="core/build.xml,test-framework/build.xml,solrj/build.xml,contrib/**/build.xml"/>
     </makeurl>
@@ -372,7 +373,7 @@
         <include name="solr/zoo_data/" />
         <include name="start.jar" />
         <include name="logs/*" />
-        <include name="webapps/**/*" />
+        <include name="webapps" />
         <include name="solr-webapp/**/*" />
         <exclude name="**/.gitignore" />
       </fileset>    	
@@ -410,13 +411,6 @@
   <target name="dist-contrib" depends="init-dist"
           description="Make the contribs ready for distribution">
     <contrib-crawl target="dist" failonerror="true" />
-  </target>
-  
-  <target name="server-war"
-          description="Creates the Solr WAR Distribution file.">
-    <ant dir="webapp" target="server-war" inheritall="false">
-      <propertyset refid="uptodate.and.compiled.properties"/>
-    </ant>
   </target>
   
   <target name="prepare-release-no-sign" depends="clean, package, generate-maven-artifacts"/>
@@ -489,7 +483,7 @@
       <tarfileset dir="." prefix="${fullnamever}" includes="LICENSE.txt NOTICE.txt"/>
       <tarfileset dir="." prefix="${fullnamever}/solr"
                   excludes="build/** ${package.dir.rel}/** ${dist.rel}/**
-                            server/webapps/*.war example/lib/**
+                            example/lib/**
                             **/*.jar 
                             lib/README.committers.txt **/data/ **/logs/*
                             **/*.sh **/bin/ scripts/ 
@@ -509,6 +503,7 @@
           description="Packages the Solr Binary Distribution">
     <antcall inheritall="true">
       <param name="called.from.create-package" value="true"/>
+      <propertyset refid="uptodate.and.compiled.properties"/>
       <target name="init-dist"/>
       <target name="dist"/>
       <target name="server"/>
@@ -516,7 +511,6 @@
     </antcall>
     <mkdir dir="${dest}/${fullnamever}"/>
     <delete includeemptydirs="true">
-      <fileset dir="${server.dir}/solr-webapp" includes="**/*"/>
       <fileset dir="${dest}/${fullnamever}" includes="**/*"/>
     </delete>
  
@@ -664,13 +658,11 @@
   </target>
   
   <target name="generate-maven-artifacts" depends="-unpack-solr-tgz">
-    <sequential>
-      <ant dir=".." target="resolve" inheritall="false"/>
-      <antcall target="-filter-pom-templates" inheritall="false"/>
-      <antcall target="-dist-maven" inheritall="false">
-        <propertyset refid="uptodate.and.compiled.properties"/>
-      </antcall>
-    </sequential>
+    <ant dir=".." target="resolve" inheritall="false"/>
+    <antcall target="-filter-pom-templates" inheritall="false"/>
+    <antcall target="-dist-maven" inheritall="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+    </antcall>
   </target>
  
   <target name="-validate-maven-dependencies" depends="compile-tools, install-maven-tasks, load-custom-tasks">

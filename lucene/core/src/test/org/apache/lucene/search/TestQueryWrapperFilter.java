@@ -90,7 +90,7 @@ public class TestQueryWrapperFilter extends LuceneTestCase {
     assertEquals(1, hits.totalHits);
 
     // should not throw exception with complex primitive query
-    BooleanQuery booleanQuery = new BooleanQuery();
+    BooleanQuery.Builder booleanQuery = new BooleanQuery.Builder();
     booleanQuery.add(termQuery, Occur.MUST);
     booleanQuery.add(new TermQuery(new Term("field", "missing")),
         Occur.MUST_NOT);
@@ -218,7 +218,7 @@ public class TestQueryWrapperFilter extends LuceneTestCase {
     searcher.setQueryCache(null); // to still have approximations
     final Query query = new QueryWrapperFilter(new RandomApproximationQuery(new TermQuery(new Term("foo", "bar")), random()));
     final Weight weight = searcher.createNormalizedWeight(query, random().nextBoolean());
-    final Scorer scorer = weight.scorer(reader.leaves().get(0), null);
+    final Scorer scorer = weight.scorer(reader.leaves().get(0));
     assertNotNull(scorer.asTwoPhaseIterator());
     reader.close();
     dir.close();

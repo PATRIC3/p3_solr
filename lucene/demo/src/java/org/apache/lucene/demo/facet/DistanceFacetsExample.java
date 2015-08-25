@@ -45,11 +45,10 @@ import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.NumericRangeQuery;
-import org.apache.lucene.search.QueryWrapperFilter;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
@@ -140,7 +139,7 @@ public class DistanceFacetsExample implements Closeable {
    *  maximum great circle (surface of the earth) distance,
    *  returns a simple Filter bounding box to "fast match"
    *  candidates. */
-  public static Filter getBoundingBoxFilter(double originLat, double originLng, double maxDistanceKM) {
+  public static Query getBoundingBoxQuery(double originLat, double originLng, double maxDistanceKM) {
 
     // Basic bounding box geo math from
     // http://JanMatuschek.de/LatitudeLongitudeBoundingCoordinates,
@@ -180,7 +179,7 @@ public class DistanceFacetsExample implements Closeable {
       maxLng = Math.toRadians(180);
     }
 
-    BooleanQuery f = new BooleanQuery();
+    BooleanQuery.Builder f = new BooleanQuery.Builder();
 
     // Add latitude range filter:
     f.add(NumericRangeQuery.newDoubleRange("latitude", Math.toDegrees(minLat), Math.toDegrees(maxLat), true, true),
@@ -190,18 +189,18 @@ public class DistanceFacetsExample implements Closeable {
     if (minLng > maxLng) {
       // The bounding box crosses the international date
       // line:
-      BooleanQuery lonF = new BooleanQuery();
+      BooleanQuery.Builder lonF = new BooleanQuery.Builder();
       lonF.add(NumericRangeQuery.newDoubleRange("longitude", Math.toDegrees(minLng), null, true, true),
                BooleanClause.Occur.SHOULD);
       lonF.add(NumericRangeQuery.newDoubleRange("longitude", null, Math.toDegrees(maxLng), true, true),
                BooleanClause.Occur.SHOULD);
-      f.add(lonF, BooleanClause.Occur.MUST);
+      f.add(lonF.build(), BooleanClause.Occur.MUST);
     } else {
       f.add(NumericRangeQuery.newDoubleRange("longitude", Math.toDegrees(minLng), Math.toDegrees(maxLng), true, true),
             BooleanClause.Occur.FILTER);
     }
 
-    return new QueryWrapperFilter(f);
+    return f.build();
   }
 
   /** User runs a query and counts facets. */
@@ -212,7 +211,7 @@ public class DistanceFacetsExample implements Closeable {
     searcher.search(new MatchAllDocsQuery(), fc);
 
     Facets facets = new DoubleRangeFacetCounts("field", getDistanceValueSource(), fc,
-                                               getBoundingBoxFilter(ORIGIN_LATITUDE, ORIGIN_LONGITUDE, 10.0),
+                                               getBoundingBoxQuery(ORIGIN_LATITUDE, ORIGIN_LONGITUDE, 10.0),
                                                ONE_KM,
                                                TWO_KM,
                                                FIVE_KM,
@@ -228,7 +227,7 @@ public class DistanceFacetsExample implements Closeable {
     // documents ("browse only"):
     DrillDownQuery q = new DrillDownQuery(null);
     final ValueSource vs = getDistanceValueSource();
-    q.add("field", range.getFilter(getBoundingBoxFilter(ORIGIN_LATITUDE, ORIGIN_LONGITUDE, range.max), vs));
+    q.add("field", range.getQuery(getBoundingBoxQuery(ORIGIN_LATITUDE, ORIGIN_LONGITUDE, range.max), vs));
     DrillSideways ds = new DrillSideways(searcher, config, (TaxonomyReader) null) {
         @Override
         protected Facets buildFacetsResult(FacetsCollector drillDowns, FacetsCollector[] drillSideways, String[] drillSidewaysDims) throws IOException {        

@@ -39,26 +39,6 @@ public class LeaderInitiatedRecoveryOnCommitTest extends BasicDistributedZkTest 
   }
 
   @Override
-  public void distribSetUp() throws Exception {
-    super.distribSetUp();
-    System.setProperty("numShards", Integer.toString(sliceCount));
-  }
-
-  @Override
-  public void distribTearDown() throws Exception {
-    System.clearProperty("numShards");
-
-    super.distribTearDown();
-
-    // close socket proxies after super.distribTearDown
-    if (!proxies.isEmpty()) {
-      for (SocketProxy proxy : proxies.values()) {
-        proxy.close();
-      }
-    }
-  }
-
-  @Override
   @Test
   public void test() throws Exception {
     oneShardTest();
@@ -95,7 +75,7 @@ public class LeaderInitiatedRecoveryOnCommitTest extends BasicDistributedZkTest 
 
     Thread.sleep(sleepMsBeforeHealPartition);
 
-    cloudClient.getZkStateReader().updateClusterState(true); // get the latest state
+    cloudClient.getZkStateReader().updateClusterState(); // get the latest state
     leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard1");
     assertSame("Leader was not active", Replica.State.ACTIVE, leader.getState());
 
@@ -143,7 +123,7 @@ public class LeaderInitiatedRecoveryOnCommitTest extends BasicDistributedZkTest 
     sendCommitWithRetry(replica);
     Thread.sleep(sleepMsBeforeHealPartition);
 
-    cloudClient.getZkStateReader().updateClusterState(true); // get the latest state
+    cloudClient.getZkStateReader().updateClusterState(); // get the latest state
     leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard1");
     assertSame("Leader was not active", Replica.State.ACTIVE, leader.getState());
 

@@ -330,9 +330,9 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
           if (VERBOSE) {
             System.out.println("  found in seg=" + termsEnums[seg]);
           }
-          postingsEnums[seg] = termsEnums[seg].postings(liveDocs[seg], postingsEnums[seg], 0);
+          postingsEnums[seg] = termsEnums[seg].postings(postingsEnums[seg], 0);
           int docID = postingsEnums[seg].nextDoc();
-          if (docID != PostingsEnum.NO_MORE_DOCS) {
+          if (docID != PostingsEnum.NO_MORE_DOCS && (liveDocs[seg] == null || liveDocs[seg].get(docID))) {
             lastVersion = ((IDVersionSegmentTermsEnum) termsEnums[seg]).getVersion();
             return docBases[seg] + docID;
           }
@@ -405,11 +405,11 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
       fail("didn't hit exception");
     } catch (IllegalArgumentException iae) {
       // expected: SMS will hit this
-    } catch (IOException ioe) {
+    } catch (IOException | IllegalStateException exc) {
       // expected
-      assertTrue(ioe.getCause() instanceof IllegalArgumentException);
+      assertTrue(exc.getCause() instanceof IllegalArgumentException);
     }
-    w.close();
+    w.rollback();
     dir.close();
   }
 

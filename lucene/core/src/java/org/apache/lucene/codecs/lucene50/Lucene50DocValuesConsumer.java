@@ -23,6 +23,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.DocValuesConsumer;
@@ -34,6 +39,7 @@ import org.apache.lucene.store.RAMOutputStream;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.LongsRef;
 import org.apache.lucene.util.MathUtil;
 import org.apache.lucene.util.PagedBytes;
 import org.apache.lucene.util.PagedBytes.PagedBytesDataInput;
@@ -42,55 +48,10 @@ import org.apache.lucene.util.packed.DirectWriter;
 import org.apache.lucene.util.packed.MonotonicBlockPackedWriter;
 import org.apache.lucene.util.packed.PackedInts;
 
+import static org.apache.lucene.codecs.lucene50.Lucene50DocValuesFormat.*;
+
 /** writer for {@link Lucene50DocValuesFormat} */
 class Lucene50DocValuesConsumer extends DocValuesConsumer implements Closeable {
-
-  static final int BLOCK_SIZE = 16384;
-  
-  // address terms in blocks of 16 terms
-  static final int INTERVAL_SHIFT = 4;
-  static final int INTERVAL_COUNT = 1 << INTERVAL_SHIFT;
-  static final int INTERVAL_MASK = INTERVAL_COUNT - 1;
-  
-  // build reverse index from every 1024th term
-  static final int REVERSE_INTERVAL_SHIFT = 10;
-  static final int REVERSE_INTERVAL_COUNT = 1 << REVERSE_INTERVAL_SHIFT;
-  static final int REVERSE_INTERVAL_MASK = REVERSE_INTERVAL_COUNT - 1;
-  
-  // for conversion from reverse index to block
-  static final int BLOCK_INTERVAL_SHIFT = REVERSE_INTERVAL_SHIFT - INTERVAL_SHIFT;
-  static final int BLOCK_INTERVAL_COUNT = 1 << BLOCK_INTERVAL_SHIFT;
-  static final int BLOCK_INTERVAL_MASK = BLOCK_INTERVAL_COUNT - 1;
-
-  /** Compressed using packed blocks of ints. */
-  public static final int DELTA_COMPRESSED = 0;
-  /** Compressed by computing the GCD. */
-  public static final int GCD_COMPRESSED = 1;
-  /** Compressed by giving IDs to unique values. */
-  public static final int TABLE_COMPRESSED = 2;
-  /** Compressed with monotonically increasing values */
-  public static final int MONOTONIC_COMPRESSED = 3;
-  /** Compressed with constant value (uses only missing bitset) */
-  public static final int CONST_COMPRESSED = 4;
-  
-  /** Uncompressed binary, written directly (fixed length). */
-  public static final int BINARY_FIXED_UNCOMPRESSED = 0;
-  /** Uncompressed binary, written directly (variable length). */
-  public static final int BINARY_VARIABLE_UNCOMPRESSED = 1;
-  /** Compressed binary with shared prefixes */
-  public static final int BINARY_PREFIX_COMPRESSED = 2;
-
-  /** Standard storage for sorted set values with 1 level of indirection:
-   *  {@code docId -> address -> ord}. */
-  public static final int SORTED_WITH_ADDRESSES = 0;
-  /** Single-valued sorted set values, encoded as sorted values, so no level
-   *  of indirection: {@code docId -> ord}. */
-  public static final int SORTED_SINGLE_VALUED = 1;
-  
-  /** placeholder for missing offset that means there are no missing values */
-  public static final int ALL_LIVE = -1;
-  /** placeholder for missing offset that means all values are missing */
-  public static final int ALL_MISSING = -2;
 
   IndexOutput data, meta;
   final int maxDoc;
@@ -329,9 +290,9 @@ class Lucene50DocValuesConsumer extends DocValuesConsumer implements Closeable {
     if (minLength != maxLength) {
       meta.writeLong(data.getFilePointer());
       meta.writeVInt(PackedInts.VERSION_CURRENT);
-      meta.writeVInt(BLOCK_SIZE);
+      meta.writeVInt(MONOTONIC_BLOCK_SIZE);
 
-      final MonotonicBlockPackedWriter writer = new MonotonicBlockPackedWriter(data, BLOCK_SIZE);
+      final MonotonicBlockPackedWriter writer = new MonotonicBlockPackedWriter(data, MONOTONIC_BLOCK_SIZE);
       long addr = 0;
       writer.add(addr);
       for (BytesRef v : values) {
@@ -373,7 +334,7 @@ class Lucene50DocValuesConsumer extends DocValuesConsumer implements Closeable {
       // currently, we have to store the delta from expected for every 1/nth term
       // we could avoid this, but it's not much and less overall RAM than the previous approach!
       RAMOutputStream addressBuffer = new RAMOutputStream();
-      MonotonicBlockPackedWriter termAddresses = new MonotonicBlockPackedWriter(addressBuffer, BLOCK_SIZE);
+      MonotonicBlockPackedWriter termAddresses = new MonotonicBlockPackedWriter(addressBuffer, MONOTONIC_BLOCK_SIZE);
       // buffers up 16 terms
       RAMOutputStream bytesBuffer = new RAMOutputStream();
       // buffers up block header
@@ -424,7 +385,7 @@ class Lucene50DocValuesConsumer extends DocValuesConsumer implements Closeable {
       meta.writeLong(startFP);
       meta.writeLong(indexStartFP);
       meta.writeVInt(PackedInts.VERSION_CURRENT);
-      meta.writeVInt(BLOCK_SIZE);
+      meta.writeVInt(MONOTONIC_BLOCK_SIZE);
       addReverseTermIndex(field, values, maxLength);
     }
   }
@@ -467,7 +428,7 @@ class Lucene50DocValuesConsumer extends DocValuesConsumer implements Closeable {
     BytesRef indexTerm = new BytesRef();
     long startFP = data.getFilePointer();
     PagedBytes pagedBytes = new PagedBytes(15);
-    MonotonicBlockPackedWriter addresses = new MonotonicBlockPackedWriter(data, BLOCK_SIZE);
+    MonotonicBlockPackedWriter addresses = new MonotonicBlockPackedWriter(data, MONOTONIC_BLOCK_SIZE);
     
     for (BytesRef b : values) {
       int termPosition = (int) (count & REVERSE_INTERVAL_MASK);
@@ -508,11 +469,22 @@ class Lucene50DocValuesConsumer extends DocValuesConsumer implements Closeable {
       // The field is single-valued, we can encode it as NUMERIC
       addNumericField(field, singletonView(docToValueCount, values, null));
     } else {
-      meta.writeVInt(SORTED_WITH_ADDRESSES);
-      // write the stream of values as a numeric field
-      addNumericField(field, values, true);
-      // write the doc -> ord count as a absolute index to the stream
-      addAddresses(field, docToValueCount);
+      final SortedSet<LongsRef> uniqueValueSets = uniqueValueSets(docToValueCount, values);
+      if (uniqueValueSets != null) {
+        meta.writeVInt(SORTED_SET_TABLE);
+
+        // write the set_id -> values mapping
+        writeDictionary(uniqueValueSets);
+
+        // write the doc -> set_id as a numeric field
+        addNumericField(field, docToSetId(uniqueValueSets, docToValueCount, values), false);
+      } else {
+        meta.writeVInt(SORTED_WITH_ADDRESSES);
+        // write the stream of values as a numeric field
+        addNumericField(field, values, true);
+        // write the doc -> ord count as a absolute index to the stream
+        addAddresses(field, docToValueCount);
+      }
     }
   }
 
@@ -526,20 +498,124 @@ class Lucene50DocValuesConsumer extends DocValuesConsumer implements Closeable {
       // The field is single-valued, we can encode it as SORTED
       addSortedField(field, values, singletonView(docToOrdCount, ords, -1L));
     } else {
-      meta.writeVInt(SORTED_WITH_ADDRESSES);
+      final SortedSet<LongsRef> uniqueValueSets = uniqueValueSets(docToOrdCount, ords);
+      if (uniqueValueSets != null) {
+        meta.writeVInt(SORTED_SET_TABLE);
 
-      // write the ord -> byte[] as a binary field
-      addTermsDict(field, values);
+        // write the set_id -> ords mapping
+        writeDictionary(uniqueValueSets);
 
-      // write the stream of ords as a numeric field
-      // NOTE: we could return an iterator that delta-encodes these within a doc
-      addNumericField(field, ords, false);
+        // write the ord -> byte[] as a binary field
+        addTermsDict(field, values);
 
-      // write the doc -> ord count as a absolute index to the stream
-      addAddresses(field, docToOrdCount);
+        // write the doc -> set_id as a numeric field
+        addNumericField(field, docToSetId(uniqueValueSets, docToOrdCount, ords), false);
+      } else {
+        meta.writeVInt(SORTED_WITH_ADDRESSES);
+
+        // write the ord -> byte[] as a binary field
+        addTermsDict(field, values);
+
+        // write the stream of ords as a numeric field
+        // NOTE: we could return an iterator that delta-encodes these within a doc
+        addNumericField(field, ords, false);
+
+        // write the doc -> ord count as a absolute index to the stream
+        addAddresses(field, docToOrdCount);
+      }
     }
   }
-  
+
+  private SortedSet<LongsRef> uniqueValueSets(Iterable<Number> docToValueCount, Iterable<Number> values) {
+    Set<LongsRef> uniqueValueSet = new HashSet<>();
+    LongsRef docValues = new LongsRef(256);
+
+    Iterator<Number> valueCountIterator = docToValueCount.iterator();
+    Iterator<Number> valueIterator = values.iterator();
+    int totalDictSize = 0;
+    while (valueCountIterator.hasNext()) {
+      docValues.length = valueCountIterator.next().intValue();
+      if (docValues.length > 256) {
+        return null;
+      }
+      for (int i = 0; i < docValues.length; ++i) {
+        docValues.longs[i] = valueIterator.next().longValue();
+      }
+      if (uniqueValueSet.contains(docValues)) {
+        continue;
+      }
+      totalDictSize += docValues.length;
+      if (totalDictSize > 256) {
+        return null;
+      }
+      uniqueValueSet.add(new LongsRef(Arrays.copyOf(docValues.longs, docValues.length), 0, docValues.length));
+    }
+    assert valueIterator.hasNext() == false;
+    return new TreeSet<>(uniqueValueSet);
+  }
+
+  private void writeDictionary(SortedSet<LongsRef> uniqueValueSets) throws IOException {
+    int lengthSum = 0;
+    for (LongsRef longs : uniqueValueSets) {
+      lengthSum += longs.length;
+    }
+
+    meta.writeInt(lengthSum);
+    for (LongsRef valueSet : uniqueValueSets) {
+      for (int  i = 0; i < valueSet.length; ++i) {
+        meta.writeLong(valueSet.longs[valueSet.offset + i]);
+      }
+    }
+
+    meta.writeInt(uniqueValueSets.size());
+    for (LongsRef valueSet : uniqueValueSets) {
+      meta.writeInt(valueSet.length);
+    }
+  }
+
+  private Iterable<Number> docToSetId(SortedSet<LongsRef> uniqueValueSets, final Iterable<Number> docToValueCount, final Iterable<Number> values) {
+    final Map<LongsRef, Integer> setIds = new HashMap<>();
+    int i = 0;
+    for (LongsRef set : uniqueValueSets) {
+      setIds.put(set, i++);
+    }
+    assert i == uniqueValueSets.size();
+
+    return new Iterable<Number>() {
+
+      @Override
+      public Iterator<Number> iterator() {
+        final Iterator<Number> valueCountIterator = docToValueCount.iterator();
+        final Iterator<Number> valueIterator = values.iterator();
+        final LongsRef docValues = new LongsRef(256);
+        return new Iterator<Number>() {
+
+          @Override
+          public boolean hasNext() {
+            return valueCountIterator.hasNext();
+          }
+
+          @Override
+          public Number next() {
+            docValues.length = valueCountIterator.next().intValue();
+            for (int i = 0; i < docValues.length; ++i) {
+              docValues.longs[i] = valueIterator.next().longValue();
+            }
+            final Integer id = setIds.get(docValues);
+            assert id != null;
+            return id;
+          }
+
+          @Override
+          public void remove() {
+            throw new UnsupportedOperationException();
+          }
+        };
+
+      }
+    };
+  }
+
   // writes addressing information as MONOTONIC_COMPRESSED integer
   private void addAddresses(FieldInfo field, Iterable<Number> values) throws IOException {
     meta.writeVInt(field.number);
@@ -549,9 +625,9 @@ class Lucene50DocValuesConsumer extends DocValuesConsumer implements Closeable {
     meta.writeLong(data.getFilePointer());
     meta.writeVLong(maxDoc);
     meta.writeVInt(PackedInts.VERSION_CURRENT);
-    meta.writeVInt(BLOCK_SIZE);
+    meta.writeVInt(MONOTONIC_BLOCK_SIZE);
 
-    final MonotonicBlockPackedWriter writer = new MonotonicBlockPackedWriter(data, BLOCK_SIZE);
+    final MonotonicBlockPackedWriter writer = new MonotonicBlockPackedWriter(data, MONOTONIC_BLOCK_SIZE);
     long addr = 0;
     writer.add(addr);
     for (Number v : values) {

@@ -34,6 +34,14 @@ import java.lang.reflect.Method;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.Permission;
+import java.security.PermissionCollection;
+import java.security.Permissions;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
+import java.security.ProtectionDomain;
 import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -102,6 +110,7 @@ import org.junit.Test;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
 import org.junit.runner.RunWith;
+
 import com.carrotsearch.randomizedtesting.JUnit4MethodProvider;
 import com.carrotsearch.randomizedtesting.LifecycleScope;
 import com.carrotsearch.randomizedtesting.MixWithSuiteName;
@@ -490,7 +499,7 @@ public abstract class LuceneTestCase extends Assert {
   /**
    * Suite failure marker (any error in the test or suite scope).
    */
-  private static TestRuleMarkFailure suiteFailureMarker;
+  protected static TestRuleMarkFailure suiteFailureMarker;
   
   /**
    * Temporary files cleanup rule.
@@ -916,6 +925,7 @@ public abstract class LuceneTestCase extends Assert {
       cms.setMaxMergesAndThreads(maxMergeCount, maxThreadCount);
       if (random().nextBoolean()) {
         cms.disableAutoIOThrottle();
+        assertFalse(cms.getAutoIOThrottle());
       }
       cms.setForceMergeMBPerSec(10 + 10*random().nextDouble());
       c.setMergeScheduler(cms);
@@ -939,12 +949,6 @@ public abstract class LuceneTestCase extends Assert {
         // reasonable value
         c.setMaxBufferedDocs(TestUtil.nextInt(r, 16, 1000));
       }
-    }
-    if (r.nextBoolean()) {
-      int maxNumThreadStates = rarely(r) ? TestUtil.nextInt(r, 5, 20) // crazy value
-          : TestUtil.nextInt(r, 1, 4); // reasonable value
-
-      c.setMaxThreadStates(maxNumThreadStates);
     }
 
     c.setMergePolicy(newMergePolicy(r));
@@ -1181,11 +1185,18 @@ public abstract class LuceneTestCase extends Assert {
       // change CMS merge parameters
       MergeScheduler ms = c.getMergeScheduler();
       if (ms instanceof ConcurrentMergeScheduler) {
+        ConcurrentMergeScheduler cms = (ConcurrentMergeScheduler) ms;
         int maxThreadCount = TestUtil.nextInt(r, 1, 4);
         int maxMergeCount = TestUtil.nextInt(r, maxThreadCount, maxThreadCount + 4);
-        ((ConcurrentMergeScheduler)ms).setMaxMergesAndThreads(maxMergeCount, maxThreadCount);
+        boolean enableAutoIOThrottle = random().nextBoolean();
+        if (enableAutoIOThrottle) {
+          cms.enableAutoIOThrottle();
+        } else {
+          cms.disableAutoIOThrottle();
+        }
+        cms.setMaxMergesAndThreads(maxMergeCount, maxThreadCount);
+        didChange = true;
       }
-      didChange = true;
     }
     
     if (rarely(r)) {
@@ -2018,7 +2029,6 @@ public abstract class LuceneTestCase extends Assert {
    */
   public void assertTermsEnumEquals(String info, IndexReader leftReader, TermsEnum leftTermsEnum, TermsEnum rightTermsEnum, boolean deep) throws IOException {
     BytesRef term;
-    Bits randomBits = new RandomBits(leftReader.maxDoc(), random().nextDouble(), random());
     PostingsEnum leftPositions = null;
     PostingsEnum rightPositions = null;
     PostingsEnum leftDocs = null;
@@ -2028,52 +2038,36 @@ public abstract class LuceneTestCase extends Assert {
       assertEquals(info, term, rightTermsEnum.next());
       assertTermStatsEquals(info, leftTermsEnum, rightTermsEnum);
       if (deep) {
-        assertDocsAndPositionsEnumEquals(info, leftPositions = leftTermsEnum.postings(null, leftPositions, PostingsEnum.ALL),
-                                   rightPositions = rightTermsEnum.postings(null, rightPositions, PostingsEnum.ALL));
-        assertDocsAndPositionsEnumEquals(info, leftPositions = leftTermsEnum.postings(randomBits, leftPositions, PostingsEnum.ALL),
-                                   rightPositions = rightTermsEnum.postings(randomBits, rightPositions, PostingsEnum.ALL));
+        assertDocsAndPositionsEnumEquals(info, leftPositions = leftTermsEnum.postings(leftPositions, PostingsEnum.ALL),
+                                   rightPositions = rightTermsEnum.postings(rightPositions, PostingsEnum.ALL));
 
         assertPositionsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-                                leftPositions = leftTermsEnum.postings(null, leftPositions, PostingsEnum.ALL),
-                                rightPositions = rightTermsEnum.postings(null, rightPositions, PostingsEnum.ALL));
-        assertPositionsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-                                leftPositions = leftTermsEnum.postings(randomBits, leftPositions, PostingsEnum.ALL),
-            rightPositions = rightTermsEnum.postings(randomBits, rightPositions, PostingsEnum.ALL));
+                                leftPositions = leftTermsEnum.postings(leftPositions, PostingsEnum.ALL),
+                                rightPositions = rightTermsEnum.postings(rightPositions, PostingsEnum.ALL));
+
 
         // with freqs:
-        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(null, leftDocs),
-            rightDocs = rightTermsEnum.postings(null, rightDocs),
-            true);
-        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(randomBits, leftDocs),
-            rightDocs = rightTermsEnum.postings(randomBits, rightDocs),
+        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(leftDocs),
+            rightDocs = rightTermsEnum.postings(rightDocs),
             true);
 
+
         // w/o freqs:
-        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(null, leftDocs, PostingsEnum.NONE),
-            rightDocs = rightTermsEnum.postings(null, rightDocs, PostingsEnum.NONE),
+        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(leftDocs, PostingsEnum.NONE),
+            rightDocs = rightTermsEnum.postings(rightDocs, PostingsEnum.NONE),
             false);
-        assertDocsEnumEquals(info, leftDocs = leftTermsEnum.postings(randomBits, leftDocs, PostingsEnum.NONE),
-            rightDocs = rightTermsEnum.postings(randomBits, rightDocs, PostingsEnum.NONE),
-            false);
+
         
         // with freqs:
         assertDocsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-            leftDocs = leftTermsEnum.postings(null, leftDocs),
-            rightDocs = rightTermsEnum.postings(null, rightDocs),
-            true);
-        assertDocsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-            leftDocs = leftTermsEnum.postings(randomBits, leftDocs),
-            rightDocs = rightTermsEnum.postings(randomBits, rightDocs),
+            leftDocs = leftTermsEnum.postings(leftDocs),
+            rightDocs = rightTermsEnum.postings(rightDocs),
             true);
 
         // w/o freqs:
         assertDocsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-            leftDocs = leftTermsEnum.postings(null, leftDocs, PostingsEnum.NONE),
-            rightDocs = rightTermsEnum.postings(null, rightDocs, PostingsEnum.NONE),
-            false);
-        assertDocsSkippingEquals(info, leftReader, leftTermsEnum.docFreq(), 
-            leftDocs = leftTermsEnum.postings(randomBits, leftDocs, PostingsEnum.NONE),
-            rightDocs = rightTermsEnum.postings(randomBits, rightDocs, PostingsEnum.NONE),
+            leftDocs = leftTermsEnum.postings(leftDocs, PostingsEnum.NONE),
+            rightDocs = rightTermsEnum.postings(rightDocs, PostingsEnum.NONE),
             false);
       }
     }
@@ -2613,6 +2607,27 @@ public abstract class LuceneTestCase extends Assert {
    */
   public static Path createTempFile() throws IOException {
     return createTempFile("tempFile", ".tmp");
+  }
+  
+  /** 
+   * Runs a code part with restricted permissions (be sure to add all required permissions,
+   * because it would start with empty permissions). You cannot grant more permissions than
+   * our policy file allows, but you may restrict writing to several dirs...
+   * <p><em>Note:</em> This assumes a {@link SecurityManager} enabled, otherwise it
+   * stops test execution.
+   */
+  public static <T> T runWithRestrictedPermissions(PrivilegedExceptionAction<T> action, Permission... permissions) throws Exception {
+    assumeTrue("runWithRestrictedPermissions requires a SecurityManager enabled", System.getSecurityManager() != null);
+    final PermissionCollection perms = new Permissions();
+    for (Permission p : permissions) {
+      perms.add(p);
+    }
+    final AccessControlContext ctx = new AccessControlContext(new ProtectionDomain[] { new ProtectionDomain(null, perms) });
+    try {
+      return AccessController.doPrivileged(action, ctx);
+    } catch (PrivilegedActionException e) {
+      throw e.getException();
+    }
   }
 
   /** True if assertions (-ea) are enabled (at least for this class). */

@@ -122,10 +122,10 @@ public final class SortingMergePolicy extends MergePolicy {
     }
     
     @Override
-    public void setInfo(SegmentCommitInfo info) {
+    public void setMergeInfo(SegmentCommitInfo info) {
       Map<String,String> diagnostics = info.info.getDiagnostics();
       diagnostics.put(SORTER_ID_PROP, sorter.getID());
-      super.setInfo(info);
+      super.setMergeInfo(info);
     }
 
     private PackedLongValues getDeletes(List<CodecReader> readers) {
@@ -187,8 +187,9 @@ public final class SortingMergePolicy extends MergePolicy {
   }
 
   /** Returns {@code true} if the given {@code reader} is sorted by the
-   *  {@code sort} order of this {@link SortingMergePolicy}. */
-  public boolean isSorted(LeafReader reader) {
+   *  {@code sort} given. Typically the given {@code sort} would be the
+   *  {@link SortingMergePolicy#getSort()} order of a {@link SortingMergePolicy}. */
+  public static boolean isSorted(LeafReader reader, Sort sort) {
     String description = getSortDescription(reader);
     if (description != null && description.equals(sort.toString())) {
       return true;
@@ -203,6 +204,8 @@ public final class SortingMergePolicy extends MergePolicy {
       if (diagnostics != null) {
         return diagnostics.get(SORTER_ID_PROP);
       }
+    } else if (reader instanceof FilterLeafReader) {
+      return getSortDescription(FilterLeafReader.unwrap(reader));
     }
     return null;
   }
@@ -257,6 +260,11 @@ public final class SortingMergePolicy extends MergePolicy {
   public boolean useCompoundFile(SegmentInfos segments,
       SegmentCommitInfo newSegment, IndexWriter writer) throws IOException {
     return in.useCompoundFile(segments, newSegment, writer);
+  }
+
+  @Override
+  protected long size(SegmentCommitInfo info, IndexWriter writer) throws IOException {
+    return in.size(info, writer);
   }
 
   @Override

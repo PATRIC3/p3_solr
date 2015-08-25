@@ -33,7 +33,6 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.TwoPhaseIterator;
 import org.apache.lucene.search.Weight;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LongBitSet;
 import org.apache.lucene.util.LongValues;
@@ -139,13 +138,13 @@ final class GlobalOrdinalsQuery extends Query {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context) throws IOException {
       SortedDocValues values = DocValues.getSorted(context.reader(), joinField);
       if (values == null) {
         return null;
       }
 
-      Scorer approximationScorer = approximationWeight.scorer(context, acceptDocs);
+      Scorer approximationScorer = approximationWeight.scorer(context);
       if (approximationScorer == null) {
         return null;
       }

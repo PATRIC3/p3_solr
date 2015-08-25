@@ -17,6 +17,7 @@
 
 package org.apache.solr.core;
 
+import org.apache.solr.common.util.NamedList;
 import org.apache.solr.schema.IndexSchema;
 
 /**
@@ -30,10 +31,13 @@ public class ConfigSet {
 
   private final IndexSchema indexSchema;
 
-  public ConfigSet(String name, SolrConfig solrConfig, IndexSchema indexSchema) {
+  private final NamedList properties;
+
+  public ConfigSet(String name, SolrConfig solrConfig, IndexSchema indexSchema, NamedList properties) {
     this.name = name;
     this.solrconfig = solrConfig;
     this.indexSchema = indexSchema;
+    this.properties = properties;
   }
 
   public String getName() {
@@ -46,5 +50,9 @@ public class ConfigSet {
 
   public IndexSchema getIndexSchema() {
     return indexSchema;
+  }
+
+  public NamedList getProperties() {
+    return properties;
   }
 }

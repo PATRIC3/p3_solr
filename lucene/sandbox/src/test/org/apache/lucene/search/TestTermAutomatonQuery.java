@@ -513,7 +513,7 @@ public class TestTermAutomatonQuery extends LuceneTestCase {
       // Build the (finite, no any transitions) TermAutomatonQuery and
       // also the "equivalent" BooleanQuery and make sure they match the
       // same docs:
-      BooleanQuery bq = new BooleanQuery();
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
       int count = TestUtil.nextInt(random(), 1, 5);
       Set<BytesRef> strings = new HashSet<>();
       for(int i=0;i<count;i++) {
@@ -578,7 +578,7 @@ public class TestTermAutomatonQuery extends LuceneTestCase {
       }
       
       Query q1 = q;
-      Query q2 = bq;
+      Query q2 = bq.build();
       if (random().nextInt(5) == 1) {
         if (VERBOSE) {
           System.out.println("  use random filter");
@@ -727,6 +727,53 @@ public class TestTermAutomatonQuery extends LuceneTestCase {
     q.finish();
 
     assertEquals(1, s.search(q, 1).totalHits);
+    w.close();
+    r.close();
+    dir.close();
+  }
+
+  public void testTermDoesNotExist() throws Exception {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    doc.add(newTextField("field", "x y z", Field.Store.NO));
+    w.addDocument(doc);
+
+    IndexReader r = w.getReader();
+    IndexSearcher s = newSearcher(r);
+
+    TokenStream ts = new CannedTokenStream(new Token[] {
+        token("a", 1, 1),
+      });
+
+    TermAutomatonQuery q = new TokenStreamToTermAutomatonQuery().toQuery("field", ts);
+    // System.out.println("DOT: " + q.toDot());
+    assertEquals(0, s.search(q, 1).totalHits);
+
+    w.close();
+    r.close();
+    dir.close();
+  }
+
+  public void testOneTermDoesNotExist() throws Exception {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    doc.add(newTextField("field", "x y z", Field.Store.NO));
+    w.addDocument(doc);
+
+    IndexReader r = w.getReader();
+    IndexSearcher s = newSearcher(r);
+
+    TokenStream ts = new CannedTokenStream(new Token[] {
+        token("a", 1, 1),
+        token("x", 1, 1),
+      });
+
+    TermAutomatonQuery q = new TokenStreamToTermAutomatonQuery().toQuery("field", ts);
+    // System.out.println("DOT: " + q.toDot());
+    assertEquals(0, s.search(q, 1).totalHits);
+
     w.close();
     r.close();
     dir.close();

@@ -38,6 +38,7 @@ import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CollectionParams.CollectionAction;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.Utils;
 import org.apache.solr.update.VersionInfo;
 import org.apache.solr.update.processor.DistributedUpdateProcessor;
 import org.apache.zookeeper.CreateMode;
@@ -157,13 +158,13 @@ public class FullSolrCloudDistribCmdsTest extends AbstractFullDistribZkTestBase 
     CollectionAdminResponse response;
     Map<String, NamedList<Integer>> coresStatus;
 
-    CollectionAdminRequest.Create createCollectionRequest = new CollectionAdminRequest.Create();
-    createCollectionRequest.setCollectionName("implicit_collection_without_routerfield");
-    createCollectionRequest.setRouterName("implicit");
-    createCollectionRequest.setNumShards(2);
-    createCollectionRequest.setShards("shard1,shard2");
-    createCollectionRequest.setReplicationFactor(2);
-    createCollectionRequest.setConfigName("conf1");
+    CollectionAdminRequest.Create createCollectionRequest = new CollectionAdminRequest.Create()
+            .setCollectionName("implicit_collection_without_routerfield")
+            .setRouterName("implicit")
+            .setNumShards(2)
+            .setShards("shard1,shard2")
+            .setReplicationFactor(2)
+            .setConfigName("conf1");
     response = createCollectionRequest.process(server);
 
     assertEquals(0, response.getStatus());
@@ -285,15 +286,15 @@ public class FullSolrCloudDistribCmdsTest extends AbstractFullDistribZkTestBase 
     CollectionAdminResponse response;
     Map<String, NamedList<Integer>> coresStatus;
 
-    CollectionAdminRequest.Create createCollectionRequest = new CollectionAdminRequest.Create();
-    createCollectionRequest.setCollectionName("compositeid_collection_with_routerfield");
-    createCollectionRequest.setRouterName("compositeId");
-    createCollectionRequest.setRouterField("routefield_s");
-    createCollectionRequest.setNumShards(2);
-    createCollectionRequest.setShards("shard1,shard2");
-    createCollectionRequest.setReplicationFactor(2);
-    createCollectionRequest.setConfigName("conf1");
-    response = createCollectionRequest.process(server);
+    response = new CollectionAdminRequest.Create()
+            .setCollectionName("compositeid_collection_with_routerfield")
+            .setRouterName("compositeId")
+            .setRouterField("routefield_s")
+            .setNumShards(2)
+            .setShards("shard1,shard2")
+            .setReplicationFactor(2)
+            .setConfigName("conf1")
+            .process(server);
 
     assertEquals(0, response.getStatus());
     assertTrue(response.isSuccess());
@@ -421,7 +422,7 @@ public class FullSolrCloudDistribCmdsTest extends AbstractFullDistribZkTestBase 
     SolrZkClient zkClient = new SolrZkClient(zkServer.getZkAddress(), 10000);
     int fails = 0;
     try {
-      zkClient.makePath(leaderPath, ZkStateReader.toJSON(props),
+      zkClient.makePath(leaderPath, Utils.toJSON(props),
           CreateMode.EPHEMERAL, true);
       for (int i = 0; i < 200; i++) {
         try {

@@ -40,6 +40,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeFactory;
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
@@ -105,6 +106,11 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     @Override
     public void copyTo(AttributeImpl target) {
       ((CheckClearAttributesAttributeImpl) target).clear();
+    }
+
+    @Override
+    public void reflectWith(AttributeReflector reflector) {
+      reflector.reflect(CheckClearAttributesAttribute.class, "clearCalled", clearCalled);
     }
   }
 
@@ -740,7 +746,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
             // currently allow it, so, we must call
             // a.tokenStream inside the try since we may
             // hit the exc on init:
-            ts = a.tokenStream("dummy", useCharFilter ? new MockCharFilter(evilReader, remainder) : evilReader);
+            ts = a.tokenStream("dummy", useCharFilter ? new MockCharFilter(reader, remainder) : reader);
             ts.reset();
             while (ts.incrementToken());
             fail("did not hit exception");

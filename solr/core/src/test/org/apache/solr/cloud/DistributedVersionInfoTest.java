@@ -88,6 +88,11 @@ public class DistributedVersionInfoTest extends AbstractFullDistribZkTestBase {
     List<Replica> notLeaders =
         ensureAllReplicasAreActive(testCollectionName, shardId, 1, rf, maxWaitSecsToSeeAllActive);
 
+    // start by reloading the empty collection so we try to calculate the max from an empty index
+    reloadCollection(leader, testCollectionName);
+    notLeaders =
+        ensureAllReplicasAreActive(testCollectionName, shardId, 1, rf, maxWaitSecsToSeeAllActive);
+
     sendDoc(1);
     cloudClient.commit();
 
@@ -250,8 +255,8 @@ public class DistributedVersionInfoTest extends AbstractFullDistribZkTestBase {
 
     // try to clean up
     try {
-      CollectionAdminRequest.Delete req = new CollectionAdminRequest.Delete();
-      req.setCollectionName(testCollectionName);
+      CollectionAdminRequest.Delete req = new CollectionAdminRequest.Delete()
+              .setCollectionName(testCollectionName);
       req.process(cloudClient);
     } catch (Exception e) {
       // don't fail the test

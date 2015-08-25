@@ -19,20 +19,19 @@ package org.apache.solr.cloud.rule;
 
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.solr.client.solrj.SolrClient;
-import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.request.GenericSolrRequest;
 import org.apache.solr.client.solrj.response.CollectionAdminResponse;
 import org.apache.solr.cloud.AbstractFullDistribZkTestBase;
-import org.apache.solr.cloud.OverseerCollectionProcessor;
 import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.ImplicitDocRouter;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.ModifiableSolrParams;
-import org.apache.solr.core.CoreContainer;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,16 +45,18 @@ public class RulesTest extends AbstractFullDistribZkTestBase {
   @Test
   @ShardsFixed(num = 5)
   public void doIntegrationTest() throws Exception {
+    final long minGB = (random().nextBoolean() ? 1 : 0);
+    assumeTrue("doIntegrationTest needs minGB="+minGB+" usable disk space", ImplicitSnitch.getUsableSpaceInGB() > minGB);
     String rulesColl = "rulesColl";
     try (SolrClient client = createNewSolrClient("", getBaseUrl((HttpSolrClient) clients.get(0)))) {
       CollectionAdminResponse rsp;
-      CollectionAdminRequest.Create create = new CollectionAdminRequest.Create();
-      create.setCollectionName(rulesColl);
-      create.setShards("shard1");
-      create.setRouterName(ImplicitDocRouter.NAME);
-      create.setReplicationFactor(2);
-      create.setRule("cores:<4", "node:*,replica:<2", "freedisk:>1");
-      create.setSnitch("class:ImplicitSnitch");
+      CollectionAdminRequest.Create create = new CollectionAdminRequest.Create()
+              .setCollectionName(rulesColl)
+              .setShards("shard1")
+              .setRouterName(ImplicitDocRouter.NAME)
+              .setReplicationFactor(2)
+              .setRule("cores:<4", "node:*,replica:<2", "freedisk:>"+minGB)
+              .setSnitch("class:ImplicitSnitch");
       rsp = create.process(client);
       assertEquals(0, rsp.getStatus());
       assertTrue(rsp.isSuccess());
@@ -67,24 +68,24 @@ public class RulesTest extends AbstractFullDistribZkTestBase {
     assertEquals(3, list.size());
     assertEquals ( "<4", ((Map)list.get(0)).get("cores"));
     assertEquals("<2", ((Map) list.get(1)).get("replica"));
-    assertEquals(">1", ((Map) list.get(2)).get("freedisk"));
+    assertEquals(">"+minGB, ((Map) list.get(2)).get("freedisk"));
     list = (List) rulesCollection.get("snitch");
     assertEquals(1, list.size());
     assertEquals ( "ImplicitSnitch", ((Map)list.get(0)).get("class"));
 
     try (SolrClient client = createNewSolrClient("", getBaseUrl((HttpSolrClient) clients.get(0)))) {
       CollectionAdminResponse rsp;
-      CollectionAdminRequest.CreateShard createShard = new CollectionAdminRequest.CreateShard();
-      createShard.setCollectionName(rulesColl);
-      createShard.setShardName("shard2");
+      CollectionAdminRequest.CreateShard createShard = new CollectionAdminRequest.CreateShard()
+              .setCollectionName(rulesColl)
+              .setShardName("shard2");
       rsp = createShard.process(client);
       assertEquals(0, rsp.getStatus());
       assertTrue(rsp.isSuccess());
 
-      CollectionAdminRequest.AddReplica addReplica = new CollectionAdminRequest.AddReplica();
-      addReplica.setCollectionName(rulesColl);
-      addReplica.setShardName("shard2");
-      rsp = createShard.process(client);
+      CollectionAdminRequest.AddReplica addReplica = new CollectionAdminRequest.AddReplica()
+              .setCollectionName(rulesColl)
+              .setShardName("shard2");
+      rsp = addReplica.process(client);
       assertEquals(0, rsp.getStatus());
       assertTrue(rsp.isSuccess());
     }
@@ -93,16 +94,53 @@ public class RulesTest extends AbstractFullDistribZkTestBase {
   }
 
   @Test
-  public void testModifyColl() throws Exception {
-    String rulesColl = "modifyColl";
-    try (SolrClient client = createNewSolrClient("", getBaseUrl((HttpSolrClient) clients.get(0)))) {
+  public void testPortRule() throws Exception {
+    String rulesColl = "portRuleColl";
+    String baseUrl = getBaseUrl((HttpSolrClient) clients.get(0));
+    String port = "-1";
+    Matcher hostAndPortMatcher = Pattern.compile("(?:https?://)?([^:]+):(\\d+)").matcher(baseUrl);
+    if (hostAndPortMatcher.find()) {
+      port = hostAndPortMatcher.group(2);
+    }
+    try (SolrClient client = createNewSolrClient("", baseUrl)) {
       CollectionAdminResponse rsp;
       CollectionAdminRequest.Create create = new CollectionAdminRequest.Create();
       create.setCollectionName(rulesColl);
-      create.setNumShards(1);
+      create.setShards("shard1");
+      create.setRouterName(ImplicitDocRouter.NAME);
       create.setReplicationFactor(2);
-      create.setRule("cores:<4", "node:*,replica:1", "freedisk:>1");
+      create.setRule("port:" + port);
       create.setSnitch("class:ImplicitSnitch");
+      rsp = create.process(client);
+      assertEquals(0, rsp.getStatus());
+      assertTrue(rsp.isSuccess());
+
+    }
+
+    DocCollection rulesCollection = cloudClient.getZkStateReader().getClusterState().getCollection(rulesColl);
+    List list = (List) rulesCollection.get("rule");
+    assertEquals(1, list.size());
+    assertEquals(port, ((Map) list.get(0)).get("port"));
+    list = (List) rulesCollection.get("snitch");
+    assertEquals(1, list.size());
+    assertEquals ( "ImplicitSnitch", ((Map)list.get(0)).get("class"));
+  }
+
+  @Test
+  public void testModifyColl() throws Exception {
+    final long minGB1 = (random().nextBoolean() ? 1 : 0);
+    final long minGB2 = 5;
+    assumeTrue("testModifyColl needs minGB1="+minGB1+" usable disk space", ImplicitSnitch.getUsableSpaceInGB() > minGB1);
+    assumeTrue("testModifyColl needs minGB2="+minGB2+" usable disk space", ImplicitSnitch.getUsableSpaceInGB() > minGB2);
+    String rulesColl = "modifyColl";
+    try (SolrClient client = createNewSolrClient("", getBaseUrl((HttpSolrClient) clients.get(0)))) {
+      CollectionAdminResponse rsp;
+      CollectionAdminRequest.Create create = new CollectionAdminRequest.Create()
+              .setCollectionName(rulesColl)
+              .setNumShards(1)
+              .setReplicationFactor(2)
+              .setRule("cores:<4", "node:*,replica:1", "freedisk:>"+minGB1)
+              .setSnitch("class:ImplicitSnitch");
       rsp = create.process(client);
       assertEquals(0, rsp.getStatus());
       assertTrue(rsp.isSuccess());
@@ -111,7 +149,7 @@ public class RulesTest extends AbstractFullDistribZkTestBase {
       p.add("action", "MODIFYCOLLECTION");
       p.add("rule", "cores:<5");
       p.add("rule", "node:*,replica:1");
-      p.add("rule", "freedisk:>5");
+      p.add("rule", "freedisk:>"+minGB2);
       p.add("autoAddReplicas", "true");
       client.request(new GenericSolrRequest(POST, COLLECTIONS_HANDLER_PATH, p));
     }
@@ -131,14 +169,11 @@ public class RulesTest extends AbstractFullDistribZkTestBase {
       }
       assertEquals("<5", ((Map) list.get(0)).get("cores"));
       assertEquals("1", ((Map) list.get(1)).get("replica"));
-      assertEquals(">5", ((Map) list.get(2)).get("freedisk"));
+      assertEquals(">"+minGB2, ((Map) list.get(2)).get("freedisk"));
       assertEquals("true", String.valueOf(rulesCollection.getProperties().get("autoAddReplicas")));
       list = (List) rulesCollection.get("snitch");
       assertEquals(1, list.size());
       assertEquals("ImplicitSnitch", ((Map) list.get(0)).get("class"));
     }
   }
-
-
-
 }

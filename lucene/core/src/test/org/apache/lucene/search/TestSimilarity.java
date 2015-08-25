@@ -92,11 +92,11 @@ public class TestSimilarity extends LuceneTestCase {
          }
        });
 
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add(new TermQuery(a), BooleanClause.Occur.SHOULD);
     bq.add(new TermQuery(b), BooleanClause.Occur.SHOULD);
     //System.out.println(bq.toString("field"));
-    searcher.search(bq, new SimpleCollector() {
+    searcher.search(bq.build(), new SimpleCollector() {
          private int base = 0;
          private Scorer scorer;
          @Override
@@ -118,9 +118,7 @@ public class TestSimilarity extends LuceneTestCase {
          }
        });
 
-    PhraseQuery pq = new PhraseQuery();
-    pq.add(a);
-    pq.add(c);
+    PhraseQuery pq = new PhraseQuery(a.field(), a.bytes(), c.bytes());
     //System.out.println(pq.toString("field"));
     searcher.search(pq,
        new SimpleCollector() {
@@ -140,7 +138,7 @@ public class TestSimilarity extends LuceneTestCase {
          }
        });
 
-    pq.setSlop(2);
+    pq = new PhraseQuery(2, a.field(), a.bytes(), c.bytes());
     //System.out.println(pq.toString("field"));
     searcher.search(pq, new SimpleCollector() {
       private Scorer scorer;

@@ -613,7 +613,7 @@ public final class MoreLikeThis {
    * Create the More like query from a PriorityQueue
    */
   private Query createQuery(PriorityQueue<ScoreTerm> q) {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     ScoreTerm scoreTerm;
     float bestScore = -1;
 
@@ -635,7 +635,7 @@ public final class MoreLikeThis {
         break;
       }
     }
-    return query;
+    return query.build();
   }
 
   /**
@@ -753,9 +753,10 @@ public final class MoreLikeThis {
       IOException {
     HashMap<String,Int> termFreqMap = new HashMap();
     for (String fieldName : fieldNames) {
-
       for (String field : fields.keySet()) {
         Collection<Object> fieldValues = fields.get(field);
+        if(fieldValues == null)
+          continue;
         for(Object fieldValue:fieldValues) {
           if (fieldValue != null) {
             addTermFrequencies(new StringReader(String.valueOf(fieldValue)), termFreqMap,

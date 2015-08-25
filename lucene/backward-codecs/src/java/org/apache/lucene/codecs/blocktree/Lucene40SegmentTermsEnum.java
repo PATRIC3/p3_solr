@@ -127,8 +127,6 @@ final class Lucene40SegmentTermsEnum extends TermsEnum {
 
     Lucene40Stats stats = new Lucene40Stats(fr.parent.segment, fr.fieldInfo.name);
     if (fr.index != null) {
-      stats.indexNodeCount = fr.index.getNodeCount();
-      stats.indexArcCount = fr.index.getArcCount();
       stats.indexNumBytes = fr.index.ramBytesUsed();
     }
         
@@ -985,7 +983,7 @@ final class Lucene40SegmentTermsEnum extends TermsEnum {
   }
 
   @Override
-  public PostingsEnum postings(Bits skipDocs, PostingsEnum reuse, int flags) throws IOException {
+  public PostingsEnum postings(PostingsEnum reuse, int flags) throws IOException {
 
     if (PostingsEnum.featureRequested(flags, DocsAndPositionsEnum.OLD_NULL_SEMANTICS) && fr.fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
       // Positions were not indexed:
@@ -1000,7 +998,7 @@ final class Lucene40SegmentTermsEnum extends TermsEnum {
     //if (DEBUG) {
     //System.out.println("  state=" + currentFrame.state);
     //}
-    return fr.parent.postingsReader.postings(fr.fieldInfo, currentFrame.state, skipDocs, reuse, flags);
+    return fr.parent.postingsReader.postings(fr.fieldInfo, currentFrame.state, reuse, flags);
   }
 
   @Override

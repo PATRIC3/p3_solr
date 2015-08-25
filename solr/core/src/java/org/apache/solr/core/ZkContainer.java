@@ -25,10 +25,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
 
-import org.apache.log4j.MDC;
 import org.apache.solr.cloud.CurrentCoreDescriptorProvider;
 import org.apache.solr.cloud.SolrZkServer;
 import org.apache.solr.cloud.ZkController;
@@ -37,13 +35,11 @@ import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.ZkConfigManager;
 import org.apache.solr.common.cloud.ZooKeeperException;
 import org.apache.solr.common.util.ExecutorUtil;
-import org.apache.solr.logging.MDCUtils;
+import org.apache.solr.logging.MDCLoggingContext;
 import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static org.apache.solr.common.cloud.ZkStateReader.CORE_NAME_PROP;
 
 public class ZkContainer {
   protected static Logger log = LoggerFactory.getLogger(ZkContainer.class);
@@ -181,6 +177,8 @@ public class ZkContainer {
     Thread thread = new Thread() {
       @Override
       public void run() {
+        MDCLoggingContext.setCore(core);
+        try {
           try {
             zkController.register(core.getName(), core.getCoreDescriptor());
           } catch (InterruptedException e) {
@@ -198,20 +196,23 @@ public class ZkContainer {
             }
             SolrException.log(log, "", e);
           }
+        } finally {
+          MDCLoggingContext.clear();
         }
-
+      }
+      
     };
     
     if (zkController != null) {
-      MDCUtils.setCore(core.getName());
-      try {
-        if (background) {
-          coreZkRegister.execute(thread);
-        } else {
+      if (background) {
+        coreZkRegister.execute(thread);
+      } else {
+        MDCLoggingContext.setCore(core);
+        try {
           thread.run();
+        } finally {
+          MDCLoggingContext.clear();
         }
-      } finally {
-        MDC.remove(CORE_NAME_PROP);
       }
     }
   }

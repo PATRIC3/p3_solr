@@ -172,9 +172,7 @@ public class TestAddIndexes extends LuceneTestCase {
       writer.updateDocument(new Term("id", "" + (i%10)), doc);
     }
     // Deletes one of the 10 added docs, leaving 9:
-    PhraseQuery q = new PhraseQuery();
-    q.add(new Term("content", "bbb"));
-    q.add(new Term("content", "14"));
+    PhraseQuery q = new PhraseQuery("content", "bbb", "14");
     writer.deleteDocuments(q);
 
     writer.forceMerge(1);
@@ -210,9 +208,7 @@ public class TestAddIndexes extends LuceneTestCase {
     writer.addIndexes(aux);
     
     // Deletes one of the 10 added docs, leaving 9:
-    PhraseQuery q = new PhraseQuery();
-    q.add(new Term("content", "bbb"));
-    q.add(new Term("content", "14"));
+    PhraseQuery q = new PhraseQuery("content", "bbb", "14");
     writer.deleteDocuments(q);
 
     writer.forceMerge(1);
@@ -246,9 +242,7 @@ public class TestAddIndexes extends LuceneTestCase {
     }
 
     // Deletes one of the 10 added docs, leaving 9:
-    PhraseQuery q = new PhraseQuery();
-    q.add(new Term("content", "bbb"));
-    q.add(new Term("content", "14"));
+    PhraseQuery q = new PhraseQuery("content", "bbb", "14");
     writer.deleteDocuments(q);
 
     writer.addIndexes(aux);
@@ -538,7 +532,7 @@ public class TestAddIndexes extends LuceneTestCase {
   private void verifyTermDocs(Directory dir, Term term, int numDocs)
       throws IOException {
     IndexReader reader = DirectoryReader.open(dir);
-    PostingsEnum postingsEnum = TestUtil.docs(random(), reader, term.field, term.bytes, null, null, PostingsEnum.NONE);
+    PostingsEnum postingsEnum = TestUtil.docs(random(), reader, term.field, term.bytes, null, PostingsEnum.NONE);
     int count = 0;
     while (postingsEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS)
       count++;
@@ -1268,7 +1262,6 @@ public class TestAddIndexes extends LuceneTestCase {
     Directory dest = newDirectory();
 
     IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
-    iwc.setWriteLockTimeout(1);
     RandomIndexWriter w2 = new RandomIndexWriter(random(), dest, iwc);
 
     try {

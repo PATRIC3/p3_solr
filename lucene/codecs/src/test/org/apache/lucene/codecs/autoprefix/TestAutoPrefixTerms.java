@@ -29,8 +29,6 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.BinaryDocValuesField;
 import org.apache.lucene.document.Document;
@@ -55,11 +53,9 @@ import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
@@ -169,7 +165,7 @@ public class TestAutoPrefixTerms extends LuceneTestCase {
           System.out.println("  got term=" + te.term().utf8ToString());
         }
         verifier.sawTerm(te.term());
-        postingsEnum = te.postings(null, postingsEnum);
+        postingsEnum = te.postings(postingsEnum);
         int docID;
         while ((docID = postingsEnum.nextDoc()) != PostingsEnum.NO_MORE_DOCS) {
           long v = docValues.get(docID);
@@ -235,7 +231,7 @@ public class TestAutoPrefixTerms extends LuceneTestCase {
 
     for(Integer term : terms) {
       Document doc = new Document();
-      doc.add(new BinaryField("field", intToBytes(term)));
+      doc.add(newStringField("field", intToBytes(term), Field.Store.NO));
       doc.add(new NumericDocValuesField("field", term));
       w.addDocument(doc);
     }
@@ -296,7 +292,7 @@ public class TestAutoPrefixTerms extends LuceneTestCase {
           System.out.println("  got term=" + te.term() + " docFreq=" + te.docFreq());
         }
         verifier.sawTerm(te.term());        
-        postingsEnum = te.postings(null, postingsEnum);
+        postingsEnum = te.postings(postingsEnum);
         int docID;
         while ((docID = postingsEnum.nextDoc()) != PostingsEnum.NO_MORE_DOCS) {
           long v = docValues.get(docID);
@@ -415,7 +411,7 @@ public class TestAutoPrefixTerms extends LuceneTestCase {
           System.out.println("TEST: got term=" + te.term().utf8ToString() + " docFreq=" + te.docFreq());
         }
         verifier.sawTerm(te.term());        
-        postingsEnum = te.postings(null, postingsEnum);
+        postingsEnum = te.postings(postingsEnum);
         int docID;
         while ((docID = postingsEnum.nextDoc()) != PostingsEnum.NO_MORE_DOCS) {
           assertTrue("prefixBR=" + prefixBR + " docBR=" + docValues.get(docID), StringHelper.startsWith(docValues.get(docID), prefixBR));
@@ -491,7 +487,7 @@ public class TestAutoPrefixTerms extends LuceneTestCase {
     //TermsEnum te = terms.intersect(new CompiledAutomaton(a, true, false), null);
     while (te.next() != null) {
       verifier.sawTerm(te.term());
-      postingsEnum = te.postings(null, postingsEnum);
+      postingsEnum = te.postings(postingsEnum);
       int docID;
       while ((docID = postingsEnum.nextDoc()) != PostingsEnum.NO_MORE_DOCS) {
         // The auto-prefix terms should never "overlap" one another, so we should only ever see a given docID one time:
@@ -505,78 +501,6 @@ public class TestAutoPrefixTerms extends LuceneTestCase {
     r.close();
     w.close();
     dir.close();
-  }
-
-  static final class BinaryTokenStream extends TokenStream {
-    private final ByteTermAttribute bytesAtt = addAttribute(ByteTermAttribute.class);
-    private boolean available = true;
-  
-    public BinaryTokenStream(BytesRef bytes) {
-      bytesAtt.setBytesRef(bytes);
-    }
-  
-    @Override
-    public boolean incrementToken() {
-      if (available) {
-        clearAttributes();
-        available = false;
-        return true;
-      }
-      return false;
-    }
-  
-    @Override
-    public void reset() {
-      available = true;
-    }
-  
-    public interface ByteTermAttribute extends TermToBytesRefAttribute {
-      void setBytesRef(BytesRef bytes);
-    }
-  
-    public static class ByteTermAttributeImpl extends AttributeImpl implements ByteTermAttribute,TermToBytesRefAttribute {
-      private BytesRef bytes;
-    
-      @Override
-      public void fillBytesRef() {
-        // no-op: the bytes was already filled by our owner's incrementToken
-      }
-    
-      @Override
-      public BytesRef getBytesRef() {
-        return bytes;
-      }
-
-      @Override
-      public void setBytesRef(BytesRef bytes) {
-        this.bytes = bytes;
-      }
-    
-      @Override
-      public void clear() {}
-    
-      @Override
-      public void copyTo(AttributeImpl target) {
-        ByteTermAttributeImpl other = (ByteTermAttributeImpl) target;
-        other.bytes = bytes;
-      }
-    }
-  }
-
-  /** Basically a StringField that accepts binary term. */
-  private static class BinaryField extends Field {
-
-    final static FieldType TYPE;
-    static {
-      TYPE = new FieldType(StringField.TYPE_NOT_STORED);
-      // Necessary so our custom tokenStream is used by Field.tokenStream:
-      TYPE.setTokenized(true);
-      TYPE.freeze();
-    }
-
-    public BinaryField(String name, BytesRef value) {
-      super(name, new BinaryTokenStream(value), TYPE);
-    }
   }
 
   /** Helper class to ensure auto-prefix terms 1) never overlap one another, and 2) are used when they should be. */

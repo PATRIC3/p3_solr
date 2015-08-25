@@ -978,8 +978,7 @@ public class CloudSolrClient extends SolrClient {
       reqParams = new ModifiableSolrParams();
     }
     List<String> theUrlList = new ArrayList<>();
-    if (request.getPath().equals("/admin/collections")
-        || request.getPath().equals("/admin/cores")) {
+    if (request.getPath().startsWith("/admin/")) {
       Set<String> liveNodes = clusterState.getLiveNodes();
       for (String liveNode : liveNodes) {
         theUrlList.add(zkStateReader.getBaseUrlForNodeName(liveNode));
@@ -1068,7 +1067,7 @@ public class CloudSolrClient extends SolrClient {
         for (String s : collectionNames) {
           if(s!=null) collectionStateCache.remove(s);
         }
-        throw new SolrException(SolrException.ErrorCode.INVALID_STATE, "Not enough nodes to handle the request");
+        throw new SolrException(SolrException.ErrorCode.INVALID_STATE, "Could not find a healthy node to handle the request.");
       }
 
       Collections.shuffle(theUrlList, rand);

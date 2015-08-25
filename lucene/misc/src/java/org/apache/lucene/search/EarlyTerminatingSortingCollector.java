@@ -19,6 +19,7 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexWriter;
@@ -38,11 +39,12 @@ import org.apache.lucene.search.TotalHitCountCollector;
  * {@link Sort}.
  *
  * <p>
- * <b>NOTE:</b> the {@code Collector} detects sorted segments according to
- * {@link SortingMergePolicy}, so it's best used in conjunction with it. Also,
- * it collects up to a specified {@code numDocsToCollect} from each segment,
- * and therefore is mostly suitable for use in conjunction with collectors such as
- * {@link TopDocsCollector}, and not e.g. {@link TotalHitCountCollector}.
+ * <b>NOTE:</b> the {@code Collector} detects segments sorted according to a
+ * {@link SortingMergePolicy}'s {@link Sort} and so it's best used in conjunction
+ * with a {@link SortingMergePolicy}. Also,it collects up to a specified
+ * {@code numDocsToCollect} from each segment, and therefore is mostly suitable
+ * for use in conjunction with collectors such as {@link TopDocsCollector}, and
+ * not e.g. {@link TotalHitCountCollector}.
  * <p>
  * <b>NOTE</b>: If you wrap a {@code TopDocsCollector} that sorts in the same
  * order as the index order, the returned {@link TopDocsCollector#topDocs() TopDocs}
@@ -69,10 +71,10 @@ public class EarlyTerminatingSortingCollector extends FilterCollector {
 
   /** Returns whether collection can be early-terminated if it sorts with the
    *  provided {@link Sort} and if segments are merged with the provided
-   *  {@link SortingMergePolicy}. */
-  public static boolean canEarlyTerminate(Sort sort, SortingMergePolicy mergePolicy) {
-    final SortField[] fields1 = sort.getSort();
-    final SortField[] fields2 = mergePolicy.getSort().getSort();
+   *  {@link Sort}. */
+  public static boolean canEarlyTerminate(Sort searchSort, Sort mergePolicySort) {
+    final SortField[] fields1 = searchSort.getSort();
+    final SortField[] fields2 = mergePolicySort.getSort();
     // early termination is possible if fields1 is a prefix of fields2
     if (fields1.length > fields2.length) {
       return false;
@@ -84,7 +86,8 @@ public class EarlyTerminatingSortingCollector extends FilterCollector {
   protected final Sort sort;
   /** Number of documents to collect in each segment */
   protected final int numDocsToCollect;
-  private final SortingMergePolicy mergePolicy;
+  private final Sort mergePolicySort;
+  private final AtomicBoolean terminatedEarly = new AtomicBoolean(false);
 
   /**
    * Create a new {@link EarlyTerminatingSortingCollector} instance.
@@ -97,25 +100,27 @@ public class EarlyTerminatingSortingCollector extends FilterCollector {
    *          the number of documents to collect on each segment. When wrapping
    *          a {@link TopDocsCollector}, this number should be the number of
    *          hits.
+   * @param mergePolicySort
+   *          the sort your {@link SortingMergePolicy} uses
    * @throws IllegalArgumentException if the sort order doesn't allow for early
    *          termination with the given merge policy.
    */
-  public EarlyTerminatingSortingCollector(Collector in, Sort sort, int numDocsToCollect, SortingMergePolicy mergePolicy) {
+  public EarlyTerminatingSortingCollector(Collector in, Sort sort, int numDocsToCollect, Sort mergePolicySort) {
     super(in);
     if (numDocsToCollect <= 0) {
       throw new IllegalArgumentException("numDocsToCollect must always be > 0, got " + numDocsToCollect);
     }
-    if (canEarlyTerminate(sort, mergePolicy) == false) {
-      throw new IllegalStateException("Cannot early terminate with sort order " + sort + " if segments are sorted with " + mergePolicy.getSort());
+    if (canEarlyTerminate(sort, mergePolicySort) == false) {
+      throw new IllegalStateException("Cannot early terminate with sort order " + sort + " if segments are sorted with " + mergePolicySort);
     }
     this.sort = sort;
     this.numDocsToCollect = numDocsToCollect;
-    this.mergePolicy = mergePolicy;
+    this.mergePolicySort = mergePolicySort;
   }
 
   @Override
   public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
-    if (mergePolicy.isSorted(context.reader())) {
+    if (SortingMergePolicy.isSorted(context.reader(), mergePolicySort)) {
       // segment is sorted, can early-terminate
       return new FilterLeafCollector(super.getLeafCollector(context)) {
         private int numCollected;
@@ -124,6 +129,7 @@ public class EarlyTerminatingSortingCollector extends FilterCollector {
         public void collect(int doc) throws IOException {
           super.collect(doc);
           if (++numCollected >= numDocsToCollect) {
+            terminatedEarly.set(true);
             throw new CollectionTerminatedException();
           }
         }
@@ -132,6 +138,10 @@ public class EarlyTerminatingSortingCollector extends FilterCollector {
     } else {
       return super.getLeafCollector(context);
     }
+  }
+
+  public boolean terminatedEarly() {
+    return terminatedEarly.get();
   }
 
 }

@@ -24,6 +24,7 @@ import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.index.DocumentsWriterPerThread.IndexingChain;
 import org.apache.lucene.index.IndexWriter.IndexReaderWarmer;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.store.SleepingLockWrapper;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.PrintStreamInfoStream;
 import org.apache.lucene.util.SetOnce;
@@ -87,23 +88,17 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
   public final static double DEFAULT_RAM_BUFFER_SIZE_MB = 16.0;
 
   /**
-   * Default value for the write lock timeout (1,000 ms).
-   *
-   * @see #setDefaultWriteLockTimeout(long)
+   * Default value for the write lock timeout (0 ms: no sleeping).
+   * @deprecated Use {@link SleepingLockWrapper} if you want sleeping.
    */
-  public static long WRITE_LOCK_TIMEOUT = 1000;
+  @Deprecated
+  public static final long WRITE_LOCK_TIMEOUT = 0;
 
   /** Default setting for {@link #setReaderPooling}. */
   public final static boolean DEFAULT_READER_POOLING = false;
 
   /** Default value is 1945. Change using {@link #setRAMPerThreadHardLimitMB(int)} */
   public static final int DEFAULT_RAM_PER_THREAD_HARD_LIMIT_MB = 1945;
-  
-  /** The maximum number of simultaneous threads that may be
-   *  indexing documents at once in IndexWriter; if more
-   *  than this many threads arrive they will wait for
-   *  others to finish. Default value is 8. */
-  public final static int DEFAULT_MAX_THREAD_STATES = 8;
   
   /** Default value for compound file system for newly written segments
    *  (set to <code>true</code>). For batch indexing with very large 
@@ -113,24 +108,6 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
   /** Default value for whether calls to {@link IndexWriter#close()} include a commit. */
   public final static boolean DEFAULT_COMMIT_ON_CLOSE = true;
   
-  /**
-   * Sets the default (for any instance) maximum time to wait for a write lock
-   * (in milliseconds).
-   */
-  public static void setDefaultWriteLockTimeout(long writeLockTimeout) {
-    WRITE_LOCK_TIMEOUT = writeLockTimeout;
-  }
-
-  /**
-   * Returns the default write lock timeout for newly instantiated
-   * IndexWriterConfigs.
-   *
-   * @see #setDefaultWriteLockTimeout(long)
-   */
-  public static long getDefaultWriteLockTimeout() {
-    return WRITE_LOCK_TIMEOUT;
-  }
-
   // indicates whether this config instance is already attached to a writer.
   // not final so that it can be cloned properly.
   private SetOnce<IndexWriter> writer = new SetOnce<>();
@@ -210,7 +187,9 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
 
   /**
    * Expert: allows to open a certain commit point. The default is null which
-   * opens the latest commit point.
+   * opens the latest commit point.  This can also be used to open {@link IndexWriter}
+   * from a near-real-time reader, if you pass the reader's
+   * {@link DirectoryReader#getIndexCommit}.
    *
    * <p>Only takes effect when IndexWriter is first created. */
   public IndexWriterConfig setIndexCommit(IndexCommit commit) {
@@ -264,10 +243,12 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
 
   /**
    * Sets the maximum time to wait for a write lock (in milliseconds) for this
-   * instance. You can change the default value for all instances by calling
-   * {@link #setDefaultWriteLockTimeout(long)}.
+   * instance. Note that the value can be zero, for no sleep/retry behavior.
    *
-   * <p>Only takes effect when IndexWriter is first created. */
+   * <p>Only takes effect when IndexWriter is first created.
+   * @deprecated Use {@link SleepingLockWrapper} if you want sleeping.
+   */
+  @Deprecated
   public IndexWriterConfig setWriteLockTimeout(long writeLockTimeout) {
     this.writeLockTimeout = writeLockTimeout;
     return this;
@@ -324,23 +305,6 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
   @Override
   DocumentsWriterPerThreadPool getIndexerThreadPool() {
     return indexerThreadPool;
-  }
-
-  /**
-   * Sets the max number of simultaneous threads that may be indexing documents
-   * at once in IndexWriter. Values &lt; 1 are invalid and if passed
-   * <code>maxThreadStates</code> will be set to
-   * {@link #DEFAULT_MAX_THREAD_STATES}.
-   *
-   * <p>Only takes effect when IndexWriter is first created. */
-  public IndexWriterConfig setMaxThreadStates(int maxThreadStates) {
-    this.indexerThreadPool = new DocumentsWriterPerThreadPool(maxThreadStates);
-    return this;
-  }
-
-  @Override
-  public int getMaxThreadStates() {
-    return indexerThreadPool.getMaxThreadStates();
   }
 
   /** By default, IndexWriter does not pool the

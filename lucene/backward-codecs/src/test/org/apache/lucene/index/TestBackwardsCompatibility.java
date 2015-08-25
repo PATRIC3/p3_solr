@@ -484,7 +484,24 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
         reader = DirectoryReader.open(dir);
         fail("DirectoryReader.open should not pass for "+unsupportedNames[i]);
       } catch (IndexFormatTooOldException e) {
+        if (e.getReason() != null) {
+          assertNull(e.getVersion());
+          assertNull(e.getMinVersion());
+          assertNull(e.getMaxVersion());
+          assertEquals(e.getMessage(), new IndexFormatTooOldException(e.getResourceDescription(), e.getReason()).getMessage());
+        } else {
+          assertNotNull(e.getVersion());
+          assertNotNull(e.getMinVersion());
+          assertNotNull(e.getMaxVersion());
+          assertTrue(e.getMessage(), e.getMaxVersion() >= e.getMinVersion());
+          assertTrue(e.getMessage(), e.getMaxVersion() < e.getVersion() || e.getVersion() < e.getMinVersion());
+          assertEquals(e.getMessage(), new IndexFormatTooOldException(e.getResourceDescription(), e.getVersion(), e.getMinVersion(), e.getMaxVersion()).getMessage());
+        }
         // pass
+        if (VERBOSE) {
+          System.out.println("TEST: got expected exc:");
+          e.printStackTrace(System.out);
+        }
       } finally {
         if (reader != null) reader.close();
         reader = null;
@@ -494,6 +511,19 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
         writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())).setCommitOnClose(false));
         fail("IndexWriter creation should not pass for "+unsupportedNames[i]);
       } catch (IndexFormatTooOldException e) {
+        if (e.getReason() != null) {
+          assertNull(e.getVersion());
+          assertNull(e.getMinVersion());
+          assertNull(e.getMaxVersion());
+          assertEquals(e.getMessage(), new IndexFormatTooOldException(e.getResourceDescription(), e.getReason()).getMessage());
+        } else {
+          assertNotNull(e.getVersion());
+          assertNotNull(e.getMinVersion());
+          assertNotNull(e.getMaxVersion());
+          assertTrue(e.getMessage(), e.getMaxVersion() >= e.getMinVersion());
+          assertTrue(e.getMessage(), e.getMaxVersion() < e.getVersion() || e.getVersion() < e.getMinVersion());
+          assertEquals(e.getMessage(), new IndexFormatTooOldException(e.getResourceDescription(), e.getVersion(), e.getMinVersion(), e.getMaxVersion()).getMessage());
+        }
         // pass
         if (VERBOSE) {
           System.out.println("TEST: got expected exc:");
@@ -760,6 +790,16 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
   }
 
   public void changeIndexWithAdds(Random random, Directory dir, Version nameVersion) throws IOException {
+    SegmentInfos infos = SegmentInfos.readLatestCommit(dir);
+    if (nameVersion.onOrAfter(Version.LUCENE_5_3_0)) {
+      assertEquals(nameVersion, infos.getCommitLuceneVersion());
+    }
+
+    if (nameVersion.onOrAfter(Version.LUCENE_4_10_0)) {
+      // Before 4.10.0 we only tracked minor (not bugfix) versions, so a 4.6.2 backwards index would have 4.6.0 as its version:
+      assertEquals(nameVersion, infos.getMinSegmentLuceneVersion());
+    }
+
     // open writer
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random))
                                                  .setOpenMode(OpenMode.APPEND)
@@ -963,7 +1003,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       // should be found exactly
       assertEquals(TermsEnum.SeekStatus.FOUND,
                    terms.seekCeil(aaaTerm));
-      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.NONE)));
+      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, PostingsEnum.NONE)));
       assertNull(terms.next());
 
       // should hit end of field
@@ -975,12 +1015,12 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       assertEquals(TermsEnum.SeekStatus.NOT_FOUND,
                    terms.seekCeil(new BytesRef("a")));
       assertTrue(terms.term().bytesEquals(aaaTerm));
-      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.NONE)));
+      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, PostingsEnum.NONE)));
       assertNull(terms.next());
 
       assertEquals(TermsEnum.SeekStatus.FOUND,
                    terms.seekCeil(aaaTerm));
-      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, null, PostingsEnum.NONE)));
+      assertEquals(35, countDocs(TestUtil.docs(random(), terms, null, PostingsEnum.NONE)));
       assertNull(terms.next());
 
       r.close();
@@ -1090,6 +1130,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
     for (SegmentCommitInfo si : infos) {
       assertEquals(Version.LATEST, si.info.getVersion());
     }
+    assertEquals(Version.LATEST, infos.getCommitLuceneVersion());
     return infos.size();
   }
   
@@ -1227,6 +1268,20 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       
       dir.close();
     }
+  }
+
+  public static final String emptyIndex = "empty.4.10.4.zip";
+
+  public void testUpgradeEmptyOldIndex() throws Exception {
+    Path oldIndexDir = createTempDir("emptyIndex");
+    TestUtil.unzip(getDataInputStream(emptyIndex), oldIndexDir);
+    Directory dir = newFSDirectory(oldIndexDir);
+
+    newIndexUpgrader(dir).upgrade();
+
+    checkAllSegmentsUpgraded(dir);
+    
+    dir.close();
   }
 
   public static final String moreTermsIndex = "moreterms.4.0.0.zip";

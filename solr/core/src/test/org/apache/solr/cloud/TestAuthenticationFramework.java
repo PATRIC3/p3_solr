@@ -35,6 +35,7 @@ import org.apache.lucene.util.LuceneTestCase.SuppressSysoutChecks;
 import org.apache.solr.client.solrj.impl.HttpClientConfigurer;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.security.AuthenticationPlugin;
+import org.apache.solr.security.HttpClientInterceptorPlugin;
 import org.apache.solr.util.RevertDefaultThreadHandlerRule;
 import org.junit.ClassRule;
 import org.junit.Rule;
@@ -82,23 +83,34 @@ public class TestAuthenticationFramework extends TestMiniSolrCloudCluster {
   @Test
   @Override
   public void testBasics() throws Exception {
+
+    final String collectionName = "testAuthenticationFrameworkCollection";
+
+    // save original username/password
+    final String originalRequestUsername = requestUsername;
+    final String originalRequestPassword = requestPassword;
+
     requestUsername = MockAuthenticationPlugin.expectedUsername;
     requestPassword = MockAuthenticationPlugin.expectedPassword;
     
     // Should pass
-    testCollectionCreateSearchDelete();
+    testCollectionCreateSearchDelete(collectionName);
     
     requestUsername = MockAuthenticationPlugin.expectedUsername;
     requestPassword = "junkpassword";
     
     // Should fail with 401
     try {
-      testCollectionCreateSearchDelete();
+      testCollectionCreateSearchDelete(collectionName);
       fail("Should've returned a 401 error");
     } catch (Exception ex) {
       if (!ex.getMessage().contains("Error 401")) {
         fail("Should've returned a 401 error");
       }
+    } finally {
+      // restore original username/password
+      requestUsername = originalRequestUsername;
+      requestPassword = originalRequestPassword;        
     }
   }
 
@@ -108,7 +120,7 @@ public class TestAuthenticationFramework extends TestMiniSolrCloudCluster {
     super.tearDown();
   }
   
-  public static class MockAuthenticationPlugin extends AuthenticationPlugin {
+  public static class MockAuthenticationPlugin extends AuthenticationPlugin implements HttpClientInterceptorPlugin {
     private static Logger log = LoggerFactory.getLogger(MockAuthenticationPlugin.class);
 
     public static String expectedUsername = "solr";
@@ -133,7 +145,7 @@ public class TestAuthenticationFramework extends TestMiniSolrCloudCluster {
     }
 
     @Override
-    public HttpClientConfigurer getDefaultConfigurer() {
+    public HttpClientConfigurer getClientConfigurer() {
       return new MockClientConfigurer();
     }
 

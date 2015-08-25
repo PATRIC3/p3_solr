@@ -48,6 +48,8 @@ public class QueryResponse extends SolrResponseBase
   private NamedList<Object> _debugInfo = null;
   private NamedList<Object> _highlightingInfo = null;
   private NamedList<Object> _spellInfo = null;
+  private List<NamedList<Object>> _clusterInfo = null;
+  private Map<String,NamedList<Object>> _suggestInfo = null;
   private NamedList<Object> _statsInfo = null;
   private NamedList<NamedList<Number>> _termsInfo = null;
   private String _cursorMarkNext = null;
@@ -74,6 +76,12 @@ public class QueryResponse extends SolrResponseBase
   // SpellCheck Response
   private SpellCheckResponse _spellResponse = null;
 
+  // Clustering Response
+  private ClusteringResponse _clusterResponse = null;
+
+  // Suggester Response
+  private SuggesterResponse _suggestResponse = null;
+
   // Terms Response
   private TermsResponse _termsResponse = null;
   
@@ -87,7 +95,7 @@ public class QueryResponse extends SolrResponseBase
   // utility variable used for automatic binding -- it should not be serialized
   private transient final SolrClient solrClient;
 
-  public QueryResponse(){
+  public QueryResponse() {
     solrClient = null;
   }
   
@@ -145,6 +153,14 @@ public class QueryResponse extends SolrResponseBase
         _spellInfo = (NamedList<Object>) res.getVal( i );
         extractSpellCheckInfo( _spellInfo );
       }
+      else if ("clusters".equals(n)) {
+        _clusterInfo = (ArrayList<NamedList<Object>>) res.getVal(i);
+        extractClusteringInfo(_clusterInfo);
+      }
+      else if ( "suggest".equals( n ) )  {
+        _suggestInfo = (Map<String,NamedList<Object>>) res.getVal( i );
+        extractSuggesterInfo(_suggestInfo);
+      }
       else if ( "stats".equals( n ) )  {
         _statsInfo = (NamedList<Object>) res.getVal( i );
         extractStatsInfo( _statsInfo );
@@ -162,6 +178,14 @@ public class QueryResponse extends SolrResponseBase
 
   private void extractSpellCheckInfo(NamedList<Object> spellInfo) {
     _spellResponse = new SpellCheckResponse(spellInfo);
+  }
+
+  private void extractClusteringInfo(List<NamedList<Object>> clusterInfo) {
+    _clusterResponse = new ClusteringResponse(clusterInfo);
+  }
+
+  private void extractSuggesterInfo(Map<String, NamedList<Object>> suggestInfo) {
+    _suggestResponse = new SuggesterResponse(suggestInfo);
   }
 
   private void extractTermsInfo(NamedList<NamedList<Number>> termsInfo) {
@@ -336,41 +360,7 @@ public class QueryResponse extends SolrResponseBase
     //Parse range facets
     NamedList<NamedList<Object>> rf = (NamedList<NamedList<Object>>) info.get("facet_ranges");
     if (rf != null) {
-      _facetRanges = new ArrayList<>( rf.size() );
-      for (Map.Entry<String, NamedList<Object>> facet : rf) {
-        NamedList<Object> values = facet.getValue();
-        Object rawGap = values.get("gap");
-
-        RangeFacet rangeFacet;
-        if (rawGap instanceof Number) {
-          Number gap = (Number) rawGap;
-          Number start = (Number) values.get("start");
-          Number end = (Number) values.get("end");
-
-          Number before = (Number) values.get("before");
-          Number after = (Number) values.get("after");
-          Number between = (Number) values.get("between");
-
-          rangeFacet = new RangeFacet.Numeric(facet.getKey(), start, end, gap, before, after, between);
-        } else {
-          String gap = (String) rawGap;
-          Date start = (Date) values.get("start");
-          Date end = (Date) values.get("end");
-
-          Number before = (Number) values.get("before");
-          Number after = (Number) values.get("after");
-          Number between = (Number) values.get("between");
-
-          rangeFacet = new RangeFacet.Date(facet.getKey(), start, end, gap, before, after, between);
-        }
-
-        NamedList<Integer> counts = (NamedList<Integer>) values.get("counts");
-        for (Map.Entry<String, Integer> entry : counts)   {
-          rangeFacet.addCount(entry.getKey(), entry.getValue());
-        }
-
-        _facetRanges.add(rangeFacet);
-      }
+      _facetRanges = extractRangeFacets(rf);
     }
     
     //Parse pivot facets
@@ -396,7 +386,47 @@ public class QueryResponse extends SolrResponseBase
       }
     }
   }
-  
+
+  private List<RangeFacet> extractRangeFacets(NamedList<NamedList<Object>> rf) {
+    List<RangeFacet> facetRanges = new ArrayList<>( rf.size() );
+
+    for (Map.Entry<String, NamedList<Object>> facet : rf) {
+      NamedList<Object> values = facet.getValue();
+      Object rawGap = values.get("gap");
+
+      RangeFacet rangeFacet;
+      if (rawGap instanceof Number) {
+        Number gap = (Number) rawGap;
+        Number start = (Number) values.get("start");
+        Number end = (Number) values.get("end");
+
+        Number before = (Number) values.get("before");
+        Number after = (Number) values.get("after");
+        Number between = (Number) values.get("between");
+
+        rangeFacet = new RangeFacet.Numeric(facet.getKey(), start, end, gap, before, after, between);
+      } else {
+        String gap = (String) rawGap;
+        Date start = (Date) values.get("start");
+        Date end = (Date) values.get("end");
+
+        Number before = (Number) values.get("before");
+        Number after = (Number) values.get("after");
+        Number between = (Number) values.get("between");
+
+        rangeFacet = new RangeFacet.Date(facet.getKey(), start, end, gap, before, after, between);
+      }
+
+      NamedList<Integer> counts = (NamedList<Integer>) values.get("counts");
+      for (Map.Entry<String, Integer> entry : counts)   {
+        rangeFacet.addCount(entry.getKey(), entry.getValue());
+      }
+
+      facetRanges.add(rangeFacet);
+    }
+    return facetRanges;
+  }
+
   protected List<PivotField> readPivots( List<NamedList> list )
   {
     ArrayList<PivotField> values = new ArrayList<>( list.size() );
@@ -411,6 +441,8 @@ public class QueryResponse extends SolrResponseBase
 
       List<PivotField> subPivots = null;
       Map<String,FieldStatsInfo> fieldStatsInfos = null;
+      Map<String,Integer> queryCounts = null;
+      List<RangeFacet> ranges = null;
 
       if (4 <= nl.size()) {
         for(int index = 3; index < nl.size(); index++) {
@@ -432,6 +464,21 @@ public class QueryResponse extends SolrResponseBase
             fieldStatsInfos = extractFieldStatsInfo((NamedList<Object>) val);
             break;
           }
+          case "queries": {
+            // Parse the queries
+            queryCounts = new LinkedHashMap<>();
+            NamedList<Integer> fq = (NamedList<Integer>) val;
+            if (fq != null) {
+              for( Map.Entry<String, Integer> entry : fq ) {
+                queryCounts.put( entry.getKey(), entry.getValue() );
+              }
+            }
+            break;
+          }
+          case "ranges": {
+            ranges  = extractRangeFacets((NamedList<NamedList<Object>>) val);
+            break;
+          }
           default: 
             throw new RuntimeException( "unknown key in pivot: "+ key+ " ["+val+"]");
 
@@ -439,7 +486,7 @@ public class QueryResponse extends SolrResponseBase
         }
       }
 
-      values.add( new PivotField( f, v, cnt, subPivots, fieldStatsInfos ) );
+      values.add( new PivotField( f, v, cnt, subPivots, fieldStatsInfos, queryCounts, ranges ) );
     }
     return values;
   }
@@ -512,6 +559,14 @@ public class QueryResponse extends SolrResponseBase
 
   public SpellCheckResponse getSpellCheckResponse() {
     return _spellResponse;
+  }
+
+  public ClusteringResponse getClusteringResponse() {
+    return _clusterResponse;
+  }
+
+  public SuggesterResponse getSuggesterResponse() {
+    return _suggestResponse;
   }
 
   public TermsResponse getTermsResponse() {

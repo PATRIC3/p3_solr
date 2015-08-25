@@ -36,9 +36,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.CheckHits;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.spans.SpanNearPayloadCheckQuery;
 import org.apache.lucene.search.spans.SpanNearQuery;
-import org.apache.lucene.search.spans.SpanPayloadCheckQuery;
 import org.apache.lucene.search.spans.SpanPositionRangeQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
@@ -134,6 +132,23 @@ public class TestPayloadBasics extends LuceneTestCase {
     query = new SpanNearPayloadCheckQuery(snq, list);
     checkHits(query, new int[]
       {505});
+  }
+
+  public void testUnorderedPayloadChecks() throws Exception {
+
+    SpanTermQuery term5 = new SpanTermQuery(new Term("field", "five"));
+    SpanTermQuery term100 = new SpanTermQuery(new Term("field", "hundred"));
+    SpanTermQuery term4 = new SpanTermQuery(new Term("field", "four"));
+    SpanNearQuery nearQuery = new SpanNearQuery(new SpanQuery[]{term5, term100, term4}, 0, false);
+
+    List<byte[]> payloads = new ArrayList<>();
+    payloads.add(("pos: " + 2).getBytes(StandardCharsets.UTF_8));
+    payloads.add(("pos: " + 1).getBytes(StandardCharsets.UTF_8));
+    payloads.add(("pos: " + 0).getBytes(StandardCharsets.UTF_8));
+
+    SpanPayloadCheckQuery payloadQuery = new SpanPayloadCheckQuery(nearQuery, payloads);
+    checkHits(payloadQuery, new int[]{ 405 });
+
   }
 
   public void testComplexSpanChecks() throws Exception {

@@ -54,6 +54,7 @@ import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.common.params.CommonAdminParams;
 import org.apache.solr.common.params.CoreAdminParams;
 import org.apache.solr.common.params.CoreAdminParams.CoreAdminAction;
 import org.apache.solr.common.params.ModifiableSolrParams;
@@ -165,7 +166,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
               "Core container instance missing");
     }
     //boolean doPersist = false;
-    String taskId = req.getParams().get("async");
+    final String taskId = req.getParams().get(CommonAdminParams.ASYNC);
     TaskObject taskObject = new TaskObject(taskId);
 
     if(taskId != null) {
@@ -765,7 +766,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
     SolrParams params = req.getParams();
     String cname = params.get(CoreAdminParams.CORE);
 
-    if(!coreContainer.getCoreNames().contains(cname)) {
+    if (cname == null || !coreContainer.getCoreNames().contains(cname)) {
       throw new SolrException(ErrorCode.BAD_REQUEST, "Core with core name [" + cname + "] does not exist.");
     }
 
@@ -946,7 +947,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
                   waitForState + "; forcing ClusterState update from ZooKeeper");
             
             // force a cluster state update
-            coreContainer.getZkController().getZkStateReader().updateClusterState(true);
+            coreContainer.getZkController().getZkStateReader().updateClusterState();
           }
 
           if (maxTries == 0) {

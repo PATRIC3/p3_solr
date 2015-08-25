@@ -38,6 +38,7 @@ import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeFactory;
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase.Monster;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
@@ -45,13 +46,14 @@ import org.apache.lucene.util.LuceneTestCase.SuppressSysoutChecks;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.TimeUnits;
+
 import com.carrotsearch.randomizedtesting.annotations.TimeoutSuite;
 
 // NOTE: SimpleText codec will consume very large amounts of
 // disk (but, should run successfully).  Best to run w/
 // -Dtests.codec=<current codec>, and w/ plenty of RAM, eg:
 //
-//   ant test -Dtests.monster=true -Dtests.heapsize=8g -Dtests.codec=Lucene50 -Dtestcase=Test2BTerms
+//   ant test -Dtests.monster=true -Dtests.heapsize=8g -Dtests.codec=Lucene53 -Dtestcase=Test2BTerms
 //
 @SuppressCodecs({ "SimpleText", "Memory", "Direct" })
 @Monster("very slow, use 5g minimum heap")
@@ -109,11 +111,6 @@ public class Test2BTerms extends LuceneTestCase {
 
     private final static class MyTermAttributeImpl extends AttributeImpl implements TermToBytesRefAttribute {
       @Override
-      public void fillBytesRef() {
-        // no-op: the bytes was already filled by our owner's incrementToken
-      }
-      
-      @Override
       public BytesRef getBytesRef() {
         return bytes;
       }
@@ -123,22 +120,18 @@ public class Test2BTerms extends LuceneTestCase {
       }
 
       @Override
-      public boolean equals(Object other) {
-        return other == this;
-      }
-
-      @Override
-      public int hashCode() {
-        return System.identityHashCode(this);
-      }
-    
-      @Override
       public void copyTo(AttributeImpl target) {
+        throw new UnsupportedOperationException();
       }
     
       @Override
       public MyTermAttributeImpl clone() {
         throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public void reflectWith(AttributeReflector reflector) {
+        reflector.reflect(TermToBytesRefAttribute.class, "bytes", getBytesRef());
       }
     }
 

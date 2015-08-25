@@ -22,6 +22,7 @@ import com.google.common.collect.Lists;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.CloudSolrClient;
+import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
@@ -51,12 +52,7 @@ public class TestCollectionAPI extends ReplicaPropertiesBase {
 
   public TestCollectionAPI() {
     schemaString = "schema15.xml";      // we need a string id
-  }
-
-  @Override
-  public void distribSetUp() throws Exception {
     sliceCount = 2;
-    super.distribSetUp();
   }
 
   @Test
@@ -80,6 +76,7 @@ public class TestCollectionAPI extends ReplicaPropertiesBase {
     clusterStatusAliasTest();
     clusterStatusRolesTest();
     replicaPropTest();
+    clusterStatusZNodeVersion();
   }
 
   private void clusterStatusWithCollectionAndShard() throws IOException, SolrServerException {
@@ -166,6 +163,55 @@ public class TestCollectionAPI extends ReplicaPropertiesBase {
       Map<String, Object> collection = (Map<String, Object>) collections.get(COLLECTION_NAME);
       assertNotNull(collection);
       assertEquals("conf1", collection.get("configName"));
+    }
+  }
+
+  private void clusterStatusZNodeVersion() throws Exception {
+    String cname = "clusterStatusZNodeVersion";
+    try (CloudSolrClient client = createCloudClient(null)) {
+
+      CollectionAdminRequest.Create create = new CollectionAdminRequest.Create()
+              .setCollectionName(cname)
+              .setMaxShardsPerNode(1)
+              .setNumShards(1)
+              .setReplicationFactor(1)
+              .setConfigName("conf1");
+      create.process(client);
+
+      waitForRecoveriesToFinish(cname, true);
+
+      ModifiableSolrParams params = new ModifiableSolrParams();
+      params.set("action", CollectionParams.CollectionAction.CLUSTERSTATUS.toString());
+      params.set("collection", cname);
+      SolrRequest request = new QueryRequest(params);
+      request.setPath("/admin/collections");
+
+      NamedList<Object> rsp = client.request(request);
+      NamedList<Object> cluster = (NamedList<Object>) rsp.get("cluster");
+      assertNotNull("Cluster state should not be null", cluster);
+      NamedList<Object> collections = (NamedList<Object>) cluster.get("collections");
+      assertNotNull("Collections should not be null in cluster state", collections);
+      assertEquals(1, collections.size());
+      Map<String, Object> collection = (Map<String, Object>) collections.get(cname);
+      assertNotNull(collection);
+      assertEquals("conf1", collection.get("configName"));
+      Integer znodeVersion = (Integer) collection.get("znodeVersion");
+      assertNotNull(znodeVersion);
+
+      CollectionAdminRequest.AddReplica addReplica = new CollectionAdminRequest.AddReplica()
+              .setCollectionName(cname)
+              .setShardName("shard1");
+      addReplica.process(client);
+
+      waitForRecoveriesToFinish(cname, true);
+
+      rsp = client.request(request);
+      cluster = (NamedList<Object>) rsp.get("cluster");
+      collections = (NamedList<Object>) cluster.get("collections");
+      collection = (Map<String, Object>) collections.get(cname);
+      Integer newVersion = (Integer) collection.get("znodeVersion");
+      assertNotNull(newVersion);
+      assertTrue(newVersion > znodeVersion);
     }
   }
 
@@ -550,7 +596,7 @@ public class TestCollectionAPI extends ReplicaPropertiesBase {
   private Map<String, String> getProps(CloudSolrClient client, String collectionName, String replicaName, String... props)
       throws KeeperException, InterruptedException {
 
-    client.getZkStateReader().updateClusterState(true);
+    client.getZkStateReader().updateClusterState();
     ClusterState clusterState = client.getZkStateReader().getClusterState();
     Replica replica = clusterState.getReplica(collectionName, replicaName);
     if (replica == null) {

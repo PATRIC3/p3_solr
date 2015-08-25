@@ -27,12 +27,11 @@ import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.cloud.overseer.OverseerAction;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
-import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CollectionParams.CollectionAction;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.util.Utils;
 import org.apache.zookeeper.data.Stat;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -45,33 +44,13 @@ import java.util.Map;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.getLeaderNode;
 import static org.apache.solr.cloud.OverseerCollectionProcessor.getSortedOverseerNodeNames;
-import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+import static org.apache.solr.common.util.Utils.makeMap;
 import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.common.cloud.ZkStateReader.REPLICATION_FACTOR;
 
 @LuceneTestCase.Slow
-@SuppressSSL     // See SOLR-5776
+@SuppressSSL(bugUrl = "SOLR-5776")
 public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
-  private CloudSolrClient client;
-
-  @BeforeClass
-  public static void beforeThisClass2() throws Exception {
-
-  }
-
-  @Override
-  public void distribSetUp() throws Exception {
-    super.distribSetUp();
-    System.setProperty("numShards", Integer.toString(sliceCount));
-    System.setProperty("solr.xml.persist", "true");
-    client = createCloudClient(null);
-  }
-
-  @Override
-  public void distribTearDown() throws Exception {
-    super.distribTearDown();
-    client.close();
-  }
 
   protected String getSolrXml() {
     return "solr-no-core.xml";
@@ -80,17 +59,17 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
   public OverseerRolesTest() {
     sliceCount = 2;
     fixShardCount(TEST_NIGHTLY ? 6 : 2);
-
-    checkCreatedVsState = false;
   }
 
   @Test
   public void test() throws Exception {
-    testQuitCommand();
-    testOverseerRole();
+    try (CloudSolrClient client = createCloudClient(null))  {
+      testQuitCommand(client);
+      testOverseerRole(client);
+    }
   }
 
-  private void testQuitCommand() throws Exception{
+  private void testQuitCommand(CloudSolrClient client) throws Exception{
     String collectionName = "testOverseerQuit";
 
     createCollection(collectionName, client);
@@ -100,10 +79,10 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
     SolrZkClient zk = client.getZkStateReader().getZkClient();
     byte[] data = new byte[0];
     data = zk.getData("/overseer_elect/leader", null, new Stat(), true);
-    Map m = (Map) ZkStateReader.fromJSON(data);
+    Map m = (Map) Utils.fromJSON(data);
     String s = (String) m.get("id");
     String leader = LeaderElector.getNodeName(s);
-    Overseer.getInQueue(zk).offer(ZkStateReader.toJSON(new ZkNodeProps(Overseer.QUEUE_OPERATION, OverseerAction.QUIT.toLower())));
+    Overseer.getInQueue(zk).offer(Utils.toJSON(new ZkNodeProps(Overseer.QUEUE_OPERATION, OverseerAction.QUIT.toLower())));
     long timeout = System.currentTimeMillis()+10000;
     String newLeader=null;
     for(;System.currentTimeMillis() < timeout;){
@@ -121,7 +100,7 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
 
 
 
-  private void testOverseerRole() throws Exception {
+  private void testOverseerRole(CloudSolrClient client) throws Exception {
     String collectionName = "testOverseerCol";
 
     createCollection(collectionName, client);
@@ -137,7 +116,7 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
     Collections.shuffle(l, random());
     String overseerDesignate = l.get(0);
     log.info("overseerDesignate {}",overseerDesignate);
-    setOverseerRole(CollectionAction.ADDROLE,overseerDesignate);
+    setOverseerRole(client, CollectionAction.ADDROLE,overseerDesignate);
 
     long timeout = System.currentTimeMillis()+15000;
 
@@ -166,7 +145,7 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
 
     String anotherOverseer = l.get(0);
     log.info("Adding another overseer designate {}", anotherOverseer);
-    setOverseerRole(CollectionAction.ADDROLE, anotherOverseer);
+    setOverseerRole(client, CollectionAction.ADDROLE, anotherOverseer);
 
     String currentOverseer = getLeaderNode(client.getZkStateReader().getZkClient());
 
@@ -211,7 +190,7 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
     assertTrue("New overseer designate has not become the overseer, expected : " + anotherOverseer + "actual : " + getLeaderNode(client.getZkStateReader().getZkClient()), leaderchanged);
   }
 
-  private void setOverseerRole(CollectionAction action, String overseerDesignate) throws Exception, IOException {
+  private void setOverseerRole(CloudSolrClient client, CollectionAction action, String overseerDesignate) throws Exception, IOException {
     log.info("Adding overseer designate {} ", overseerDesignate);
     Map m = makeMap(
         "action", action.toString().toLowerCase(Locale.ROOT),

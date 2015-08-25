@@ -18,6 +18,8 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -53,13 +55,19 @@ public class TestSortingMergePolicy extends LuceneTestCase {
   private List<String> terms;
   private Directory dir1, dir2;
   private Sort sort;
+  private boolean reversedSort;
   private IndexReader reader;
   private IndexReader sortedReader;
 
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    sort = new Sort(new SortField("ndv", SortField.Type.LONG));
+    final Boolean reverse = (random().nextBoolean() ? null : new Boolean(random().nextBoolean()));
+    final SortField sort_field = (reverse == null
+        ? new SortField("ndv", SortField.Type.LONG) 
+        : new SortField("ndv", SortField.Type.LONG, reverse.booleanValue()));
+    sort = new Sort(sort_field);
+    reversedSort = (null != reverse && reverse.booleanValue());
     createRandomIndexes();
   }
 
@@ -158,10 +166,12 @@ public class TestSortingMergePolicy extends LuceneTestCase {
     super.tearDown();
   }
 
-  private static void assertSorted(LeafReader reader) throws IOException {
+  private static void assertSorted(LeafReader reader, boolean reverse) throws IOException {
     final NumericDocValues ndv = reader.getNumericDocValues("ndv");
     for (int i = 1; i < reader.maxDoc(); ++i) {
-      assertTrue("ndv(" + (i-1) + ")=" + ndv.get(i-1) + ",ndv(" + i + ")=" + ndv.get(i), ndv.get(i-1) <= ndv.get(i));
+      final int lhs = (!reverse ? i-1 : i);
+      final int rhs = (!reverse ? i : i-1);
+      assertTrue("ndv(" + (i-1) + ")=" + ndv.get(i-1) + ",ndv(" + i + ")=" + ndv.get(i)+",reverse="+reverse, ndv.get(lhs) <= ndv.get(rhs));
     }
   }
 
@@ -169,8 +179,8 @@ public class TestSortingMergePolicy extends LuceneTestCase {
     final LeafReader sortedReader1 = SortingLeafReader.wrap(SlowCompositeReaderWrapper.wrap(reader), sort);
     final LeafReader sortedReader2 = SlowCompositeReaderWrapper.wrap(sortedReader);
 
-    assertSorted(sortedReader1);
-    assertSorted(sortedReader2);
+    assertSorted(sortedReader1, reversedSort);
+    assertSorted(sortedReader2, reversedSort);
     
     assertReaderEquals("", sortedReader1, sortedReader2);
   }
@@ -181,6 +191,17 @@ public class TestSortingMergePolicy extends LuceneTestCase {
       fail("Didn't get expected exception");
     } catch (IllegalArgumentException e) {
       assertEquals("Cannot sort an index with a Sort that refers to the relevance score", e.getMessage());
+    }
+  }
+
+  public void testMethodsOverridden() throws Exception {
+    for (Method m : MergePolicy.class.getDeclaredMethods()) {
+      if (Modifier.isFinal(m.getModifiers())) continue;
+      try {
+        SortingMergePolicy.class.getDeclaredMethod(m.getName(),  m.getParameterTypes());
+      } catch (NoSuchMethodException e) {
+        fail("SortingMergePolicy needs to override '"+m+"'");
+      }
     }
   }
 

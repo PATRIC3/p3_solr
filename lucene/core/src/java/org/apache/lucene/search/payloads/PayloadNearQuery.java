@@ -18,25 +18,27 @@ package org.apache.lucene.search.payloads;
  */
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.search.similarities.Similarity.SimScorer;
-import org.apache.lucene.search.spans.NearSpansOrdered;
-import org.apache.lucene.search.spans.NearSpansUnordered;
 import org.apache.lucene.search.spans.SpanNearQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanScorer;
 import org.apache.lucene.search.spans.SpanWeight;
 import org.apache.lucene.search.spans.Spans;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.ToStringUtils;
 
@@ -51,10 +53,13 @@ import org.apache.lucene.util.ToStringUtils;
  * which returns 1 by default.
  * <p>
  * Payload scores are aggregated using a pluggable {@link PayloadFunction}.
- * 
+ *
  * @see org.apache.lucene.search.similarities.Similarity.SimScorer#computePayloadFactor(int, int, int, BytesRef)
+ *
+ * @deprecated use {@link PayloadScoreQuery} to wrap {@link SpanNearQuery}
  */
 public class PayloadNearQuery extends SpanNearQuery {
+
   protected String fieldName;
   protected PayloadFunction function;
 
@@ -63,7 +68,7 @@ public class PayloadNearQuery extends SpanNearQuery {
   }
 
   public PayloadNearQuery(SpanQuery[] clauses, int slop, boolean inOrder,
-      PayloadFunction function) {
+                          PayloadFunction function) {
     super(clauses, slop, inOrder);
     this.fieldName = Objects.requireNonNull(clauses[0].getField(), "all clauses must have same non null field");
     this.function = Objects.requireNonNull(function);
@@ -71,7 +76,11 @@ public class PayloadNearQuery extends SpanNearQuery {
 
   @Override
   public SpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
-    return new PayloadNearSpanWeight(this, searcher, needsScores);
+    List<SpanWeight> subWeights = new ArrayList<>();
+    for (SpanQuery q : clauses) {
+      subWeights.add(q.createWeight(searcher, false));
+    }
+    return new PayloadNearSpanWeight(subWeights, searcher, needsScores ? getTermContexts(subWeights) : null);
   }
 
   @Override
@@ -125,32 +134,32 @@ public class PayloadNearQuery extends SpanNearQuery {
     }
     PayloadNearQuery other = (PayloadNearQuery) obj;
     return fieldName.equals(other.fieldName)
-          && function.equals(other.function);
+        && function.equals(other.function);
   }
 
-  public class PayloadNearSpanWeight extends SpanWeight {
-    public PayloadNearSpanWeight(SpanQuery query, IndexSearcher searcher, boolean needsScores)
+  public class PayloadNearSpanWeight extends SpanNearWeight {
+
+    public PayloadNearSpanWeight(List<SpanWeight> subWeights, IndexSearcher searcher, Map<Term, TermContext> terms)
         throws IOException {
-      super(query, searcher, needsScores);
+      super(subWeights, searcher, terms);
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context, Bits acceptDocs) throws IOException {
-      Spans spans = query.getSpans(context, acceptDocs, termContexts);
-      return (spans == null)
-              ? null
-              : new PayloadNearSpanScorer(spans, this, similarity, similarity.simScorer(stats, context));
+    public Scorer scorer(LeafReaderContext context) throws IOException {
+      Spans spans = super.getSpans(context, Postings.PAYLOADS);
+      Similarity.SimScorer simScorer = simWeight == null ? null : similarity.simScorer(simWeight, context);
+      return (spans == null) ? null : new PayloadNearSpanScorer(spans, this, simScorer);
     }
-    
+
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      PayloadNearSpanScorer scorer = (PayloadNearSpanScorer) scorer(context, context.reader().getLiveDocs());
+      PayloadNearSpanScorer scorer = (PayloadNearSpanScorer) scorer(context);
       if (scorer != null) {
         int newDoc = scorer.advance(doc);
         if (newDoc == doc) {
           float freq = scorer.freq();
           Explanation freqExplanation = Explanation.match(freq, "phraseFreq=" + freq);
-          SimScorer docScorer = similarity.simScorer(stats, context);
+          SimScorer docScorer = similarity.simScorer(simWeight, context);
           Explanation scoreExplanation = docScorer.explain(doc, freqExplanation);
           Explanation expl = Explanation.match(
               scoreExplanation.getValue(),
@@ -166,7 +175,7 @@ public class PayloadNearQuery extends SpanNearQuery {
               expl, payloadExpl);
         }
       }
-      
+
       return Explanation.noMatch("no matching term");
     }
   }
@@ -175,30 +184,11 @@ public class PayloadNearQuery extends SpanNearQuery {
     Spans spans;
     protected float payloadScore;
     private int payloadsSeen;
+    private final PayloadSpanCollector collector = new PayloadSpanCollector();
 
-    protected PayloadNearSpanScorer(Spans spans, SpanWeight weight,
-        Similarity similarity, Similarity.SimScorer docScorer) throws IOException {
+    protected PayloadNearSpanScorer(Spans spans, SpanWeight weight, Similarity.SimScorer docScorer) throws IOException {
       super(spans, weight, docScorer);
       this.spans = spans;
-    }
-
-    // Get the payloads associated with all underlying subspans
-    public void getPayloads(Spans[] subSpans) throws IOException {
-      for (int i = 0; i < subSpans.length; i++) {
-        if (subSpans[i] instanceof NearSpansOrdered) {
-          if (((NearSpansOrdered) subSpans[i]).isPayloadAvailable()) {
-            processPayloads(((NearSpansOrdered) subSpans[i]).getPayload(),
-                subSpans[i].startPosition(), subSpans[i].endPosition());
-          }
-          getPayloads(((NearSpansOrdered) subSpans[i]).getSubSpans());
-        } else if (subSpans[i] instanceof NearSpansUnordered) {
-          if (((NearSpansUnordered) subSpans[i]).isPayloadAvailable()) {
-            processPayloads(((NearSpansUnordered) subSpans[i]).getPayload(),
-                subSpans[i].startPosition(), subSpans[i].endPosition());
-          }
-          getPayloads(((NearSpansUnordered) subSpans[i]).getSubSpans());
-        }
-      }
     }
 
     // TODO change the whole spans api to use bytesRef, or nuke spans
@@ -207,11 +197,11 @@ public class PayloadNearQuery extends SpanNearQuery {
     /**
      * By default, uses the {@link PayloadFunction} to score the payloads, but
      * can be overridden to do other things.
-     * 
+     *
      * @param payLoads The payloads
      * @param start The start position of the span being scored
      * @param end The end position of the span being scored
-     * 
+     *
      * @see Spans
      */
     protected void processPayloads(Collection<byte[]> payLoads, int start, int end) {
@@ -226,22 +216,17 @@ public class PayloadNearQuery extends SpanNearQuery {
       }
     }
 
-    //
     @Override
-    protected void setFreqCurrentDoc() throws IOException {
-      freq = 0.0f;
+    protected void doStartCurrentDoc() throws IOException {
       payloadScore = 0;
       payloadsSeen = 0;
-      int startPos = spans.nextStartPosition();
-      assert startPos != Spans.NO_MORE_POSITIONS : "initial startPos NO_MORE_POSITIONS, spans="+spans;
-      do {
-        int matchLength = spans.endPosition() - startPos;
-        freq += docScorer.computeSlopFactor(matchLength);
-        Spans[] spansArr = new Spans[1];
-        spansArr[0] = spans;
-        getPayloads(spansArr);            
-        startPos = spans.nextStartPosition();
-      } while (startPos != Spans.NO_MORE_POSITIONS);
+    }
+
+    @Override
+    protected void doCurrentSpans() throws IOException {
+      collector.reset();
+      spans.collect(collector);
+      processPayloads(collector.getPayloads(), spans.startPosition(), spans.endPosition());
     }
 
     @Override

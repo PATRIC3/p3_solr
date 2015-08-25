@@ -18,20 +18,15 @@ package org.apache.lucene.search.spans;
  */
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.TermContext;
-import org.apache.lucene.util.Bits;
+import org.apache.lucene.search.IndexSearcher;
 
 /**
- * 
+ *
  * A wrapper to perform span operations on a non-leaf reader context
  * <p>
  * NOTE: This should be used for testing purposes only
@@ -40,17 +35,18 @@ import org.apache.lucene.util.Bits;
 public class MultiSpansWrapper {
 
   public static Spans wrap(IndexReader reader, SpanQuery spanQuery) throws IOException {
+    return wrap(reader, spanQuery, SpanWeight.Postings.POSITIONS);
+  }
+
+  public static Spans wrap(IndexReader reader, SpanQuery spanQuery, SpanWeight.Postings requiredPostings) throws IOException {
+
     LeafReader lr = SlowCompositeReaderWrapper.wrap(reader); // slow, but ok for testing
     LeafReaderContext lrContext = lr.getContext();
-    SpanQuery rewrittenQuery = (SpanQuery) spanQuery.rewrite(lr); // get the term contexts so getSpans can be called directly
-    HashSet<Term> termSet = new HashSet<>();
-    rewrittenQuery.extractTerms(termSet);
-    Map<Term,TermContext> termContexts = new HashMap<>();
-    for (Term term: termSet) {
-      TermContext termContext = TermContext.build(lrContext, term);
-      termContexts.put(term, termContext);
-    }
-    Spans actSpans = spanQuery.getSpans(lrContext, new Bits.MatchAllBits(lr.numDocs()), termContexts);
-    return actSpans;
+    IndexSearcher searcher = new IndexSearcher(lr);
+    searcher.setQueryCache(null);
+
+    SpanWeight w = spanQuery.createWeight(searcher, false);
+
+    return w.getSpans(lrContext, requiredPostings);
   }
 }

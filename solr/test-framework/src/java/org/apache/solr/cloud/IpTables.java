@@ -19,9 +19,6 @@ package org.apache.solr.cloud;
 
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.PrintStream;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -33,40 +30,13 @@ import org.slf4j.LoggerFactory;
  * To use, tests must be able to run iptables, eg sudo chmod u+s iptables
  */
 public class IpTables {
-  static final Logger log = LoggerFactory
-      .getLogger(IpTables.class);
+  static final Logger log = LoggerFactory.getLogger(IpTables.class);
   
-  private static boolean ENABLED = Boolean.getBoolean("solr.tests.use.iptables");
-  static class ThreadPumper {
-
-    public ThreadPumper() {}
-    
-    public static Thread start(final InputStream from, final OutputStream to, final boolean verbose) {
-      Thread t = new Thread() {
-        @Override
-        public void run() {
-          try {
-            byte [] buffer = new byte [1024];
-            int len;
-            while ((len = from.read(buffer)) != -1) {
-              if (verbose) {
-                to.write(buffer, 0, len);
-              }
-            }
-          } catch (IOException e) {
-            System.err.println("Couldn't pipe from the forked process: " + e.toString());
-          }
-        }
-      };
-      t.start();
-      return t;
-    }
-  }
+  private static final boolean ENABLED = Boolean.getBoolean("solr.tests.use.iptables");
   
-  private static Set<Integer> BLOCK_PORTS = Collections.synchronizedSet(new HashSet<Integer>());
+  private static final Set<Integer> BLOCK_PORTS = Collections.synchronizedSet(new HashSet<Integer>());
   
-  public static void blockPort(int port) throws IOException,
-      InterruptedException {
+  public static void blockPort(int port) throws IOException, InterruptedException {
     if (ENABLED) {
       log.info("Block port with iptables: " + port);
       BLOCK_PORTS.add(port);
@@ -77,40 +47,31 @@ public class IpTables {
     }
   }
   
-  public static void unblockPort(int port) throws IOException,
-      InterruptedException {
-    if (ENABLED) {
+  public static void unblockPort(int port) throws IOException, InterruptedException {
+    if (ENABLED && BLOCK_PORTS.contains(port)) {
       log.info("Unblock port with iptables: " + port);
       runCmd(("iptables -D INPUT -p tcp --dport " + port + " -j DROP")
           .split("\\s"));
       runCmd(("iptables -D OUTPUT -p tcp --dport " + port + " -j DROP")
           .split("\\s"));
+      BLOCK_PORTS.remove(port);
     }
   }
   
   public static void unblockAllPorts() throws IOException, InterruptedException {
     if (ENABLED) {
       log.info("Unblocking any ports previously blocked with iptables...");
-      for (Integer port : BLOCK_PORTS) {
+      final Integer[] ports = BLOCK_PORTS.toArray(new Integer[BLOCK_PORTS.size()]);
+      for (Integer port : ports) {
         IpTables.unblockPort(port);
       }
     }
   }
   
-  private static void runCmd(String[] cmd) throws IOException, InterruptedException {
-    ProcessBuilder pb = new ProcessBuilder(cmd);
-
-    pb.redirectErrorStream(true);
-    Process p = pb.start();
-
-    // We pump everything to stderr.
-    PrintStream childOut = System.err; 
-    Thread stdoutPumper = ThreadPumper.start(p.getInputStream(), childOut, true);
-    Thread stderrPumper = ThreadPumper.start(p.getErrorStream(), childOut, true);
-    if (true) childOut.println(">>> Begin subprocess output");
-    p.waitFor();
-    stdoutPumper.join();
-    stderrPumper.join();
-    if (true) childOut.println("<<< End subprocess output");
+  private static void runCmd(String... cmd) throws IOException, InterruptedException {
+    final int exitCode = new ProcessBuilder(cmd).inheritIO().start().waitFor();
+    if (exitCode != 0) {
+      throw new IOException("iptables process did not exit successfully, exit code was: " + exitCode);
+    }
   }
 }

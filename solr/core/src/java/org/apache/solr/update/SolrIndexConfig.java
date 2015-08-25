@@ -17,9 +17,6 @@
 
 package org.apache.solr.update;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.PrintStream;
 import java.util.List;
 import java.util.Map;
 
@@ -29,8 +26,8 @@ import org.apache.lucene.index.*;
 import org.apache.lucene.index.IndexWriter.IndexReaderWarmer;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.Version;
-import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.Utils;
 import org.apache.solr.core.MapSerializable;
 import org.apache.solr.core.PluginInfo;
 import org.apache.solr.core.SolrConfig;
@@ -57,7 +54,6 @@ public class SolrIndexConfig implements MapSerializable {
 
   public final int maxBufferedDocs;
   public final int maxMergeDocs;
-  public final int maxIndexingThreads;
   public final int mergeFactor;
 
   public final double ramBufferSizeMB;
@@ -86,7 +82,6 @@ public class SolrIndexConfig implements MapSerializable {
     effectiveUseCompoundFileSetting = false;
     maxBufferedDocs = -1;
     maxMergeDocs = -1;
-    maxIndexingThreads = IndexWriterConfig.DEFAULT_MAX_THREAD_STATES;
     mergeFactor = -1;
     ramBufferSizeMB = 100;
     writeLockTimeout = -1;
@@ -136,7 +131,6 @@ public class SolrIndexConfig implements MapSerializable {
     effectiveUseCompoundFileSetting = solrConfig.getBool(prefix+"/useCompoundFile", def.getUseCompoundFile());
     maxBufferedDocs=solrConfig.getInt(prefix+"/maxBufferedDocs",def.maxBufferedDocs);
     maxMergeDocs=solrConfig.getInt(prefix+"/maxMergeDocs",def.maxMergeDocs);
-    maxIndexingThreads=solrConfig.getInt(prefix+"/maxIndexingThreads",def.maxIndexingThreads);
     mergeFactor=solrConfig.getInt(prefix+"/mergeFactor",def.mergeFactor);
     ramBufferSizeMB = solrConfig.getDouble(prefix+"/ramBufferSizeMB", def.ramBufferSizeMB);
 
@@ -169,15 +163,17 @@ public class SolrIndexConfig implements MapSerializable {
   }
   @Override
   public Map<String, Object> toMap() {
-    Map<String, Object> m = ZkNodeProps.makeMap("maxBufferedDocs", maxBufferedDocs,
+    Map<String, Object> m = Utils.makeMap("useCompoundFile", effectiveUseCompoundFileSetting,
+        "maxBufferedDocs", maxBufferedDocs,
         "maxMergeDocs", maxMergeDocs,
-        "maxIndexingThreads", maxIndexingThreads,
         "mergeFactor", mergeFactor,
         "ramBufferSizeMB", ramBufferSizeMB,
         "writeLockTimeout", writeLockTimeout,
-        "lockType", lockType);
+        "lockType", lockType,
+        "infoStreamEnabled", infoStream != InfoStream.NO_OUTPUT);
     if(mergeSchedulerInfo != null) m.put("mergeScheduler",mergeSchedulerInfo.toMap());
-    if(mergePolicyInfo != null) m.put("mergeScheduler",mergePolicyInfo.toMap());
+    if(mergePolicyInfo != null) m.put("mergePolicy",mergePolicyInfo.toMap());
+    if(mergedSegmentWarmerInfo != null) m.put("mergedSegmentWarmer",mergedSegmentWarmerInfo.toMap());
     return m;
   }
 
@@ -221,10 +217,6 @@ public class SolrIndexConfig implements MapSerializable {
     // there may modify the effective useCompoundFile
     iwc.setUseCompoundFile(getUseCompoundFile());
 
-    if (maxIndexingThreads != -1) {
-      iwc.setMaxThreadStates(maxIndexingThreads);
-    }
-    
     if (mergedSegmentWarmerInfo != null) {
       // TODO: add infostream -> normal logging system (there is an issue somewhere)
       IndexReaderWarmer warmer = schema.getResourceLoader().newInstance(mergedSegmentWarmerInfo.className, 

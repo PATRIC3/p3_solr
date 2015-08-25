@@ -220,9 +220,7 @@ public class TestDocument extends LuceneTestCase {
     IndexReader reader = writer.getReader();
     
     IndexSearcher searcher = newSearcher(reader);
-    PhraseQuery query = new PhraseQuery();
-    query.add(new Term("indexed_not_tokenized", "test1"));
-    query.add(new Term("indexed_not_tokenized", "test2"));
+    PhraseQuery query = new PhraseQuery("indexed_not_tokenized", "test1", "test2");
     
     ScoreDoc[] hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(1, hits.length);
@@ -383,7 +381,7 @@ public class TestDocument extends LuceneTestCase {
       assertEquals(2, tvs.size());
       TermsEnum tvsEnum = tvs.iterator();
       assertEquals(new BytesRef("abc"), tvsEnum.next());
-      final PostingsEnum dpEnum = tvsEnum.postings(null, null, PostingsEnum.ALL);
+      final PostingsEnum dpEnum = tvsEnum.postings(null, PostingsEnum.ALL);
       assertNotNull(dpEnum);
       assertEquals(new BytesRef("xyz"), tvsEnum.next());
       assertNull(tvsEnum.next());

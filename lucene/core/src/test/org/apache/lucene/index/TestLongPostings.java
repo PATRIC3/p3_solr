@@ -49,14 +49,13 @@ public class TestLongPostings extends LuceneTestCase {
       }
       try (TokenStream ts = a.tokenStream("foo", s)) {
         final TermToBytesRefAttribute termAtt = ts.getAttribute(TermToBytesRefAttribute.class);
-        final BytesRef termBytes = termAtt.getBytesRef();
         ts.reset();
 
         int count = 0;
         boolean changed = false;
 
         while(ts.incrementToken()) {
-          termAtt.fillBytesRef();
+          final BytesRef termBytes = termAtt.getBytesRef();
           if (count == 0 && !termBytes.utf8ToString().equals(s)) {
             // The value was changed during analysis.  Keep iterating so the
             // tokenStream is exhausted.
@@ -167,7 +166,7 @@ public class TestLongPostings extends LuceneTestCase {
         System.out.println("\nTEST: iter=" + iter + " doS1=" + doS1);
       }
         
-      final PostingsEnum postings = MultiFields.getTermPositionsEnum(r, null, "field", new BytesRef(term));
+      final PostingsEnum postings = MultiFields.getTermPositionsEnum(r, "field", new BytesRef(term));
 
       int docID = -1;
       while(docID < DocIdSetIterator.NO_MORE_DOCS) {
@@ -374,10 +373,10 @@ public class TestLongPostings extends LuceneTestCase {
       final PostingsEnum postings;
 
       if (options == IndexOptions.DOCS) {
-        docs = TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, PostingsEnum.NONE);
+        docs = TestUtil.docs(random(), r, "field", new BytesRef(term), null, PostingsEnum.NONE);
         postings = null;
       } else {
-        docs = postings = TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, PostingsEnum.FREQS);
+        docs = postings = TestUtil.docs(random(), r, "field", new BytesRef(term), null, PostingsEnum.FREQS);
         assert postings != null;
       }
       assert docs != null;

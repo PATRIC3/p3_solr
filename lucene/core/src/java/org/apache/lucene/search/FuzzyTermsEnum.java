@@ -30,8 +30,8 @@ import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 import org.apache.lucene.util.AttributeSource;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.UnicodeUtil;
@@ -265,8 +265,8 @@ public class FuzzyTermsEnum extends TermsEnum {
   }
   
   @Override
-  public PostingsEnum postings(Bits liveDocs, PostingsEnum reuse, int flags) throws IOException {
-    return actualEnum.postings(liveDocs, reuse, flags);
+  public PostingsEnum postings(PostingsEnum reuse, int flags) throws IOException {
+    return actualEnum.postings(reuse, flags);
   }
   
   @Override
@@ -424,6 +424,11 @@ public class FuzzyTermsEnum extends TermsEnum {
         ((LevenshteinAutomataAttribute) target).automata();
       targetAutomata.clear();
       targetAutomata.addAll(automata);
+    }
+
+    @Override
+    public void reflectWith(AttributeReflector reflector) {
+      reflector.reflect(LevenshteinAutomataAttribute.class, "automata", automata);
     }
   }
 }

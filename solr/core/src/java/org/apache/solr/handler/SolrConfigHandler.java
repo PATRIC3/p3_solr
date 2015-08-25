@@ -33,7 +33,6 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
@@ -51,7 +50,6 @@ import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkNodeProps;
-import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
@@ -60,6 +58,7 @@ import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.StrUtils;
+import org.apache.solr.common.util.Utils;
 import org.apache.solr.core.ConfigOverlay;
 import org.apache.solr.core.ImplicitPlugins;
 import org.apache.solr.core.PluginInfo;
@@ -79,7 +78,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static java.util.Collections.singletonList;
-import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+import static org.apache.solr.common.util.Utils.makeMap;
 import static org.apache.solr.common.params.CoreAdminParams.NAME;
 import static org.apache.solr.common.util.StrUtils.formatString;
 import static org.apache.solr.core.ConfigOverlay.NOT_EDITABLE;
@@ -91,9 +90,12 @@ import static org.apache.solr.schema.FieldType.CLASS_NAME;
 
 public class SolrConfigHandler extends RequestHandlerBase {
   public static final Logger log = LoggerFactory.getLogger(SolrConfigHandler.class);
-  public static final boolean configEditing_disabled = Boolean.getBoolean("disable.configEdit");
+  public static final String CONFIGSET_EDITING_DISABLED_ARG = "disable.configEdit";
+  public static final boolean configEditing_disabled = Boolean.getBoolean(CONFIGSET_EDITING_DISABLED_ARG);
+  public static final String IMMUTABLE_CONFIGSET_ARG = "immutable";
   private static final Map<String, SolrConfig.SolrPluginInfo> namedPlugins;
   private Lock reloadLock = new ReentrantLock(true);
+  private boolean isImmutableConfigSet = false;
 
   static {
     Map<String, SolrConfig.SolrPluginInfo> map = new HashMap<>();
@@ -105,6 +107,12 @@ public class SolrConfigHandler extends RequestHandlerBase {
     namedPlugins = Collections.unmodifiableMap(map);
   }
 
+  @Override
+  public void init(NamedList args) {
+    super.init(args);
+    Object immutable = args.get(IMMUTABLE_CONFIGSET_ARG);
+    isImmutableConfigSet = immutable  != null ? Boolean.parseBoolean(immutable.toString()) : false;
+  }
 
   @Override
   public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception {
@@ -113,8 +121,10 @@ public class SolrConfigHandler extends RequestHandlerBase {
     String httpMethod = (String) req.getContext().get("httpMethod");
     Command command = new Command(req, rsp, httpMethod);
     if ("POST".equals(httpMethod)) {
-      if (configEditing_disabled)
-        throw new SolrException(SolrException.ErrorCode.FORBIDDEN, " solrconfig editing is not enabled");
+      if (configEditing_disabled || isImmutableConfigSet) {
+        final String reason = configEditing_disabled ? "due to " + CONFIGSET_EDITING_DISABLED_ARG : "because ConfigSet is immutable";
+        throw new SolrException(SolrException.ErrorCode.FORBIDDEN, " solrconfig editing is not enabled " + reason);
+      }
       try {
         command.handlePOST();
       } finally {
@@ -170,7 +180,7 @@ public class SolrConfigHandler extends RequestHandlerBase {
 
         } else {
           if (ZNODEVER.equals(parts.get(1))) {
-            resp.add(ZNODEVER, ZkNodeProps.makeMap(
+            resp.add(ZNODEVER, Utils.makeMap(
                 ConfigOverlay.NAME, req.getCore().getSolrConfig().getOverlay().getZnodeVersion(),
                 RequestParams.NAME, req.getCore().getSolrConfig().getRequestParams().getZnodeVersion()));
             boolean checkStale = false;
@@ -237,20 +247,8 @@ public class SolrConfigHandler extends RequestHandlerBase {
 
 
     private void handlePOST() throws IOException {
-      Iterable<ContentStream> streams = req.getContentStreams();
-      if (streams == null) {
-        throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "missing content stream");
-      }
-      ArrayList<CommandOperation> ops = new ArrayList<>();
-
-      for (ContentStream stream : streams)
-        ops.addAll(CommandOperation.parse(stream.getReader()));
-      List<Map> errList = CommandOperation.captureErrors(ops);
-      if (!errList.isEmpty()) {
-        resp.add(CommandOperation.ERR_MSGS, errList);
-        return;
-      }
-
+      List<CommandOperation> ops = CommandOperation.readCommands(req.getContentStreams(), resp);
+      if (ops == null) return;
       try {
         for (; ; ) {
           ArrayList<CommandOperation> opsCopy = new ArrayList<>(ops.size());
@@ -398,7 +396,7 @@ public class SolrConfigHandler extends RequestHandlerBase {
                   overlay = updateNamedPlugin(info, op, overlay, prefix.equals("create") || prefix.equals("add"));
                 }
               } else {
-                op.addError(formatString("Unknown operation ''{0}'' ", op.name));
+                op.unknownOperation();
               }
             }
           }
@@ -584,7 +582,7 @@ public class SolrConfigHandler extends RequestHandlerBase {
     return null;
   }
 
-  static void setWt(SolrQueryRequest req, String wt) {
+  public static void setWt(SolrQueryRequest req, String wt) {
     SolrParams params = req.getParams();
     if (params.get(CommonParams.WT) != null) return;//wt is set by user
     Map<String, String> map = new HashMap<>(1);

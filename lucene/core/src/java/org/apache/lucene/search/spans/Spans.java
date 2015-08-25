@@ -18,10 +18,10 @@ package org.apache.lucene.search.spans;
  */
 
 import java.io.IOException;
-import java.util.Collection;
 
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.TwoPhaseIterator;
+import org.apache.lucene.search.similarities.Similarity.SimScorer;
 
 /** Iterates through combinations of start/end positions per-doc.
  *  Each start/end position represents a range of term positions within the current document.
@@ -51,33 +51,25 @@ public abstract class Spans extends DocIdSetIterator {
   public abstract int endPosition();
 
   /**
-   * Returns the payload data for the current start/end position.
-   * This is only valid after {@link #nextStartPosition()}
-   * returned an available start position.
-   * This method must not be called more than once after each call
-   * of {@link #nextStartPosition()}. However, most payloads are loaded lazily,
-   * so if the payload data for the current position is not needed,
-   * this method may not be called at all for performance reasons.
-   * <br>
-   * Note that the return type is a collection, thus the ordering should not be relied upon.
-   * <br>
-   * @lucene.experimental
-   *
-   * @return a List of byte arrays containing the data of this payload, otherwise null if isPayloadAvailable is false
-   * @throws IOException if there is a low-level I/O error
+   * Return the width of the match, which is typically used to compute
+   * the {@link SimScorer#computeSlopFactor(int) slop factor}. It is only legal
+   * to call this method when the iterator is on a valid doc ID and positioned.
+   * The return value must be positive, and lower values means that the match is
+   * better.
    */
-  public abstract Collection<byte[]> getPayload() throws IOException;
+  public abstract int width();
 
   /**
-   * Checks if a payload can be loaded at the current start/end position.
-   * <p>
-   * Payloads can only be loaded once per call to
-   * {@link #nextStartPosition()}.
+   * Collect postings data from the leaves of the current Spans.
    *
-   * @return true if there is a payload available at this start/end position
-   *              that can be loaded
+   * This method should only be called after {@link #nextStartPosition()}, and before
+   * {@link #NO_MORE_POSITIONS} has been reached.
+   *
+   * @param collector a SpanCollector
+   *
+   * @lucene.experimental
    */
-  public abstract boolean isPayloadAvailable() throws IOException;
+  public abstract void collect(SpanCollector collector) throws IOException;
 
   /**
    * Optional method: Return a {@link TwoPhaseIterator} view of this
@@ -110,4 +102,5 @@ public abstract class Spans extends DocIdSetIterator {
     sb.append(")");
     return sb.toString();
   }
+
 }
