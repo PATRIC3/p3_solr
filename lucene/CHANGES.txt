@@ -4,6 +4,28 @@ For more information on past and future Lucene versions, please see:
 http://s.apache.org/luceneversions
 
 
+======================= Lucene 5.3.2 =======================
+(No Changes)
+
+======================= Lucene 5.3.1 =======================
+
+Bug Fixes
+
+* LUCENE-6774: Remove classloader hack in MorfologikFilter. (Robert Muir,
+  Uwe Schindler)
+
+* LUCENE-6781: Fixed BoostingQuery to rewrite wrapped queries. (Adrien Grand)
+
+* LUCENE-6748: UsageTrackingQueryCachingPolicy no longer caches trivial queries
+  like MatchAllDocsQuery. (Adrien Grand)
+
+Tests
+
+* LUCENE-6760, SOLR-7958: Move TestUtil#randomWhitespace to the only
+  Solr test that is using it. The method is not useful for Lucene tests
+  (and easily breaks, e.g., in Java 9 caused by Unicode version updates).
+  (Uwe Schindler)
+
 ======================= Lucene 5.3.0 =======================
 
 New Features

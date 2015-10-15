@@ -8,12 +8,37 @@ caching, replication, and a web administration interface.
 
 See http://lucene.apache.org/solr for more information.
 
+==================  5.3.2 ==================
+(No Changes)
+
 ==================  5.3.1 ==================
 
 Bug Fixes
 ----------------------
 
 * SOLR-7949: Resolve XSS issue in Admin UI stats page (David Chiu via janhoy)
+
+* SOLR-8000: security.json is not loaded on server start (noble)
+
+* SOLR-8004: RuleBasedAuthorization plugin does not work for the collection-admin-edit permission (noble)
+
+* SOLR-7972: Fix VelocityResponseWriter template encoding issue.
+  Templates must be UTF-8 encoded. (Erik Hatcher)
+ 
+* SOLR-7929: SimplePostTool (also bin/post) -filetypes "*" now works properly in 'web' mode (Erik Hatcher)
+
+* SOLR-7978: Fixed example/files update-script.js to be Java 7 and 8 compatible. (Erik Hatcher)
+
+* SOLR-7988: SolrJ could not make requests to handlers with '/admin/' prefix (noble , ludovic Boutros)
+
+* SOLR-7990: Use of timeAllowed can cause incomplete filters to be cached and incorrect
+  results to be returned on subsequent requests. (Erick Erickson, yonik)
+
+* SOLR-8041: Fix VelocityResponseWriter's $resource.get(key,baseName,locale) to use specified locale.
+  (Erik Hatcher)
+
+* SOLR-8058: Fix the exclusion filter so that collections that start with js, css, img, tpl
+  can be accessed. (Upayavira, Steve Rowe, Anshum Gupta)
 
 ==================  5.3.0 ==================
 
