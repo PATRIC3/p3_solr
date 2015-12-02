@@ -72,6 +72,7 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.schema.SchemaManager;
 import org.apache.solr.util.CommandOperation;
 import org.apache.solr.util.DefaultSolrThreadFactory;
+import org.apache.solr.util.RTimer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,6 +82,7 @@ import static org.apache.solr.common.params.CoreAdminParams.NAME;
 import static org.apache.solr.common.util.StrUtils.formatString;
 import static org.apache.solr.core.ConfigOverlay.NOT_EDITABLE;
 import static org.apache.solr.core.ConfigOverlay.ZNODEVER;
+import static org.apache.solr.core.ConfigSetProperties.IMMUTABLE_CONFIGSET_ARG;
 import static org.apache.solr.core.SolrConfig.PluginOpts.REQUIRE_CLASS;
 import static org.apache.solr.core.SolrConfig.PluginOpts.REQUIRE_NAME;
 import static org.apache.solr.core.SolrConfig.PluginOpts.REQUIRE_NAME_IN_OVERLAY;
@@ -90,7 +92,6 @@ public class SolrConfigHandler extends RequestHandlerBase {
   public static final Logger log = LoggerFactory.getLogger(SolrConfigHandler.class);
   public static final String CONFIGSET_EDITING_DISABLED_ARG = "disable.configEdit";
   public static final boolean configEditing_disabled = Boolean.getBoolean(CONFIGSET_EDITING_DISABLED_ARG);
-  public static final String IMMUTABLE_CONFIGSET_ARG = "immutable";
   private static final Map<String, SolrConfig.SolrPluginInfo> namedPlugins;
   private Lock reloadLock = new ReentrantLock(true);
   private boolean isImmutableConfigSet = false;
@@ -443,7 +444,7 @@ public class SolrConfigHandler extends RequestHandlerBase {
       op.getMap(PluginInfo.APPENDS, null);
       if (op.hasError()) return overlay;
       if (!verifyClass(op, clz, info.clazz)) return overlay;
-      if (overlay.getNamedPlugins(info.getCleanTag()).containsKey(name)) {
+      if (pluginExists(info, overlay, name)) {
         if (isCeate) {
           op.addError(formatString(" ''{0}'' already exists . Do an ''{1}'' , if you want to change it ", name, "update-" + info.getTagCleanLower()));
           return overlay;
@@ -458,6 +459,12 @@ public class SolrConfigHandler extends RequestHandlerBase {
           return overlay;
         }
       }
+    }
+
+    private boolean pluginExists(SolrConfig.SolrPluginInfo info, ConfigOverlay overlay, String name) {
+      List<PluginInfo> l = req.getCore().getSolrConfig().getPluginInfos(info.clazz.getName());
+      for (PluginInfo pluginInfo : l) if(name.equals( pluginInfo.name)) return true;
+      return overlay.getNamedPlugins(info.getCleanTag()).containsKey(name);
     }
 
     private boolean verifyClass(CommandOperation op, String clz, Class expected) {
@@ -644,7 +651,7 @@ public class SolrConfigHandler extends RequestHandlerBase {
                                               String prop,
                                               int expectedVersion,
                                               int maxWaitSecs) {
-    long startMs = System.currentTimeMillis();
+    final RTimer timer = new RTimer();
     // get a list of active replica cores to query for the schema zk version (skipping this core of course)
     List<PerReplicaCallable> concurrentTasks = new ArrayList<>();
 
@@ -699,13 +706,11 @@ public class SolrConfigHandler extends RequestHandlerBase {
           prop, expectedVersion, concurrentTasks.size(), collection));
       Thread.currentThread().interrupt();
     } finally {
-      ExecutorUtil.shutdownNowAndAwaitTermination(parallelExecutor);
+      ExecutorUtil.shutdownAndAwaitTermination(parallelExecutor);
     }
 
-    long diffMs = (System.currentTimeMillis() - startMs);
-    log.info(formatString(
-        "Took {0} secs to set the property {1} to be of version {2} for collection {3}",
-        Math.round(diffMs / 1000d), prop, expectedVersion, collection));
+    log.info("Took {}ms to set the property {} to be of version {} for collection {}",
+        timer.getTime(), prop, expectedVersion, collection);
   }
 
   public static List<String> getActiveReplicaCoreUrls(ZkController zkController,
@@ -754,13 +759,13 @@ public class SolrConfigHandler extends RequestHandlerBase {
 
     @Override
     public Boolean call() throws Exception {
-      long startTime = System.currentTimeMillis();
+      final RTimer timer = new RTimer();
       int attempts = 0;
       try (HttpSolrClient solr = new HttpSolrClient(coreUrl)) {
         // eventually, this loop will get killed by the ExecutorService's timeout
         while (true) {
           try {
-            long timeElapsed = (System.currentTimeMillis() - startTime) / 1000;
+            long timeElapsed = (long) timer.getTime() / 1000;
             if (timeElapsed >= maxWait) {
               return false;
             }

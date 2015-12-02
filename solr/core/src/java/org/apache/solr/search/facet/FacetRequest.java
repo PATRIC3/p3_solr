@@ -295,7 +295,7 @@ abstract class FacetParser<FacetRequestT extends FacetRequest> {
 
       Map<String,Object> domainMap = (Map<String,Object>) m.get("domain");
       if (domainMap != null) {
-        excludeTags = getStringList(m, "excludeTags");
+        excludeTags = getStringList(domainMap, "excludeTags");
         if (excludeTags != null) {
           getDomain().excludeTags = excludeTags;
         }
@@ -523,6 +523,7 @@ class FacetFieldParser extends FacetParser<FacetField> {
       facet.field = getField(m);
       facet.offset = getLong(m, "offset", facet.offset);
       facet.limit = getLong(m, "limit", facet.limit);
+      if (facet.limit == 0) facet.offset = 0;  // normalize.  an offset with a limit of non-zero isn't useful.
       facet.mincount = getLong(m, "mincount", facet.mincount);
       facet.missing = getBoolean(m, "missing", facet.missing);
       facet.numBuckets = getBoolean(m, "numBuckets", facet.numBuckets);
@@ -530,6 +531,8 @@ class FacetFieldParser extends FacetParser<FacetField> {
       facet.allBuckets = getBoolean(m, "allBuckets", facet.allBuckets);
       facet.method = FacetField.FacetMethod.fromString(getString(m, "method", null));
       facet.cacheDf = (int)getLong(m, "cacheDf", facet.cacheDf);
+
+      facet.perSeg = (Boolean)m.get("perSeg");
 
       // facet.sort may depend on a facet stat...
       // should we be parsing / validating this here, or in the execution environment?
@@ -560,6 +563,7 @@ class FacetFieldParser extends FacetParser<FacetField> {
         facet.sortVariable = sortStr.substring(0, sortStr.length()-" desc".length());
         facet.sortDirection = FacetField.SortDirection.desc;
       } else {
+        facet.sortVariable = sortStr;
         facet.sortDirection = "index".equals(facet.sortVariable) ? FacetField.SortDirection.asc : FacetField.SortDirection.desc;  // default direction for "index" is ascending
       }
     } else {

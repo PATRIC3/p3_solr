@@ -30,6 +30,7 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.InPlaceMergeSorter;
+import org.apache.lucene.util.ToStringUtils;
 
 /**
  * A {@link Query} that blends index statistics across multiple terms.
@@ -92,7 +93,7 @@ public final class BlendedTermQuery extends Query {
       terms = ArrayUtil.grow(terms, numTerms + 1);
       boosts = ArrayUtil.grow(boosts, numTerms + 1);
       contexts = ArrayUtil.grow(contexts, numTerms + 1);
-      terms[numTerms] = new Term(term.field(), BytesRef.deepCopyOf(term.bytes()));
+      terms[numTerms] = term;
       boosts[numTerms] = boost;
       contexts[numTerms] = context;
       numTerms += 1;
@@ -252,16 +253,22 @@ public final class BlendedTermQuery extends Query {
       if (i != 0) {
         builder.append(" ");
       }
-      TermQuery termQuery = new TermQuery(terms[i]);
-      termQuery.setBoost(boosts[i]);
+      Query termQuery = new TermQuery(terms[i]);
+      if (boosts[i] != 1f) {
+        termQuery = new BoostQuery(termQuery, boosts[i]);
+      }
       builder.append(termQuery.toString(field));
     }
     builder.append(")");
+    builder.append(ToStringUtils.boost(getBoost()));
     return builder.toString();
   }
 
   @Override
   public final Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
     final TermContext[] contexts = Arrays.copyOf(this.contexts, this.contexts.length);
     for (int i = 0; i < contexts.length; ++i) {
       if (contexts[i] == null || contexts[i].topReaderContext != reader.getContext()) {
@@ -287,14 +294,14 @@ public final class BlendedTermQuery extends Query {
       contexts[i] = adjustFrequencies(contexts[i], df, ttf);
     }
 
-    TermQuery[] termQueries = new TermQuery[terms.length];
+    Query[] termQueries = new Query[terms.length];
     for (int i = 0; i < terms.length; ++i) {
       termQueries[i] = new TermQuery(terms[i], contexts[i]);
-      termQueries[i].setBoost(boosts[i]);
+      if (boosts[i] != 1f) {
+        termQueries[i] = new BoostQuery(termQueries[i], boosts[i]);
+      }
     }
-    Query rewritten = rewriteMethod.rewrite(termQueries);
-    rewritten.setBoost(getBoost());
-    return rewritten;
+    return rewriteMethod.rewrite(termQueries);
   }
 
   private static TermContext adjustFrequencies(TermContext ctx, int artificialDf, long artificialTtf) {

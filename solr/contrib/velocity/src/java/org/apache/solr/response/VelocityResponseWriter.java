@@ -25,7 +25,9 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 import java.util.ResourceBundle;
 
@@ -48,6 +50,7 @@ import org.apache.velocity.tools.generic.ComparisonDateTool;
 import org.apache.velocity.tools.generic.DisplayTool;
 import org.apache.velocity.tools.generic.EscapeTool;
 import org.apache.velocity.tools.generic.ListTool;
+import org.apache.velocity.tools.generic.LocaleConfig;
 import org.apache.velocity.tools.generic.MathTool;
 import org.apache.velocity.tools.generic.NumberTool;
 import org.apache.velocity.tools.generic.ResourceTool;
@@ -83,6 +86,7 @@ public class VelocityResponseWriter implements QueryResponseWriter, SolrCoreAwar
   private static final Logger log = LoggerFactory.getLogger(VelocityResponseWriter.class);
   private static final SolrVelocityLogger velocityLogger = new SolrVelocityLogger(log);
   private Properties velocityInitProps = new Properties();
+  private Map<String,String> customTools = new HashMap<String,String>();
 
   @Override
   public void init(NamedList args) {
@@ -111,6 +115,14 @@ public class VelocityResponseWriter implements QueryResponseWriter, SolrCoreAwar
     solrResourceLoaderEnabled = (null == srle ? true : srle);
 
     initPropertiesFileName = (String) args.get(PROPERTIES_FILE);
+
+    NamedList tools = (NamedList)args.get("tools");
+    if (tools != null) {
+      for(Object t : tools) {
+        Map.Entry tool = (Map.Entry)t;
+        customTools.put(tool.getKey().toString(), tool.getValue().toString());
+      }
+    }
   }
 
   @Override
@@ -182,19 +194,55 @@ public class VelocityResponseWriter implements QueryResponseWriter, SolrCoreAwar
   private VelocityContext createContext(SolrQueryRequest request, SolrQueryResponse response) {
     VelocityContext context = new VelocityContext();
 
-    context.put("request", request);
-
     // Register useful Velocity "tools"
+    String locale = request.getParams().get(LOCALE);
+    Map toolConfig = new HashMap();
+    toolConfig.put("locale", locale);
+
+
+    context.put("log", log);   // TODO: add test; TODO: should this be overridable with a custom "log" named tool?
     context.put("esc", new EscapeTool());
     context.put("date", new ComparisonDateTool());
     context.put("list", new ListTool());
-    context.put("math", new MathTool());
-    context.put("number", new NumberTool());
     context.put("sort", new SortTool());
-    context.put("display", new DisplayTool());
-    context.put("resource", new SolrVelocityResourceTool(
-        request.getCore().getSolrConfig().getResourceLoader().getClassLoader(),
-        request.getParams().get(LOCALE)));
+
+    MathTool mathTool = new MathTool();
+    mathTool.configure(toolConfig);
+    context.put("math", mathTool);
+
+    NumberTool numberTool = new NumberTool();
+    numberTool.configure(toolConfig);
+    context.put("number", numberTool);
+
+
+    DisplayTool displayTool = new DisplayTool();
+    displayTool.configure(toolConfig);
+    context.put("display", displayTool);
+
+    ResourceTool resourceTool = new SolrVelocityResourceTool(request.getCore().getSolrConfig().getResourceLoader().getClassLoader());
+    resourceTool.configure(toolConfig);
+    context.put("resource", resourceTool);
+
+/*
+    // Custom tools, specified in config as:
+        <queryResponseWriter name="velocityWithCustomTools" class="solr.VelocityResponseWriter">
+          <lst name="tools">
+            <str name="mytool">com.example.solr.velocity.MyTool</str>
+          </lst>
+        </queryResponseWriter>
+*/
+    // Custom tools can override any of the built-in tools provided above, by registering one with the same name
+    for(String name : customTools.keySet()) {
+      Object customTool = SolrCore.createInstance(customTools.get(name), Object.class, "VrW custom tool: " + name, request.getCore(), request.getCore().getResourceLoader());
+      if (customTool instanceof LocaleConfig) {
+        ((LocaleConfig)customTool).configure(toolConfig);
+      }
+      context.put(name, customTool);
+    }
+
+    // custom tools _cannot_ override context objects added below, like $request and $response
+    // TODO: at least log a warning when one of the *fixed* tools classes in name with a custom one, currently silently ignored
+
 
     // Turn the SolrQueryResponse into a SolrResponse.
     // QueryResponse has lots of conveniences suitable for a view
@@ -219,6 +267,8 @@ public class VelocityResponseWriter implements QueryResponseWriter, SolrCoreAwar
       rsp = new SolrResponseBase();
       rsp.setResponse(parsedResponse);
     }
+
+    context.put("request", request);
     context.put("response", rsp);
 
     return context;
@@ -328,10 +378,8 @@ public class VelocityResponseWriter implements QueryResponseWriter, SolrCoreAwar
 
     private ClassLoader solrClassLoader;
 
-    public SolrVelocityResourceTool(ClassLoader cl, String localeString) {
+    public SolrVelocityResourceTool(ClassLoader cl) {
       this.solrClassLoader = cl;
-      Locale l = toLocale(localeString);
-      this.setLocale(l == null ? Locale.ROOT : l);
     }
 
     @Override

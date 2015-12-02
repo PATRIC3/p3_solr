@@ -17,24 +17,22 @@ package org.apache.lucene.bkdtree;
  * limitations under the License.
  */
 
+import java.io.IOException;
+import java.util.Arrays;
+
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SortedNumericDocValues;
-import org.apache.lucene.index.Term;
+import org.apache.lucene.search.ConstantScoreScorer;
+import org.apache.lucene.search.ConstantScoreWeight;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.GeoUtils;
 import org.apache.lucene.util.ToStringUtils;
-
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Set;
 
 /** Finds all previously indexed points that fall within the specified polygon.
  *
@@ -110,38 +108,7 @@ public class BKDPointInPolygonQuery extends Query {
     // TODO: except that the polygon verify is costly!  The approximation should be all docs in all overlapping cells, and matches() should
     // then check the polygon
 
-    return new Weight(this) {
-      private float queryNorm;
-      private float queryWeight;
-
-      @Override
-      public void extractTerms(Set<Term> terms) {
-      }
-
-      @Override
-      public float getValueForNormalization() throws IOException {
-        queryWeight = getBoost();
-        return queryWeight * queryWeight;
-      }
-
-      @Override
-      public void normalize(float norm, float topLevelBoost) {
-        queryNorm = norm * topLevelBoost;
-        queryWeight *= queryNorm;
-      }
-
-      @Override
-      public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-        final Scorer s = scorer(context);
-        final boolean exists = s != null && s.advance(doc) == doc;
-
-        if (exists) {
-          return Explanation.match(queryWeight, BKDPointInPolygonQuery.this.toString() + ", product of:",
-              Explanation.match(getBoost(), "boost"), Explanation.match(queryNorm, "queryNorm"));
-        } else {
-          return Explanation.noMatch(BKDPointInPolygonQuery.this.toString() + " doesn't match id " + doc);
-        }
-      }
+    return new ConstantScoreWeight(this) {
 
       @Override
       public Scorer scorer(LeafReaderContext context) throws IOException {
@@ -157,9 +124,7 @@ public class BKDPointInPolygonQuery extends Query {
         }
         BKDTreeSortedNumericDocValues treeDV = (BKDTreeSortedNumericDocValues) sdv;
         BKDTreeReader tree = treeDV.getBKDTreeReader();
-        
-        // TODO: make this more efficient: as we recurse the BKD tree we should check whether the
-        // bbox we are recursing into intersects our shape; Apache SIS may have (non-GPL!) code to do this?
+
         DocIdSet result = tree.intersect(minLat, maxLat, minLon, maxLon,
                                          new BKDTreeReader.LatLonFilter() {
                                            @Override
@@ -172,51 +137,20 @@ public class BKDPointInPolygonQuery extends Query {
                                              if (GeoUtils.rectWithinPoly(cellLonMin, cellLatMin, cellLonMax, cellLatMax,
                                                                          polyLons, polyLats,
                                                                          minLon, minLat, maxLon, maxLat)) {
-                                               return BKDTreeReader.Relation.INSIDE;
+                                               return BKDTreeReader.Relation.CELL_INSIDE_SHAPE;
                                              } else if (GeoUtils.rectCrossesPoly(cellLonMin, cellLatMin, cellLonMax, cellLatMax,
                                                                                  polyLons, polyLats,
                                                                                  minLon, minLat, maxLon, maxLat)) {
-                                               return BKDTreeReader.Relation.CROSSES;
+                                               return BKDTreeReader.Relation.SHAPE_CROSSES_CELL;
                                              } else {
-                                               return BKDTreeReader.Relation.OUTSIDE;
+                                               return BKDTreeReader.Relation.SHAPE_OUTSIDE_CELL;
                                              }
                                            }
                                          }, treeDV.delegate);
 
         final DocIdSetIterator disi = result.iterator();
 
-        return new Scorer(this) {
-
-          @Override
-          public float score() throws IOException {
-            return queryWeight;
-          }
-
-          @Override
-          public int freq() throws IOException {
-            return 1;
-          }
-
-          @Override
-          public int docID() {
-            return disi.docID();
-          }
-
-          @Override
-          public int nextDoc() throws IOException {
-            return disi.nextDoc();
-          }
-
-          @Override
-          public int advance(int target) throws IOException {
-            return disi.advance(target);
-          }
-
-          @Override
-          public long cost() {
-            return disi.cost();
-          }
-        };
+        return new ConstantScoreScorer(this, score(), disi);
       }
     };
   }
@@ -266,7 +200,6 @@ public class BKDPointInPolygonQuery extends Query {
         .append(polyLats[i])
         .append("] ");
     }
-    sb.append(ToStringUtils.boost(getBoost()));
     return sb.toString();
   }
 }

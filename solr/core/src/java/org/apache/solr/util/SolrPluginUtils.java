@@ -31,12 +31,12 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 
-import com.google.common.collect.ImmutableMap;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.DisjunctionMaxQuery;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.Query;
@@ -50,7 +50,6 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
-import org.apache.solr.core.InitParams;
 import org.apache.solr.core.RequestParams;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.component.HighlightComponent;
@@ -75,7 +74,10 @@ import org.apache.solr.search.ReturnFields;
 import org.apache.solr.search.SolrCache;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.SolrQueryParser;
+import org.apache.solr.search.SortSpecParsing;
 import org.apache.solr.search.SyntaxError;
+
+import com.google.common.collect.ImmutableMap;
 
 /**
  * <p>Utilities that may be of use to RequestHandlers.</p>
@@ -464,7 +466,7 @@ public class SolrPluginUtils {
     // we can use the Lucene sort ability.
     Sort sort = null;
     if (commands.size() >= 2) {
-      sort = QueryParsing.parseSortSpec(commands.get(1), req).getSort();
+      sort = SortSpecParsing.parseSortSpec(commands.get(1), req).getSort();
     }
 
     DocList results = req.getSearcher().getDocList(query,(DocSet)null, sort, start, limit);
@@ -676,18 +678,27 @@ public class SolrPluginUtils {
    * </p>
    */
   public static void flattenBooleanQuery(BooleanQuery.Builder to, BooleanQuery from) {
+    flattenBooleanQuery(to, from, 1f);
+  }
+
+  private static void flattenBooleanQuery(BooleanQuery.Builder to, BooleanQuery from, float fromBoost) {
 
     for (BooleanClause clause : from.clauses()) {
 
       Query cq = clause.getQuery();
-      cq.setBoost(cq.getBoost() * from.getBoost());
+      float boost = fromBoost;
+      while (cq instanceof BoostQuery) {
+        BoostQuery bq = (BoostQuery) cq;
+        cq = bq.getQuery();
+        boost *= bq.getBoost();
+      }
 
       if (cq instanceof BooleanQuery
           && !clause.isRequired()
           && !clause.isProhibited()) {
 
         /* we can recurse */
-        flattenBooleanQuery(to, (BooleanQuery)cq);
+        flattenBooleanQuery(to, (BooleanQuery)cq, boost);
 
       } else {
         to.add(clause);
@@ -827,25 +838,21 @@ public class SolrPluginUtils {
       if (aliases.containsKey(field)) {
 
         Alias a = aliases.get(field);
-        DisjunctionMaxQuery q = new DisjunctionMaxQuery(a.tie);
 
-        /* we might not get any valid queries from delegation,
-         * in which case we should return null
-         */
-        boolean ok = false;
-
+        List<Query> disjuncts = new ArrayList<>();
         for (String f : a.fields.keySet()) {
 
           Query sub = getFieldQuery(f,queryText,quoted);
           if (null != sub) {
             if (null != a.fields.get(f)) {
-              sub.setBoost(a.fields.get(f));
+              sub = new BoostQuery(sub, a.fields.get(f));
             }
-            q.add(sub);
-            ok = true;
+            disjuncts.add(sub);
           }
         }
-        return ok ? q : null;
+        return disjuncts.isEmpty()
+            ? null
+            : new DisjunctionMaxQuery(disjuncts, a.tie);
 
       } else {
         try {
@@ -873,7 +880,7 @@ public class SolrPluginUtils {
     SolrException sortE = null;
     Sort ss = null;
     try {
-      ss = QueryParsing.parseSortSpec(sort, req).getSort();
+      ss = SortSpecParsing.parseSortSpec(sort, req).getSort();
     } catch (SolrException e) {
       sortE = e;
     }

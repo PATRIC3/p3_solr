@@ -159,7 +159,7 @@
      is not specified in the request.
   -->
   <requestHandler name="standard" class="solr.StandardRequestHandler">
-  	<bool name="httpCaching">true</bool>
+    <bool name="httpCaching">true</bool>
   </requestHandler>
   <requestHandler name="dismax" class="solr.SearchHandler" >
     <lst name="defaults">
@@ -185,7 +185,9 @@
     </lst>
   </requestHandler>
 
-  <requestHandler name="/update/extract" class="org.apache.solr.handler.extraction.ExtractingRequestHandler"/>
+  <requestHandler name="/update/extract" class="org.apache.solr.handler.extraction.ExtractingRequestHandler">
+    <str name="parseContext.config">parseContext.xml</str>
+  </requestHandler>
 
   <requestHandler name="/update/extract/lit-def" class="org.apache.solr.handler.extraction.ExtractingRequestHandler">
     <lst name="defaults">

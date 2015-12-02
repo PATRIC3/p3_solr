@@ -20,6 +20,7 @@ package org.apache.lucene.index;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.CollectionUtil;
+import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.InfoStream;
 
@@ -418,48 +419,33 @@ final class IndexFileDeleter implements Closeable {
    * is non-null, we will only delete files corresponding to
    * that segment.
    */
-  void refresh(String segmentName) throws IOException {
+  void refresh() throws IOException {
     assert locked();
+    deletable.clear();
 
     String[] files = directory.listAll();
-    String segmentPrefix1;
-    String segmentPrefix2;
-    if (segmentName != null) {
-      segmentPrefix1 = segmentName + ".";
-      segmentPrefix2 = segmentName + "_";
-    } else {
-      segmentPrefix1 = null;
-      segmentPrefix2 = null;
-    }
 
     Matcher m = IndexFileNames.CODEC_FILE_PATTERN.matcher("");
 
     for(int i=0;i<files.length;i++) {
       String fileName = files[i];
       m.reset(fileName);
-      if ((segmentName == null || fileName.startsWith(segmentPrefix1) || fileName.startsWith(segmentPrefix2)) &&
-          !fileName.endsWith("write.lock") &&
+      if (!fileName.endsWith("write.lock") &&
           !refCounts.containsKey(fileName) &&
           (m.matches() || fileName.startsWith(IndexFileNames.SEGMENTS) 
               // we only try to clear out pending_segments_N during rollback(), because we don't ref-count it
               // TODO: this is sneaky, should we do this, or change TestIWExceptions? rollback closes anyway, and 
               // any leftover file will be deleted/retried on next IW bootup anyway...
-              || (segmentName == null && fileName.startsWith(IndexFileNames.PENDING_SEGMENTS)))) {
+              || fileName.startsWith(IndexFileNames.PENDING_SEGMENTS))) {
         // Unreferenced file, so remove it
         if (infoStream.isEnabled("IFD")) {
-          infoStream.message("IFD", "refresh [prefix=" + segmentName + "]: removing newly created unreferenced file \"" + fileName + "\"");
+          infoStream.message("IFD", "refresh: removing newly created unreferenced file \"" + fileName + "\"");
         }
         deletable.add(fileName);
       }
     }
 
     deletePendingFiles();
-  }
-
-  void refresh() throws IOException {
-    assert locked();
-    deletable.clear();
-    refresh(null);
   }
 
   @Override
@@ -703,7 +689,7 @@ final class IndexFileDeleter implements Closeable {
     if (!refCounts.containsKey(fileName)) {
       rc = new RefCount(fileName);
       // We should never incRef a file we are already wanting to delete:
-      assert deletable == null || deletable.contains(fileName) == false: "file \"" + fileName + "\" cannot be incRef'd: it's already pending delete";
+      assert deletable.contains(fileName) == false: "file \"" + fileName + "\" cannot be incRef'd: it's already pending delete";
       refCounts.put(fileName, rc);
     } else {
       rc = refCounts.get(fileName);
@@ -749,8 +735,9 @@ final class IndexFileDeleter implements Closeable {
     } catch (IOException e) {  // if delete fails
 
       // IndexWriter should only ask us to delete files it knows it wrote, so if we hit this, something is wrong!
-      assert e instanceof NoSuchFileException == false: "hit unexpected NoSuchFileException: file=" + fileName;
-      assert e instanceof FileNotFoundException == false: "hit unexpected FileNotFoundException: file=" + fileName;
+      // LUCENE-6684: we suppress this assert for Windows, since a file could be in a confusing "pending delete" state:
+      assert Constants.WINDOWS || e instanceof NoSuchFileException == false: "hit unexpected NoSuchFileException: file=" + fileName;
+      assert Constants.WINDOWS || e instanceof FileNotFoundException == false: "hit unexpected FileNotFoundException: file=" + fileName;
 
       // Some operating systems (e.g. Windows) don't
       // permit a file to be deleted while it is opened

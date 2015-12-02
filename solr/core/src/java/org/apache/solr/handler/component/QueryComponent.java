@@ -85,6 +85,7 @@ import org.apache.solr.search.ReturnFields;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.SolrReturnFields;
 import org.apache.solr.search.SortSpec;
+import org.apache.solr.search.SortSpecParsing;
 import org.apache.solr.search.SyntaxError;
 import org.apache.solr.search.grouping.CommandHandler;
 import org.apache.solr.search.grouping.GroupingSpecification;
@@ -225,7 +226,7 @@ public class QueryComponent extends SearchComponent
     }
 
     //Input validation.
-    if (rb.getQueryCommand().getOffset() < 0) {
+    if (rb.getSortSpec().getOffset() < 0) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "'start' parameter cannot be negative");
     }
   }
@@ -242,13 +243,14 @@ public class QueryComponent extends SearchComponent
                               CursorMarkParams.CURSOR_MARK_PARAM);
     }
 
-    SolrIndexSearcher.QueryCommand cmd = rb.getQueryCommand();
     SolrIndexSearcher searcher = rb.req.getSearcher();
     GroupingSpecification groupingSpec = new GroupingSpecification();
     rb.setGroupingSpec(groupingSpec);
 
+    final SortSpec sortSpec = rb.getSortSpec();
+
     //TODO: move weighting of sort
-    Sort groupSort = searcher.weightSort(cmd.getSort());
+    Sort groupSort = searcher.weightSort(sortSpec.getSort());
     if (groupSort == null) {
       groupSort = Sort.RELEVANCE;
     }
@@ -256,7 +258,7 @@ public class QueryComponent extends SearchComponent
     // groupSort defaults to sort
     String groupSortStr = params.get(GroupParams.GROUP_SORT);
     //TODO: move weighting of sort
-    Sort sortWithinGroup = groupSortStr == null ?  groupSort : searcher.weightSort(QueryParsing.parseSortSpec(groupSortStr, req).getSort());
+    Sort sortWithinGroup = groupSortStr == null ?  groupSort : searcher.weightSort(SortSpecParsing.parseSortSpec(groupSortStr, req).getSort());
     if (sortWithinGroup == null) {
       sortWithinGroup = Sort.RELEVANCE;
     }
@@ -278,11 +280,11 @@ public class QueryComponent extends SearchComponent
     groupingSpec.setFunctions(params.getParams(GroupParams.GROUP_FUNC));
     groupingSpec.setGroupOffset(params.getInt(GroupParams.GROUP_OFFSET, 0));
     groupingSpec.setGroupLimit(params.getInt(GroupParams.GROUP_LIMIT, 1));
-    groupingSpec.setOffset(rb.getSortSpec().getOffset());
-    groupingSpec.setLimit(rb.getSortSpec().getCount());
+    groupingSpec.setOffset(sortSpec.getOffset());
+    groupingSpec.setLimit(sortSpec.getCount());
     groupingSpec.setIncludeGroupCount(params.getBool(GroupParams.GROUP_TOTAL_COUNT, false));
     groupingSpec.setMain(params.getBool(GroupParams.GROUP_MAIN, false));
-    groupingSpec.setNeedScore((cmd.getFlags() & SolrIndexSearcher.GET_SCORES) != 0);
+    groupingSpec.setNeedScore((rb.getFieldFlags() & SolrIndexSearcher.GET_SCORES) != 0);
     groupingSpec.setTruncateGroups(params.getBool(GroupParams.GROUP_TRUNCATE, false));
   }
 
@@ -461,8 +463,8 @@ public class QueryComponent extends SearchComponent
         int limitDefault = cmd.getLen(); // this is normally from "rows"
         Grouping grouping =
             new Grouping(searcher, result, cmd, cacheSecondPassSearch, maxDocsPercentageToCache, groupingSpec.isMain());
-        grouping.setSort(groupingSpec.getGroupSort())
-            .setGroupSort(groupingSpec.getSortWithinGroup())
+        grouping.setGroupSort(groupingSpec.getGroupSort())
+            .setWithinGroupSort(groupingSpec.getSortWithinGroup())
             .setDefaultFormat(groupingSpec.getResponseFormat())
             .setLimitDefault(limitDefault)
             .setDefaultTotalCount(defaultTotalCount)

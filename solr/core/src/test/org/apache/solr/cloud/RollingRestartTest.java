@@ -20,7 +20,6 @@ package org.apache.solr.cloud;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.common.cloud.SolrZkClient;
-import org.apache.solr.common.params.CollectionParams;
 import org.apache.zookeeper.KeeperException;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -57,7 +56,7 @@ public class RollingRestartTest extends AbstractFullDistribZkTestBase {
 
 
   public void restartWithRolesTest() throws Exception {
-    String leader = OverseerCollectionProcessor.getLeaderNode(cloudClient.getZkStateReader().getZkClient());
+    String leader = OverseerCollectionConfigSetProcessor.getLeaderNode(cloudClient.getZkStateReader().getZkClient());
     assertNotNull(leader);
     log.info("Current overseer leader = {}", leader);
 
@@ -93,22 +92,22 @@ public class RollingRestartTest extends AbstractFullDistribZkTestBase {
           sawLiveDesignate = true;
           boolean success = waitUntilOverseerDesignateIsLeader(cloudClient.getZkStateReader().getZkClient(), designates, MAX_WAIT_TIME);
           if (!success) {
-            leader = OverseerCollectionProcessor.getLeaderNode(cloudClient.getZkStateReader().getZkClient());
+            leader = OverseerCollectionConfigSetProcessor.getLeaderNode(cloudClient.getZkStateReader().getZkClient());
             if (leader == null)
               log.error("NOOVERSEER election queue is :" +
-                  OverseerCollectionProcessor.getSortedElectionNodes(cloudClient.getZkStateReader().getZkClient(),
-                      OverseerElectionContext.PATH + LeaderElector.ELECTION_NODE));
+                  OverseerCollectionConfigSetProcessor.getSortedElectionNodes(cloudClient.getZkStateReader().getZkClient(),
+                      "/overseer_elect/election"));
             fail("No overseer designate as leader found after restart #" + (i + 1) + ": " + leader);
           }
         }
         assertTrue("Unable to restart (#" + i + "): " + cloudJetty, ChaosMonkey.start(cloudJetty.jetty));
         boolean success = waitUntilOverseerDesignateIsLeader(cloudClient.getZkStateReader().getZkClient(), designates, MAX_WAIT_TIME);
         if (!success) {
-          leader = OverseerCollectionProcessor.getLeaderNode(cloudClient.getZkStateReader().getZkClient());
+          leader = OverseerCollectionConfigSetProcessor.getLeaderNode(cloudClient.getZkStateReader().getZkClient());
           if (leader == null)
             log.error("NOOVERSEER election queue is :" +
-                OverseerCollectionProcessor.getSortedElectionNodes(cloudClient.getZkStateReader().getZkClient(),
-                    OverseerElectionContext.PATH + LeaderElector.ELECTION_NODE));
+                OverseerCollectionConfigSetProcessor.getSortedElectionNodes(cloudClient.getZkStateReader().getZkClient(),
+                    "/overseer_elect/election"));
           fail("No overseer leader found after restart #" + (i + 1) + ": " + leader);
         }
         
@@ -120,7 +119,7 @@ public class RollingRestartTest extends AbstractFullDistribZkTestBase {
     
     assertTrue("Test may not be working if we never saw a live designate", sawLiveDesignate);
 
-    leader = OverseerCollectionProcessor.getLeaderNode(cloudClient.getZkStateReader().getZkClient());
+    leader = OverseerCollectionConfigSetProcessor.getLeaderNode(cloudClient.getZkStateReader().getZkClient());
     assertNotNull(leader);
     log.info("Current overseer leader (after restart) = {}", leader);
 
@@ -135,7 +134,7 @@ public class RollingRestartTest extends AbstractFullDistribZkTestBase {
     int stableCheckTimeout = 2000;
     String oldleader = null;
     while (System.nanoTime() < timeout && System.nanoTime() < maxTimeout) {
-      String newLeader = OverseerCollectionProcessor.getLeaderNode(testZkClient);
+      String newLeader = OverseerCollectionConfigSetProcessor.getLeaderNode(testZkClient);
       if (newLeader != null && !newLeader.equals(oldleader)) {
         // the leaders have changed, let's move the timeout further
         timeout = System.nanoTime() + TimeUnit.NANOSECONDS.convert(60, TimeUnit.SECONDS);

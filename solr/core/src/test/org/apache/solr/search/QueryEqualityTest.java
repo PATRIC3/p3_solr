@@ -19,7 +19,6 @@ package org.apache.solr.search;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryUtils;
 import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
@@ -236,7 +235,8 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
   }
 
   public void testQueryCollapse() throws Exception {
-    SolrQueryRequest req = req("myField","foo_s");
+    SolrQueryRequest req = req("myField","foo_s",
+                               "g_sort","foo_s1 asc, foo_i desc");
 
     try {
       assertQueryEquals("collapse", req,
@@ -246,7 +246,13 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
           "{!collapse field=$myField max=a}");
 
       assertQueryEquals("collapse", req,
-          "{!collapse field=$myField min=a}");
+                        "{!collapse field=$myField min=a}",
+                        "{!collapse field=$myField min=a nullPolicy=ignore}");
+      
+      assertQueryEquals("collapse", req,
+                        "{!collapse field=$myField sort=$g_sort}",
+                        "{!collapse field=$myField sort='foo_s1 asc, foo_i desc'}",
+                        "{!collapse field=$myField sort=$g_sort nullPolicy=ignore}");
 
       assertQueryEquals("collapse", req,
           "{!collapse field=$myField max=a nullPolicy=expand}");
@@ -938,18 +944,17 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
       for (int i = 0; i < inputs.length; i++) {
         queries[i] = (QParser.getParser(inputs[i], defType, req).getQuery());
       }
+      for (int i = 0; i < queries.length; i++) {
+        QueryUtils.check(queries[i]);
+        // yes starting j=0 is redundent, we're making sure every query 
+        // is equal to itself, and that the quality checks work regardless 
+        // of which caller/callee is used.
+        for (int j = 0; j < queries.length; j++) {
+          QueryUtils.checkEqual(queries[i], queries[j]);
+        }
+      }
     } finally {
       SolrRequestInfo.clearRequestInfo();
-    }
-
-    for (int i = 0; i < queries.length; i++) {
-      QueryUtils.check(queries[i]);
-      // yes starting j=0 is redundent, we're making sure every query 
-      // is equal to itself, and that the quality checks work regardless 
-      // of which caller/callee is used.
-      for (int j = 0; j < queries.length; j++) {
-        QueryUtils.checkEqual(queries[i], queries[j]);
-      }
     }
   }
 
@@ -977,7 +982,7 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
   protected void assertFuncEquals(final SolrQueryRequest req,
                                   final String... inputs) throws Exception {
     // pull out the function name
-    final String funcName = (new QueryParsing.StrParser(inputs[0])).getId();
+    final String funcName = (new StrParser(inputs[0])).getId();
     valParsersTested.add(funcName);
 
     assertQueryEquals(FunctionQParserPlugin.NAME, req, inputs);

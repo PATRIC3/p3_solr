@@ -18,17 +18,16 @@ package org.apache.lucene.analysis.morfologik;
  */
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.regex.Pattern;
 
 import morfologik.stemming.Dictionary;
 import morfologik.stemming.DictionaryLookup;
 import morfologik.stemming.IStemmer;
 import morfologik.stemming.WordData;
+import morfologik.stemming.polish.PolishStemmer;
 
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
@@ -70,20 +69,9 @@ public class MorfologikFilter extends TokenFilter {
    * Creates a filter with the default (Polish) dictionary.
    */
   public MorfologikFilter(final TokenStream in) {
-    this(in, DictionaryHolder.DEFAULT_DICT);
+    this(in, new PolishStemmer().getDictionary());
   }
 
-  /**
-   * Creates a filter with a given dictionary resource.
-   *
-   * @param in input token stream.
-   * @param dictResource Dictionary resource name in classpath.
-   */
-  public MorfologikFilter(final TokenStream in, final String dictResource) {
-    this(in, MorfologikFilterFactory.DEFAULT_DICTIONARY_RESOURCE.equals(dictResource) ?
-        DictionaryHolder.DEFAULT_DICT : loadDictionaryResource(dictResource));
-  }
-  
   /**
    * Creates a filter with a given dictionary.
    *

@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.fs.FileSystem;
@@ -75,6 +76,7 @@ import org.apache.solr.hadoop.hack.MiniMRClientClusterFactory;
 import org.apache.solr.morphlines.solr.AbstractSolrMorphlineTestBase;
 import org.apache.solr.util.BadHdfsThreadsFilter;
 import org.apache.solr.util.BadMrClusterThreadsFilter;
+import org.apache.solr.util.TimeOut;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -126,8 +128,8 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
     this.inputAvroFile2 = "sample-statuses-20120906-141433.avro";
     this.inputAvroFile3 = "sample-statuses-20120906-141433-medium.avro";
 
-    sliceCount = TEST_NIGHTLY ? 7 : 3;
-    fixShardCount(TEST_NIGHTLY ? 7 : 3);
+    sliceCount = TEST_NIGHTLY ? 5 : 3;
+    fixShardCount(TEST_NIGHTLY ? 5 : 3);
   }
   
   @BeforeClass
@@ -456,7 +458,7 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
       args = new String[]{
           "--output-dir=" + outDir.toString(),
           "--mappers=3",
-          "--reducers=12",
+          "--reducers=6",
           "--fanout=2",
           "--verbose",
           "--go-live",
@@ -518,7 +520,7 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
     // try using zookeeper with replication
     String replicatedCollection = "replicated_collection";
     if (TEST_NIGHTLY) {
-      createCollection(replicatedCollection, 7, 3, 9);
+      createCollection(replicatedCollection, 3, 3, 3);
     } else {
       createCollection(replicatedCollection, 2, 3, 2);
     }
@@ -534,7 +536,7 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
         "--solr-home-dir=" + MINIMR_CONF_DIR.getAbsolutePath(),
         "--output-dir=" + outDir.toString(),
         "--mappers=3",
-        "--reducers=22",
+        "--reducers=12",
         "--fanout=2",
         "--verbose",
         "--go-live",
@@ -638,11 +640,10 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
     request.setPath("/admin/collections");
     cloudClient.request(request);
 
-    
-    long timeout = System.currentTimeMillis() + 10000;
+    final TimeOut timeout = new TimeOut(10, TimeUnit.SECONDS);
     while (cloudClient.getZkStateReader().getClusterState().hasCollection(replicatedCollection)) {
-      if (System.currentTimeMillis() > timeout) {
-        throw new AssertionError("Timeout waiting to see removed collection leave clusterstate");
+      if (timeout.hasTimedOut()) {
+         throw new AssertionError("Timeout waiting to see removed collection leave clusterstate");
       }
       
       Thread.sleep(200);
@@ -650,7 +651,7 @@ public class MorphlineGoLiveMiniMRTest extends AbstractFullDistribZkTestBase {
     }
     
     if (TEST_NIGHTLY) {
-      createCollection(replicatedCollection, 7, 3, 9);
+      createCollection(replicatedCollection, 3, 3, 3);
     } else {
       createCollection(replicatedCollection, 2, 3, 2);
     }

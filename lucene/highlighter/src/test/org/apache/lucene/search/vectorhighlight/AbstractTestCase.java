@@ -19,6 +19,7 @@ package org.apache.lucene.search.vectorhighlight;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -36,6 +37,7 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.DisjunctionMaxQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
@@ -113,7 +115,9 @@ public abstract class AbstractTestCase extends LuceneTestCase {
   
   protected Query tq( float boost, String field, String text ){
     Query query = new TermQuery( new Term( field, text ) );
-    query.setBoost( boost );
+    if (boost != 1f) {
+      query = new BoostQuery( query, boost );
+    }
     return query;
   }
   
@@ -138,8 +142,10 @@ public abstract class AbstractTestCase extends LuceneTestCase {
   }
   
   protected Query pq( float boost, int slop, String field, String... texts ){
-    PhraseQuery query = new PhraseQuery(slop, field, texts);
-    query.setBoost( boost );
+    Query query = new PhraseQuery(slop, field, texts);
+    if (boost != 1f) {
+      query = new BoostQuery(query, boost);
+    }
     return query;
   }
   
@@ -148,11 +154,7 @@ public abstract class AbstractTestCase extends LuceneTestCase {
   }
   
   protected Query dmq( float tieBreakerMultiplier, Query... queries ){
-    DisjunctionMaxQuery query = new DisjunctionMaxQuery( tieBreakerMultiplier );
-    for( Query q : queries ){
-      query.add( q );
-    }
-    return query;
+    return new DisjunctionMaxQuery(Arrays.asList(queries), tieBreakerMultiplier);
   }
   
   protected void assertCollectionQueries( Collection<Query> actual, Query... expected ){

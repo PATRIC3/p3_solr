@@ -31,7 +31,6 @@ import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.core.Diagnostics;
 import org.apache.solr.core.MockDirectoryFactory;
-import org.apache.solr.servlet.SolrDispatchFilter;
 import org.apache.zookeeper.KeeperException;
 import org.junit.BeforeClass;
 
@@ -116,8 +115,7 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
     
     // now wait till we see the leader for each shard
     for (int i = 1; i <= numShards; i++) {
-      ZkStateReader zkStateReader = ((SolrDispatchFilter) jettys.get(0)
-          .getDispatchFilter().getFilter()).getCores().getZkController()
+      ZkStateReader zkStateReader = jettys.get(0).getCoreContainer().getZkController()
           .getZkStateReader();
       zkStateReader.getLeaderRetry("collection1", "shard" + (i + 2), 15000);
     }
@@ -214,6 +212,22 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
 
     log.info("Collection has disappeared - collection: " + collection);
   }
+
+  public static void verifyReplicaStatus(ZkStateReader reader, String collection, String shard, String coreNodeName, Replica.State expectedState) throws InterruptedException {
+    int maxIterations = 100;
+    Replica.State coreState = null;
+    while(maxIterations-->0) {
+      Slice slice = reader.getClusterState().getSlice(collection, shard);
+      if(slice!=null) {
+        coreState = slice.getReplicasMap().get(coreNodeName).getState();
+        if(coreState == expectedState) {
+          return;
+        }
+      }
+      Thread.sleep(50);
+    }
+    fail("Illegal state, was: " + coreState + " expected:" + expectedState + " clusterState:" + reader.getClusterState());
+  }
   
   protected void assertAllActive(String collection,ZkStateReader zkStateReader)
       throws KeeperException, InterruptedException {
@@ -252,8 +266,12 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
     System.clearProperty(MockDirectoryFactory.SOLR_TESTS_ALLOW_READING_FILES_STILL_OPEN_FOR_WRITE);
     
     resetExceptionIgnores();
-    super.distribTearDown();
-    zkServer.shutdown();
+    try {
+      super.distribTearDown();
+    }
+    finally {
+      zkServer.shutdown();
+    }
   }
   
   protected void printLayout() throws Exception {

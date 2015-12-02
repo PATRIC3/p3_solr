@@ -45,7 +45,7 @@ import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
-import org.apache.solr.util.EmptyEntityResolver;
+import org.apache.solr.common.EmptyEntityResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -105,7 +105,7 @@ public class DocumentAnalysisRequestHandler extends AnalysisRequestHandlerBase {
       inputFactory.setProperty("reuse-instance", Boolean.FALSE);
     } catch (IllegalArgumentException ex) {
       // Other implementations will likely throw this exception since "reuse-instance"
-      // isimplementation specific.
+      // is implementation specific.
       log.debug("Unable to set the 'reuse-instance' property for the input factory: " + inputFactory);
     }
   }

@@ -38,6 +38,7 @@ public interface CollectionParams
     DELETESHARD(true),
     CREATESHARD(true),
     DELETEREPLICA(true),
+    FORCELEADER(true),
     MIGRATE(true),
     ADDROLE(true),
     REMOVEROLE(true),
@@ -51,7 +52,8 @@ public interface CollectionParams
     DELETEREPLICAPROP(true),
     BALANCESHARDUNIQUE(true),
     REBALANCELEADERS(true),
-    MODIFYCOLLECTION(true);
+    MODIFYCOLLECTION(true),
+    MIGRATESTATEFORMAT(true);
     
     public final boolean isWrite;
 

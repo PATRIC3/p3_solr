@@ -46,11 +46,11 @@ import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.request.RequestWriter;
-import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.util.Base64;
 import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.NamedList;
@@ -61,6 +61,7 @@ import org.slf4j.MDC;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
@@ -74,6 +75,8 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
  * A SolrClient implementation that talks directly to a Solr server via HTTP
@@ -230,10 +233,21 @@ public class HttpSolrClient extends SolrClient {
     return request(request, processor, null);
   }
   
-  public NamedList<Object> request(final SolrRequest request, final ResponseParser processor, String collection) throws SolrServerException, IOException {
-    return executeMethod(createMethod(request, collection),processor);
+  public NamedList<Object> request(final SolrRequest request, final ResponseParser processor, String collection)
+      throws SolrServerException, IOException {
+    HttpRequestBase method = createMethod(request, collection);
+    setBasicAuthHeader(request, method);
+    return executeMethod(method, processor);
   }
-  
+
+  private void setBasicAuthHeader(SolrRequest request, HttpRequestBase method) throws UnsupportedEncodingException {
+    if (request.getBasicAuthUser() != null && request.getBasicAuthPassword() != null) {
+      String userPass = request.getBasicAuthUser() + ":" + request.getBasicAuthPassword();
+      String encoded = Base64.byteArrayToBase64(userPass.getBytes(UTF_8));
+      method.setHeader(new BasicHeader("Authorization", "Basic " + encoded));
+    }
+  }
+
   /**
    * @lucene.experimental
    */
@@ -329,7 +343,7 @@ public class HttpSolrClient extends SolrClient {
       if (streams != null) {
         throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "GET can't send streams!");
       }
-      return new HttpGet(basePath + path + ClientUtils.toQueryString(wparams, false));
+      return new HttpGet(basePath + path + wparams.toQueryString());
     }
 
     if (SolrRequest.METHOD.POST == request.getMethod() || SolrRequest.METHOD.PUT == request.getMethod()) {
@@ -352,7 +366,7 @@ public class HttpSolrClient extends SolrClient {
         // send server list and request list as query string params
         ModifiableSolrParams queryParams = calculateQueryParams(this.queryParams, wparams);
         queryParams.add(calculateQueryParams(request.getQueryParams(), wparams));
-        String fullQueryUrl = url + ClientUtils.toQueryString(queryParams, false);
+        String fullQueryUrl = url + queryParams.toQueryString();
         HttpEntityEnclosingRequestBase postOrPut = SolrRequest.METHOD.POST == request.getMethod() ?
             new HttpPost(fullQueryUrl) : new HttpPut(fullQueryUrl);
         if (!isMultipart) {
@@ -409,9 +423,9 @@ public class HttpSolrClient extends SolrClient {
       }
       // It is has one stream, it is the post body, put the params in the URL
       else {
-        String pstr = ClientUtils.toQueryString(wparams, false);
+        String fullQueryUrl = url + wparams.toQueryString();
         HttpEntityEnclosingRequestBase postOrPut = SolrRequest.METHOD.POST == request.getMethod() ?
-            new HttpPost(url + pstr) : new HttpPut(url + pstr);
+            new HttpPost(fullQueryUrl) : new HttpPut(fullQueryUrl);
 
         // Single stream as body
         // Using a loop just to get the first one

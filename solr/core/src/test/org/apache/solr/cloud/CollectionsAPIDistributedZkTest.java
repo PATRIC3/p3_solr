@@ -26,19 +26,8 @@ import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Objects;
-import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
@@ -79,14 +68,14 @@ import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrInfoMBean.Category;
-import org.apache.solr.servlet.SolrDispatchFilter;
+import org.apache.solr.util.TimeOut;
 import org.junit.Test;
 
-import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.common.util.Utils.makeMap;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.NUM_SLICES;
 import static org.apache.solr.common.cloud.ZkStateReader.CORE_NAME_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.common.cloud.ZkStateReader.REPLICATION_FACTOR;
+import static org.apache.solr.common.util.Utils.makeMap;
 
 /**
  * Tests the Cloud Collections API.
@@ -280,10 +269,10 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     request.setPath("/admin/collections");
     
     makeRequest(baseUrl, request);
-    
-    long timeout = System.currentTimeMillis() + 10000;
+
+    TimeOut timeout = new TimeOut(10, TimeUnit.SECONDS);
     while (cloudClient.getZkStateReader().getClusterState().hasCollection("halfdeletedcollection2")) {
-      if (System.currentTimeMillis() > timeout) {
+      if (timeout.hasTimedOut()) {
         throw new AssertionError("Timeout waiting to see removed collection leave clusterstate");
       }
       
@@ -439,10 +428,10 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
       params.set("collection.configName", "conf1");
     }
     
-    String nn1 = ((SolrDispatchFilter) jettys.get(0).getDispatchFilter().getFilter()).getCores().getZkController().getNodeName();
-    String nn2 =  ((SolrDispatchFilter) jettys.get(1).getDispatchFilter().getFilter()).getCores().getZkController().getNodeName();
+    String nn1 = jettys.get(0).getCoreContainer().getZkController().getNodeName();
+    String nn2 =  jettys.get(1).getCoreContainer().getZkController().getNodeName();
     
-    params.set(OverseerCollectionProcessor.CREATE_NODE_SET, nn1 + "," + nn2);
+    params.set(OverseerCollectionMessageHandler.CREATE_NODE_SET, nn1 + "," + nn2);
     request = new QueryRequest(params);
     request.setPath("/admin/collections");
     gotExp = false;
@@ -915,31 +904,28 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
   }
 
   private void checkInstanceDirs(JettySolrRunner jetty) throws IOException {
-    CoreContainer cores = ((SolrDispatchFilter) jetty.getDispatchFilter()
-        .getFilter()).getCores();
+    CoreContainer cores = jetty.getCoreContainer();
     Collection<SolrCore> theCores = cores.getCores();
     for (SolrCore core : theCores) {
 
       // look for core props file
-      assertTrue("Could not find expected core.properties file",
-          new File((String) core.getStatistics().get("instanceDir"),
-              "core.properties").exists());
+      Path instancedir = (Path) core.getStatistics().get("instanceDir");
+      assertTrue("Could not find expected core.properties file", Files.exists(instancedir.resolve("core.properties")));
 
       Path expected = Paths.get(jetty.getSolrHome()).toAbsolutePath().resolve("cores").resolve(core.getName());
-      Path reported = Paths.get((String) core.getStatistics().get("instanceDir"));
 
-      assertTrue("Expected: " + expected + "\nFrom core stats: " + reported, Files.isSameFile(expected, reported));
+      assertTrue("Expected: " + expected + "\nFrom core stats: " + instancedir, Files.isSameFile(expected, instancedir));
 
     }
   }
 
   private boolean waitForReloads(String collectionName, Map<String,Long> urlToTimeBefore) throws SolrServerException, IOException {
-    
-    
-    long timeoutAt = System.currentTimeMillis() + 45000;
+
+
+    TimeOut timeout = new TimeOut(45, TimeUnit.SECONDS);
 
     boolean allTimesAreCorrect = false;
-    while (System.currentTimeMillis() < timeoutAt) {
+    while (! timeout.hasTimedOut()) {
       Map<String,Long> urlToTimeAfter = new HashMap<>();
       collectStartTimes(collectionName, urlToTimeAfter);
       
@@ -1164,10 +1150,10 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
       addReplica.setProperties(props);
     }
     client.request(addReplica);
-    long timeout = System.currentTimeMillis() + 3000;
+    TimeOut timeout = new TimeOut(3, TimeUnit.SECONDS);
     Replica newReplica = null;
 
-    for (; System.currentTimeMillis() < timeout; ) {
+    for (; ! timeout.hasTimedOut(); ) {
       Slice slice = client.getZkStateReader().getClusterState().getSlice(collectionName, shard);
       newReplica = slice.getReplica(newReplicaName);
     }
@@ -1218,9 +1204,9 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     request.setPath("/admin/collections");
     client.request(request);
 
-    long timeOut = System.currentTimeMillis() + 3000;
+    TimeOut timeout = new TimeOut(3, TimeUnit.SECONDS);
     boolean changed = false;
-    while(System.currentTimeMillis() <timeOut){
+    while(! timeout.hasTimedOut()){
       Thread.sleep(10);
       changed = Objects.equals(val,client.getZkStateReader().getClusterProps().get(name));
       if(changed) break;

@@ -22,6 +22,7 @@ import java.util.Objects;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.util.ToStringUtils;
 
 /**
  * This is a {@link PhraseQuery} which is optimized for n-gram phrase query.
@@ -48,6 +49,9 @@ public class NGramPhraseQuery extends Query {
 
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
     final Term[] terms = phraseQuery.getTerms();
     final int[] positions = phraseQuery.getPositions();
 
@@ -74,9 +78,7 @@ public class NGramPhraseQuery extends Query {
         builder.add(terms[i], i);
       }
     }
-    PhraseQuery rewritten = builder.build();
-    rewritten.setBoost(phraseQuery.getBoost());
-    return rewritten;
+    return builder.build();
   }
 
   @Override
@@ -107,17 +109,7 @@ public class NGramPhraseQuery extends Query {
   }
 
   @Override
-  public float getBoost() {
-    return phraseQuery.getBoost();
-  }
-
-  @Override
-  public void setBoost(float b) {
-    phraseQuery.setBoost(b);
-  }
-
-  @Override
   public String toString(String field) {
-    return phraseQuery.toString(field);
+    return phraseQuery.toString(field) + ToStringUtils.boost(getBoost());
   }
 }

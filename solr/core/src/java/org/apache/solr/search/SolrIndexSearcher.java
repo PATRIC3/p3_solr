@@ -105,15 +105,16 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   public static final AtomicLong numCloses = new AtomicLong();
 
 
-  private static Logger log = LoggerFactory.getLogger(SolrIndexSearcher.class);
+  static Logger log = LoggerFactory.getLogger(SolrIndexSearcher.class);
   private final SolrCore core;
   private final IndexSchema schema;
 
   private boolean debug = log.isDebugEnabled();
 
   private final String name;
-  private long openTime = System.currentTimeMillis();
-  private long registerTime = 0;
+  private final Date openTime = new Date();
+  private final long openNanoTime = System.nanoTime();
+  private Date registerTime;
   private long warmupTime = 0;
   private final DirectoryReader reader;
   private final boolean closeReader;
@@ -392,7 +393,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       cache.setState(SolrCache.State.LIVE);
       core.getInfoRegistry().put(cache.name(), cache);
     }
-    registerTime=System.currentTimeMillis();
+    registerTime = new Date();
   }
 
   /**
@@ -964,7 +965,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   private DocSet getDocSetScore(List<Query> queries) throws IOException {
     Query main = queries.remove(0);
     ProcessedFilter pf = getProcessedFilter(null, queries);
-    DocSetCollector setCollector = new DocSetCollector(maxDoc()>>6, maxDoc());
+    DocSetCollector setCollector = new DocSetCollector(maxDoc());
     Collector collector = setCollector;
     if (pf.postFilter != null) {
       pf.postFilter.setLastDelegate(collector);
@@ -1007,7 +1008,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     if (pf.answer != null) return pf.answer;
 
 
-    DocSetCollector setCollector = new DocSetCollector(maxDoc()>>6, maxDoc());
+    DocSetCollector setCollector = new DocSetCollector(maxDoc());
     Collector collector = setCollector;
     if (pf.postFilter != null) {
       pf.postFilter.setLastDelegate(collector);
@@ -1175,12 +1176,12 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     TermQuery key = null;
 
     if (useCache) {
-      key = new TermQuery(new Term(deState.fieldName, BytesRef.deepCopyOf(deState.termsEnum.term())));
+      key = new TermQuery(new Term(deState.fieldName, deState.termsEnum.term()));
       DocSet result = filterCache.get(key);
       if (result != null) return result;
     }
 
-    int smallSetSize = maxDoc()>>6;
+    int smallSetSize = DocSetUtil.smallSetSize(maxDoc());
     int scratchSize = Math.min(smallSetSize, largestPossible);
     if (deState.scratch == null || deState.scratch.length < scratchSize)
       deState.scratch = new int[scratchSize];
@@ -1252,15 +1253,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
 
   // query must be positive
   protected DocSet getDocSetNC(Query query, DocSet filter) throws IOException {
-    DocSetCollector collector = new DocSetCollector(maxDoc()>>6, maxDoc());
-
-    if (filter == null) {
-      super.search(query, collector);
-    } else {
-      Filter luceneFilter = filter.getTopFilter();
-      super.search(new FilteredQuery(query, luceneFilter), collector);
-    }
-    return collector.getDocSet();
+    return DocSetUtil.createDocSet(this, query, filter);
   }
 
 
@@ -1713,7 +1706,6 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
 
     boolean needScores = (cmd.getFlags() & GET_SCORES) != 0;
     int maxDoc = maxDoc();
-    int smallSetSize = maxDoc>>6;
 
     ProcessedFilter pf = getProcessedFilter(cmd.getFilter(), cmd.getFilterList());
     Query query = QueryUtils.makeQueryable(cmd.getQuery());
@@ -1726,7 +1718,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       final float[] topscore = new float[] { Float.NEGATIVE_INFINITY };
 
       Collector collector;
-      final DocSetCollector setCollector = new DocSetCollector(smallSetSize, maxDoc);
+      final DocSetCollector setCollector = new DocSetCollector(maxDoc);
 
        if (!needScores) {
          collector = setCollector;
@@ -1769,7 +1761,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     } else {
 
       final TopDocsCollector topCollector = buildTopDocsCollector(len, cmd);
-      DocSetCollector setCollector = new DocSetCollector(maxDoc>>6, maxDoc);
+      DocSetCollector setCollector = new DocSetCollector(maxDoc);
       Collector collector = MultiCollector.wrap(topCollector, setCollector);
 
       buildAndRunCollectorChain(qr, query, collector, cmd, pf.postFilter);
@@ -2222,11 +2214,21 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
    */
   public Object cacheInsert(String cacheName, Object key, Object val) {
     SolrCache cache = cacheMap.get(cacheName);
-    return cache==null ? null : cache.put(key,val);
+    return cache==null ? null : cache.put(key, val);
   }
 
-  public long getOpenTime() {
+  public Date getOpenTimeStamp() {
     return openTime;
+  }
+
+  // public but primarily for test case usage
+  public long getOpenNanoTime() {
+    return openNanoTime;
+  }
+
+  @Deprecated
+  public long getOpenTime() {
+    return openTime.getTime();
   }
 
   @Override
@@ -2279,8 +2281,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     lst.add("reader", reader.toString());
     lst.add("readerDir", reader.directory());
     lst.add("indexVersion", reader.getVersion());
-    lst.add("openedAt", new Date(openTime));
-    if (registerTime!=0) lst.add("registeredAt", new Date(registerTime));
+    lst.add("openedAt", openTime);
+    if (registerTime!=null) lst.add("registeredAt", registerTime);
     lst.add("warmupTime", warmupTime);
     return lst;
   }

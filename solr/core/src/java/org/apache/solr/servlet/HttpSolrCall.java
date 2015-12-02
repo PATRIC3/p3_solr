@@ -1,38 +1,5 @@
 package org.apache.solr.servlet;
 
-import static org.apache.solr.common.cloud.ZkStateReader.BASE_URL_PROP;
-import static org.apache.solr.common.cloud.ZkStateReader.COLLECTION_PROP;
-import static org.apache.solr.common.cloud.ZkStateReader.CORE_NAME_PROP;
-import static org.apache.solr.common.cloud.ZkStateReader.NODE_NAME_PROP;
-import static org.apache.solr.common.params.CollectionParams.CollectionAction.CREATE;
-import static org.apache.solr.common.params.CollectionParams.CollectionAction.DELETE;
-import static org.apache.solr.common.params.CollectionParams.CollectionAction.RELOAD;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.ADMIN;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.FORWARD;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.PASSTHROUGH;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.PROCESS;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.REMOTEQUERY;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.RETRY;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.RETURN;
-
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
-import java.security.Principal;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -50,9 +17,25 @@ import java.util.Set;
  * limitations under the License.
  */
 
-
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
+import java.security.Principal;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
@@ -110,10 +93,25 @@ import org.apache.solr.servlet.SolrDispatchFilter.Action;
 import org.apache.solr.servlet.cache.HttpCacheHeaderUtil;
 import org.apache.solr.servlet.cache.Method;
 import org.apache.solr.update.processor.DistributingUpdateProcessorFactory;
-import org.apache.solr.util.RTimer;
+import org.apache.solr.util.RTimerTree;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory; 
+import org.slf4j.LoggerFactory;
+
+import static org.apache.solr.common.cloud.ZkStateReader.BASE_URL_PROP;
+import static org.apache.solr.common.cloud.ZkStateReader.COLLECTION_PROP;
+import static org.apache.solr.common.cloud.ZkStateReader.CORE_NAME_PROP;
+import static org.apache.solr.common.cloud.ZkStateReader.NODE_NAME_PROP;
+import static org.apache.solr.common.params.CollectionParams.CollectionAction.CREATE;
+import static org.apache.solr.common.params.CollectionParams.CollectionAction.DELETE;
+import static org.apache.solr.common.params.CollectionParams.CollectionAction.RELOAD;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.ADMIN;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.FORWARD;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.PASSTHROUGH;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.PROCESS;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.REMOTEQUERY;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.RETRY;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.RETURN;
 
 /**
  * This class represents a call made to Solr
@@ -195,7 +193,7 @@ public class HttpSolrCall {
     String corename = "";
     String origCorename = null;
     // set a request timer which can be reused by requests if needed
-    req.setAttribute(SolrRequestParsers.REQUEST_TIMER_SERVLET_ATTRIBUTE, new RTimer());
+    req.setAttribute(SolrRequestParsers.REQUEST_TIMER_SERVLET_ATTRIBUTE, new RTimerTree());
     // put the core container in request attribute
     req.setAttribute("org.apache.solr.CoreContainer", cores);
     path = req.getServletPath();
@@ -281,11 +279,6 @@ public class HttpSolrCall {
       // if we couldn't find it locally, look on other nodes
       extractRemotePath(corename, origCorename, idx);
       if (action != null) return;
-
-      // try the default core
-      if (core == null) {
-        core = cores.getCore("");
-      }
     }
 
     // With a valid core...
@@ -421,7 +414,7 @@ public class HttpSolrCall {
         */
       if (cores.getAuthorizationPlugin() != null && shouldAuthorize()) {
         AuthorizationContext context = getAuthCtx();
-        log.info(context.toString());
+        log.debug("AuthorizationContext : {}", context);
         AuthorizationResponse authResponse = cores.getAuthorizationPlugin().authorize(context);
         if (authResponse.statusCode == AuthorizationResponse.PROMPT.statusCode) {
           Map<String, String> headers = (Map) getReq().getAttribute(AuthenticationPlugin.class.getName());
@@ -431,6 +424,7 @@ public class HttpSolrCall {
           log.debug("USER_REQUIRED "+req.getHeader("Authorization")+" "+ req.getUserPrincipal());
         }
         if (!(authResponse.statusCode == HttpStatus.SC_ACCEPTED) && !(authResponse.statusCode == HttpStatus.SC_OK)) {
+          log.info("USER_REQUIRED auth header {} context : {} ", req.getHeader("Authorization"), context);
           sendError(authResponse.statusCode,
               "Unauthorized request, Response code: " + authResponse.statusCode);
           return RETURN;
@@ -496,8 +490,10 @@ public class HttpSolrCall {
   private boolean shouldAuthorize() {
     if(PKIAuthenticationPlugin.PATH.equals(path)) return false;
     //admin/info/key is the path where public key is exposed . it is always unsecured
-    if( cores.getPkiAuthenticationPlugin() != null && req.getUserPrincipal() != null){
-      return cores.getPkiAuthenticationPlugin().needsAuthorization(req);
+    if (cores.getPkiAuthenticationPlugin() != null && req.getUserPrincipal() != null) {
+      boolean b = cores.getPkiAuthenticationPlugin().needsAuthorization(req);
+      log.debug("PkiAuthenticationPlugin says authorization required : {} ", b);
+      return b;
     }
     return true;
   }
@@ -524,11 +520,7 @@ public class HttpSolrCall {
     HttpEntity httpEntity = null;
     boolean success = false;
     try {
-      String urlstr = coreUrl;
-
-      String queryString = req.getQueryString();
-
-      urlstr += queryString == null ? "" : "?" + queryString;
+      String urlstr = coreUrl + queryParams.toQueryString();
 
       boolean isPostOrPutRequest = "POST".equals(req.getMethod()) || "PUT".equals(req.getMethod());
       if ("GET".equals(req.getMethod())) {
@@ -572,8 +564,8 @@ public class HttpSolrCall {
 
         // We pull out these two headers below because they can cause chunked
         // encoding issues with Tomcat
-        if (header != null && !header.getName().equals(TRANSFER_ENCODING_HEADER)
-            && !header.getName().equals(CONNECTION_HEADER)) {
+        if (header != null && !header.getName().equalsIgnoreCase(TRANSFER_ENCODING_HEADER)
+            && !header.getName().equalsIgnoreCase(CONNECTION_HEADER)) {
           resp.addHeader(header.getName(), header.getValue());
         }
       }
@@ -617,11 +609,7 @@ public class HttpSolrCall {
       } else {
         solrResp.setException(new RuntimeException(ex));
       }
-      if (core == null) {
-        localCore = cores.getCore(""); // default core
-      } else {
-        localCore = core;
-      }
+      localCore = core;
       if (solrReq == null) {
         final SolrParams solrParams;
         if (req != null) {
@@ -767,26 +755,29 @@ public class HttpSolrCall {
     return result;
   }
 
-  private SolrCore getCoreByCollection(String corename) {
+  private SolrCore getCoreByCollection(String collection) {
     ZkStateReader zkStateReader = cores.getZkController().getZkStateReader();
 
     ClusterState clusterState = zkStateReader.getClusterState();
-    Map<String, Slice> slices = clusterState.getActiveSlicesMap(corename);
+    Map<String, Slice> slices = clusterState.getActiveSlicesMap(collection);
     if (slices == null) {
       return null;
     }
+    Set<String> liveNodes = clusterState.getLiveNodes();
     // look for a core on this node
     Set<Map.Entry<String, Slice>> entries = slices.entrySet();
     SolrCore core = null;
-    done:
+
+    //Hitting the leaders is useful when it's an update request.
+    //For queries it doesn't matter and hence we don't distinguish here.
     for (Map.Entry<String, Slice> entry : entries) {
       // first see if we have the leader
-      ZkNodeProps leaderProps = clusterState.getLeader(corename, entry.getKey());
-      if (leaderProps != null) {
+      Replica leaderProps = clusterState.getLeader(collection, entry.getKey());
+      if (leaderProps != null && liveNodes.contains(leaderProps.getNodeName()) && leaderProps.getState() == Replica.State.ACTIVE) {
         core = checkProps(leaderProps);
-      }
-      if (core != null) {
-        break done;
+        if (core != null) {
+          return core;
+        }
       }
 
       // check everyone then
@@ -794,13 +785,15 @@ public class HttpSolrCall {
       Set<Map.Entry<String, Replica>> shardEntries = shards.entrySet();
       for (Map.Entry<String, Replica> shardEntry : shardEntries) {
         Replica zkProps = shardEntry.getValue();
-        core = checkProps(zkProps);
-        if (core != null) {
-          break done;
+        if (liveNodes.contains(zkProps.getNodeName()) && zkProps.getState() == Replica.State.ACTIVE) {
+          core = checkProps(zkProps);
+          if (core != null) {
+            return core;
+          }
         }
       }
     }
-    return core;
+    return null;
   }
 
   private SolrCore checkProps(ZkNodeProps zkProps) {
@@ -959,7 +952,7 @@ public class HttpSolrCall {
     return new AuthorizationContext() {
       @Override
       public SolrParams getParams() {
-        return getQueryParams();
+        return solrReq.getParams();
       }
 
       @Override
@@ -1007,6 +1000,7 @@ public class HttpSolrCall {
           response.delete(response.length() - 1, response.length());
         
         response.append("], Path: [").append(resource).append("]");
+        response.append(" path : ").append(path).append(" params :").append(solrReq.getParams());
         return response.toString();
       }
 

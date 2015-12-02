@@ -1,6 +1,6 @@
 package org.apache.lucene.index;
 
-/**
+/*
  *  Licensed to the Apache Software Foundation (ASF) under one or more
  *  contributor license agreements.  See the NOTICE file distributed with
  *  this work for additional information regarding copyright ownership.
@@ -41,6 +41,7 @@ import org.apache.lucene.util.SuppressForbidden;
 import org.apache.lucene.util.TestUtil;
 
 import com.carrotsearch.randomizedtesting.SeedUtils;
+
 /**
  * Runs TestNRTThreads in a separate process, crashes the JRE in the middle
  * of execution, then runs checkindex to make sure it's not corrupt.
@@ -187,6 +188,7 @@ public class TestIndexWriterOnJRECrash extends TestNRTThreads {
   /**
    * currently, this only works/tested on Sun and IBM.
    */
+  @SuppressForbidden(reason = "We need Unsafe to actually crush :-)")
   public void crashJRE() {
     final String vendor = Constants.JAVA_VENDOR;
     final boolean supportsUnsafeNpeDereference = 

@@ -17,8 +17,9 @@
 
 package org.apache.solr.core;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -33,7 +34,6 @@ import java.util.concurrent.Future;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
-
 import org.apache.solr.client.solrj.impl.HttpClientConfigurer;
 import org.apache.solr.client.solrj.impl.HttpClientUtil;
 import org.apache.solr.cloud.ZkController;
@@ -45,29 +45,36 @@ import org.apache.solr.common.util.IOUtils;
 import org.apache.solr.common.util.Utils;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.handler.admin.CollectionsHandler;
+import org.apache.solr.handler.admin.ConfigSetsHandler;
 import org.apache.solr.handler.admin.CoreAdminHandler;
 import org.apache.solr.handler.admin.InfoHandler;
 import org.apache.solr.handler.admin.SecurityConfHandler;
+import org.apache.solr.handler.admin.ZookeeperInfoHandler;
 import org.apache.solr.handler.component.HttpShardHandlerFactory;
 import org.apache.solr.handler.component.ShardHandlerFactory;
 import org.apache.solr.logging.LogWatcher;
 import org.apache.solr.logging.MDCLoggingContext;
 import org.apache.solr.request.SolrRequestHandler;
-import org.apache.solr.security.AuthorizationPlugin;
 import org.apache.solr.security.AuthenticationPlugin;
+import org.apache.solr.security.AuthorizationPlugin;
 import org.apache.solr.security.HttpClientInterceptorPlugin;
 import org.apache.solr.security.PKIAuthenticationPlugin;
 import org.apache.solr.security.SecurityPluginHolder;
 import org.apache.solr.update.UpdateShardHandler;
 import org.apache.solr.util.DefaultSolrThreadFactory;
-import org.apache.solr.util.FileUtils;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static java.util.Collections.EMPTY_MAP;
-import static org.apache.solr.common.params.CommonParams.*;
+import static org.apache.solr.common.params.CommonParams.AUTHC_PATH;
+import static org.apache.solr.common.params.CommonParams.AUTHZ_PATH;
+import static org.apache.solr.common.params.CommonParams.COLLECTIONS_HANDLER_PATH;
+import static org.apache.solr.common.params.CommonParams.CONFIGSETS_HANDLER_PATH;
+import static org.apache.solr.common.params.CommonParams.CORES_HANDLER_PATH;
+import static org.apache.solr.common.params.CommonParams.INFO_HANDLER_PATH;
+import static org.apache.solr.common.params.CommonParams.ZK_PATH;
 import static org.apache.solr.security.AuthenticationPlugin.AUTHENTICATION_PLUGIN_PROP;
 
 
@@ -97,6 +104,7 @@ public class CoreContainer {
   protected CoreAdminHandler coreAdminHandler = null;
   protected CollectionsHandler collectionsHandler = null;
   private InfoHandler infoHandler;
+  protected ConfigSetsHandler configSetsHandler = null;
 
   private PKIAuthenticationPlugin pkiAuthenticationPlugin;
 
@@ -170,7 +178,7 @@ public class CoreContainer {
    * @see #load()
    */
   public CoreContainer(SolrResourceLoader loader) {
-    this(SolrXmlConfig.fromSolrHome(loader, loader.getInstanceDir()));
+    this(SolrXmlConfig.fromSolrHome(loader, loader.getInstancePath()));
   }
 
   /**
@@ -180,7 +188,7 @@ public class CoreContainer {
    * @see #load()
    */
   public CoreContainer(String solrHome) {
-    this(new SolrResourceLoader(solrHome));
+    this(new SolrResourceLoader(Paths.get(solrHome)));
   }
 
   /**
@@ -208,7 +216,7 @@ public class CoreContainer {
   
   public CoreContainer(NodeConfig config, Properties properties, CoresLocator locator, boolean asyncSolrCoreLoad) {
     this.loader = config.getSolrResourceLoader();
-    this.solrHome = loader.getInstanceDir();
+    this.solrHome = loader.getInstancePath().toString();
     this.cfg = checkNotNull(config);
     this.coresLocator = locator;
     this.containerProperties = new Properties(properties);
@@ -332,6 +340,10 @@ public class CoreContainer {
     cfg = null;
     containerProperties = null;
   }
+
+  public static CoreContainer createAndLoad(Path solrHome) {
+    return createAndLoad(solrHome, solrHome.resolve(SolrXmlConfig.SOLR_XML_FILE));
+  }
   
   /**
    * Create a new CoreContainer and load its cores
@@ -339,7 +351,7 @@ public class CoreContainer {
    * @param configFile the file containing this container's configuration
    * @return a loaded CoreContainer
    */
-  public static CoreContainer createAndLoad(String solrHome, File configFile) {
+  public static CoreContainer createAndLoad(Path solrHome, Path configFile) {
     SolrResourceLoader loader = new SolrResourceLoader(solrHome);
     CoreContainer cc = new CoreContainer(SolrXmlConfig.fromFile(loader, configFile));
     try {
@@ -367,15 +379,18 @@ public class CoreContainer {
    * Load the cores defined for this CoreContainer
    */
   public void load()  {
-    log.info("Loading cores into CoreContainer [instanceDir={}]", loader.getInstanceDir());
+    log.info("Loading cores into CoreContainer [instanceDir={}]", loader.getInstancePath());
 
     // add the sharedLib to the shared resource loader before initializing cfg based plugins
     String libDir = cfg.getSharedLibDirectory();
     if (libDir != null) {
-      File f = FileUtils.resolvePath(new File(solrHome), libDir);
-      log.info("loading shared library: " + f.getAbsolutePath());
-      loader.addToClassLoader(libDir, null, false);
-      loader.reloadLuceneSPI();
+      Path libPath = loader.getInstancePath().resolve(libDir);
+      try {
+        loader.addToClassLoader(SolrResourceLoader.getURLs(libPath));
+        loader.reloadLuceneSPI();
+      } catch (IOException e) {
+        log.warn("Couldn't add files from {} to classpath: {}", libPath, e.getMessage());
+      }
     }
 
 
@@ -396,6 +411,7 @@ public class CoreContainer {
     initializeAuthorizationPlugin((Map<String, Object>) securityConfig.data.get("authorization"));
     initializeAuthenticationPlugin((Map<String, Object>) securityConfig.data.get("authentication"));
 
+    containerHandlers.put(ZK_PATH, new ZookeeperInfoHandler(this));
     securityConfHandler = new SecurityConfHandler(this);
     collectionsHandler = createHandler(cfg.getCollectionsHandlerClass(), CollectionsHandler.class);
     containerHandlers.put(COLLECTIONS_HANDLER_PATH, collectionsHandler);
@@ -403,6 +419,8 @@ public class CoreContainer {
     containerHandlers.put(INFO_HANDLER_PATH, infoHandler);
     coreAdminHandler   = createHandler(cfg.getCoreAdminHandlerClass(), CoreAdminHandler.class);
     containerHandlers.put(CORES_HANDLER_PATH, coreAdminHandler);
+    configSetsHandler = createHandler(cfg.getConfigSetsHandlerClass(), ConfigSetsHandler.class);
+    containerHandlers.put(CONFIGSETS_HANDLER_PATH, configSetsHandler);
     containerHandlers.put(AUTHZ_PATH, securityConfHandler);
     containerHandlers.put(AUTHC_PATH, securityConfHandler);
     if(pkiAuthenticationPlugin != null)
@@ -448,8 +466,8 @@ public class CoreContainer {
               }
               try {
                 zkSys.registerInZk(core, true);
-              } catch (Throwable t) {
-                SolrException.log(log, "Error registering SolrCore", t);
+              } catch (RuntimeException e) {
+                SolrException.log(log, "Error registering SolrCore", e);
               }
               return core;
             }
@@ -477,7 +495,7 @@ public class CoreContainer {
                 }
               }
             } finally {
-              ExecutorUtil.shutdownNowAndAwaitTermination(coreLoadExecutor);
+              ExecutorUtil.shutdownAndAwaitTermination(coreLoadExecutor);
             }
           }
         };
@@ -943,7 +961,7 @@ public class CoreContainer {
   }
 
   public String getCoreRootDirectory() {
-    return cfg.getCoreRootDirectory();
+    return cfg.getCoreRootDirectory().toString();
   }
 
   /**
@@ -1034,6 +1052,10 @@ public class CoreContainer {
 
   public InfoHandler getInfoHandler() {
     return infoHandler;
+  }
+
+  public ConfigSetsHandler getConfigSetsHandler() {
+    return configSetsHandler;
   }
 
   public String getHostName() {

@@ -25,6 +25,7 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.*;
+import org.apache.lucene.util.ToStringUtils;
 
 /**
  * The BoostingQuery class can be used to effectively demote results that match a given query. 
@@ -49,9 +50,21 @@ public class BoostingQuery extends Query {
 
     public BoostingQuery(Query match, Query context, float boost) {
       this.match = match;
-      this.context = context.clone();        // clone before boost
+      this.context = context; // ignore context-only matches
       this.boost = boost;
-      this.context.setBoost(0.0f);                      // ignore context-only matches
+    }
+
+    @Override
+    public Query rewrite(IndexReader reader) throws IOException {
+      if (getBoost() != 1f) {
+        return super.rewrite(reader);
+      }
+      Query matchRewritten = match.rewrite(reader);
+      Query contextRewritten = context.rewrite(reader);
+      if (match != matchRewritten || context != contextRewritten) {
+        return new BoostingQuery(matchRewritten, contextRewritten, boost);
+      }
+      return super.rewrite(reader);
     }
 
     @Override
@@ -71,8 +84,8 @@ public class BoostingQuery extends Query {
       if (needsScores == false) {
         return match.createWeight(searcher, needsScores);
       }
-      final Weight matchWeight = match.createWeight(searcher, needsScores);
-      final Weight contextWeight = context.createWeight(searcher, false);
+      final Weight matchWeight = searcher.createWeight(match, needsScores);
+      final Weight contextWeight = searcher.createWeight(context, false);
       return new Weight(this) {
 
         @Override
@@ -101,8 +114,8 @@ public class BoostingQuery extends Query {
         }
 
         @Override
-        public void normalize(float norm, float topLevelBoost) {
-          matchWeight.normalize(norm, topLevelBoost);
+        public void normalize(float norm, float boost) {
+          matchWeight.normalize(norm, boost);
         }
 
         @Override
@@ -156,6 +169,6 @@ public class BoostingQuery extends Query {
 
     @Override
     public String toString(String field) {
-      return match.toString(field) + "/" + context.toString(field);
+      return match.toString(field) + "/" + context.toString(field)  + ToStringUtils.boost(getBoost());
     }
   }

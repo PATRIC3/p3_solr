@@ -83,7 +83,7 @@
       -->
     <fieldType name="date" class="solr.TrieDateField" precisionStep="0"/>
     <fieldType name="tdate" class="solr.TrieDateField" precisionStep="6"/>
-    <fieldType name="tdatedv" class="solr.TrieDateField" precisionStep="6" docValues="true" multiValued="true"/>
+    <fieldType name="tdatedv" class="solr.TrieDateField" precisionStep="6" docValues="true"/>
 
     <fieldType name="dateRange" class="solr.DateRangeField" />
     <fieldType name="location_rpt" class="solr.SpatialRecursivePrefixTreeFieldType"
@@ -508,7 +508,7 @@
    <field name="standardfilt" type="standardfilt" indexed="true" stored="true"/>
    <field name="lowerfilt" type="lowerfilt" indexed="true" stored="true"/>
    <field name="lowerfilt1" type="lowerfilt" indexed="true" stored="true"/>
-	 <field name="lowerfilt1and2" type="lowerfilt" indexed="true" stored="true"/>
+   <field name="lowerfilt1and2" type="lowerfilt" indexed="true" stored="true"/>
    <field name="patterntok" type="patterntok" indexed="true" stored="true"/>
    <field name="patternreplacefilt" type="patternreplacefilt" indexed="true" stored="true"/>
    <field name="porterfilt" type="porterfilt" indexed="true" stored="true"/>
@@ -606,7 +606,11 @@
    <dynamicField name="*_tdt" type="tdate"  indexed="true"  stored="true"/>
    <dynamicField name="*_tdt1" type="tdate"  indexed="true"  stored="true" multiValued="false"/>
    <dynamicField name="*_tdtdv" type="tdatedv"  indexed="true"  stored="true"/>
+   <dynamicField name="*_tdtdv1" type="tdatedv"  indexed="true"  stored="true" multiValued="false"/>
    <dynamicField name="*_drf" type="dateRange"  indexed="true"  stored="true"/>
+
+   <dynamicField name="*_tdts" type="tdate"    indexed="true"  stored="true" multiValued="true"/>
+   <dynamicField name="*_tdtdvs" type="tdatedv"  indexed="true"  stored="true"/>
 
    <dynamicField name="*_sI" type="string"  indexed="true"  stored="false"/>
    <dynamicField name="*_sS" type="string"  indexed="false" stored="true"/>
@@ -663,22 +667,22 @@
    <copyField source="title" dest="title_stringNoNorms"/>
 
    <copyField source="title" dest="text"/>
-	 <copyField source="subject" dest="text"/>
+   <copyField source="subject" dest="text"/>
 
-	 <copyField source="lowerfilt1" dest="lowerfilt1and2"/>
-	 <copyField source="lowerfilt" dest="lowerfilt1and2"/>
+   <copyField source="lowerfilt1" dest="lowerfilt1and2"/>
+   <copyField source="lowerfilt" dest="lowerfilt1and2"/>
 
-	 <copyField source="*_t" dest="text"/>
+   <copyField source="*_t" dest="text"/>
 
-	 <copyField source="id"            dest="range_facet_l"/>
-	 <copyField source="range_facet_f" dest="range_facet_d"/>
-	 <copyField source="range_facet_f1" dest="range_facet_f1_dv"/>
-	 
-	 <copyField source="id"            dest="range_facet_l_dv"/>
-	 <copyField source="id"            dest="range_facet_i_dv"/>
-	 <copyField source="range_facet_f" dest="range_facet_f_dv"/>
-	 <copyField source="range_facet_f" dest="range_facet_d_dv"/>
-	 <copyField source="bday" dest="range_facet_dt_dv"/>
+   <copyField source="id"            dest="range_facet_l"/>
+   <copyField source="range_facet_f" dest="range_facet_d"/>
+   <copyField source="range_facet_f1" dest="range_facet_f1_dv"/>
+   
+   <copyField source="id"            dest="range_facet_l_dv"/>
+   <copyField source="id"            dest="range_facet_i_dv"/>
+   <copyField source="range_facet_f" dest="range_facet_f_dv"/>
+   <copyField source="range_facet_f" dest="range_facet_d_dv"/>
+   <copyField source="bday" dest="range_facet_dt_dv"/>
 
    <!-- dynamic destination -->
    <copyField source="*_dynamic" dest="dynamic_*"/>

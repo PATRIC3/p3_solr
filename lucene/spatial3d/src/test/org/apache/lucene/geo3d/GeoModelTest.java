@@ -39,21 +39,24 @@ public class GeoModelTest {
     final GeoPoint point1 = new GeoPoint(scaledModel, Math.PI * 0.25, 0.0);
     final GeoPoint point2 = new GeoPoint(scaledModel, Math.PI * 0.125, 0.0);
     
-    GeoCircle circle = new GeoCircle(scaledModel, Math.PI * 0.5, 0.0, 0.01);
+    GeoCircle circle = new GeoStandardCircle(scaledModel, Math.PI * 0.5, 0.0, 0.01);
     assertTrue(circle.isWithin(northPole));
     assertFalse(circle.isWithin(southPole));
     assertFalse(circle.isWithin(point1));
-    Bounds bounds = circle.getBounds(null);
+    LatLonBounds bounds;
+    bounds = new LatLonBounds();
+    circle.getBounds(bounds);
     assertTrue(bounds.checkNoLongitudeBound());
     assertTrue(bounds.checkNoTopLatitudeBound());
     assertFalse(bounds.checkNoBottomLatitudeBound());
     assertEquals(Math.PI * 0.5 - 0.01, bounds.getMinLatitude(), 0.01);
 
-    circle = new GeoCircle(scaledModel, Math.PI * 0.25, 0.0, 0.01);
+    circle = new GeoStandardCircle(scaledModel, Math.PI * 0.25, 0.0, 0.01);
     assertTrue(circle.isWithin(point1));
     assertFalse(circle.isWithin(northPole));
     assertFalse(circle.isWithin(southPole));
-    bounds = circle.getBounds(null);
+    bounds = new LatLonBounds();
+    circle.getBounds(bounds);
     assertFalse(bounds.checkNoTopLatitudeBound());
     assertFalse(bounds.checkNoLongitudeBound());
     assertFalse(bounds.checkNoBottomLatitudeBound());
@@ -62,11 +65,12 @@ public class GeoModelTest {
     assertEquals(-0.0125, bounds.getLeftLongitude(), 0.0001);
     assertEquals(0.0125, bounds.getRightLongitude(), 0.0001);
 
-    circle = new GeoCircle(scaledModel, Math.PI * 0.125, 0.0, 0.01);
+    circle = new GeoStandardCircle(scaledModel, Math.PI * 0.125, 0.0, 0.01);
     assertTrue(circle.isWithin(point2));
     assertFalse(circle.isWithin(northPole));
     assertFalse(circle.isWithin(southPole));
-    bounds = circle.getBounds(null);
+    bounds = new LatLonBounds();
+    circle.getBounds(bounds);
     assertFalse(bounds.checkNoLongitudeBound());
     assertFalse(bounds.checkNoTopLatitudeBound());
     assertFalse(bounds.checkNoBottomLatitudeBound());
@@ -91,7 +95,8 @@ public class GeoModelTest {
     assertFalse(bbox.isWithin(leftOutsidePoint));
     final GeoPoint rightOutsidePoint = new GeoPoint(scaledModel, 0.5, 1.01);
     assertFalse(bbox.isWithin(rightOutsidePoint));
-    final Bounds bounds = bbox.getBounds(null);
+    final LatLonBounds bounds = new LatLonBounds();
+    bbox.getBounds(bounds);
     assertFalse(bounds.checkNoLongitudeBound());
     assertFalse(bounds.checkNoTopLatitudeBound());
     assertFalse(bounds.checkNoBottomLatitudeBound());

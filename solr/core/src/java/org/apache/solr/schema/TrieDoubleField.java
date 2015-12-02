@@ -56,6 +56,14 @@ public class TrieDoubleField extends TrieField implements DoubleValueFieldType {
   }
   
   @Override
+  public Object toNativeType(Object val) {
+    if(val==null) return null;
+    if (val instanceof Number) return ((Number) val).doubleValue();
+    if (val instanceof String) return Double.parseDouble((String) val);
+    return super.toNativeType(val);
+  }
+
+  @Override
   protected ValueSource getSingleValueSource(SortedSetSelector.Type choice, SchemaField f) {
     
     return new SortedSetFieldSource(f.getName(), choice) {
@@ -70,6 +78,11 @@ public class TrieDoubleField extends TrieField implements DoubleValueFieldType {
           @Override
           public double doubleVal(int doc) {
             BytesRef bytes = view.get(doc);
+            if (0 == bytes.length) {
+              // the only way this should be possible is for non existent value
+              assert !exists(doc) : "zero bytes for doc, but exists is true";
+              return 0D;
+            }
             return  NumericUtils.sortableLongToDouble(NumericUtils.prefixCodedToLong(bytes));
           }
 
@@ -90,8 +103,12 @@ public class TrieDoubleField extends TrieField implements DoubleValueFieldType {
               
               @Override
               public void fillValue(int doc) {
-                mval.exists = exists(doc);
-                mval.value = mval.exists ? doubleVal(doc) : 0.0D;
+                // micro optimized (eliminate at least one redudnent ord check) 
+                //mval.exists = exists(doc);
+                //mval.value = mval.exists ? doubleVal(doc) : 0.0D;
+                BytesRef bytes = view.get(doc);
+                mval.exists = (0 == bytes.length);
+                mval.value = mval.exists ? NumericUtils.sortableLongToDouble(NumericUtils.prefixCodedToLong(bytes)) : 0D;
               }
             };
           }

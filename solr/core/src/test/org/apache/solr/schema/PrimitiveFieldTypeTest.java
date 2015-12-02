@@ -17,22 +17,20 @@
 
 package org.apache.solr.schema;
 
+import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
+
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrResourceLoader;
 import org.junit.Test;
-
-import java.io.File;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.TimeZone;
 
 /**
  * Tests that defaults are set for Primitive (non-analyzed) fields
  */
 public class PrimitiveFieldTypeTest extends SolrTestCaseJ4 {
   private final String testConfHome = TEST_HOME() + File.separator + "collection1" + File.separator + "conf"+ File.separator; 
-  public static TimeZone UTC = TimeZone.getTimeZone("UTC");
   protected SolrConfig config;
   protected IndexSchema schema;
   protected HashMap<String,String> initMap;
@@ -47,7 +45,7 @@ public class PrimitiveFieldTypeTest extends SolrTestCaseJ4 {
     System.setProperty("solr.allow.unsafe.resourceloading", "true");
 
     initMap = new HashMap<>();
-    config = new SolrConfig(new SolrResourceLoader("solr/collection1"), testConfHome + "solrconfig.xml", null);
+    config = new SolrConfig(new SolrResourceLoader(TEST_PATH().resolve("collection1")), testConfHome + "solrconfig.xml", null);
   }
   
   @Override

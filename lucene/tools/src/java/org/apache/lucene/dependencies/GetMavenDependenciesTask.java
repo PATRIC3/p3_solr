@@ -104,7 +104,7 @@ public class GetMavenDependenciesTask extends Task {
     // (i.e., not invoke Maven's transitive dependency mechanism).
     // Format is "groupId:artifactId"
     globalOptionalExternalDependencies.addAll(Arrays.asList
-        ("org.slf4j:jcl-over-slf4j", "org.slf4j:jul-to-slf4j", "org.slf4j:slf4j-log4j12"));
+        ("org.slf4j:jul-to-slf4j", "org.slf4j:slf4j-log4j12"));
   }
 
   private final XPath xpath = XPathFactory.newInstance().newXPath();
@@ -442,13 +442,13 @@ public class GetMavenDependenciesTask extends Task {
     } catch (IOException e) {
       throw new BuildException("Exception reading centralized versions file " + centralizedVersionsFile.getPath(), e);
     } 
-    SortedSet<Map.Entry> sortedEntries = new TreeSet<>(new Comparator<Map.Entry>() {
-      @Override public int compare(Map.Entry o1, Map.Entry o2) {
+    SortedSet<Map.Entry<?,?>> sortedEntries = new TreeSet<>(new Comparator<Map.Entry<?,?>>() {
+      @Override public int compare(Map.Entry<?,?> o1, Map.Entry<?,?> o2) {
         return ((String)o1.getKey()).compareTo((String)o2.getKey());
       }
     });
     sortedEntries.addAll(versions.entrySet());
-    for (Map.Entry entry : sortedEntries) {
+    for (Map.Entry<?,?> entry : sortedEntries) {
       String key = (String)entry.getKey();
       Matcher matcher = COORDINATE_KEY_PATTERN.matcher(key);
       if (matcher.lookingAt()) {
@@ -525,7 +525,7 @@ public class GetMavenDependenciesTask extends Task {
     }
     Map<String,SortedSet<String>> testScopeDependencies = new HashMap<>();
     Map<String, String> testScopePropertyKeys = new HashMap<>();
-    for (Map.Entry entry : moduleDependencies.entrySet()) {
+    for (Map.Entry<?,?> entry : moduleDependencies.entrySet()) {
       String newPropertyKey = (String)entry.getKey();
       StringBuilder newPropertyValue = new StringBuilder();
       String value = (String)entry.getValue();

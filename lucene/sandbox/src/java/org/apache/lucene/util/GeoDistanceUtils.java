@@ -110,6 +110,54 @@ public class GeoDistanceUtils {
   }
 
   /**
+   *  Finds the closest point within a rectangle (defined by rMinX, rMinY, rMaxX, rMaxY) to the given (lon, lat) point
+   *  the result is provided in closestPt.  When the point is outside the rectangle, the closest point is on an edge
+   *  or corner of the rectangle; else, the closest point is the point itself.
+   */
+  public static void closestPointOnBBox(final double rMinX, final double rMinY, final double rMaxX, final double rMaxY,
+                                        final double lon, final double lat, double[] closestPt) {
+    assert closestPt != null && closestPt.length == 2;
+
+    closestPt[0] = 0;
+    closestPt[1] = 0;
+
+    boolean xSet = true;
+    boolean ySet = true;
+
+    if (lon > rMaxX) {
+      closestPt[0] = rMaxX;
+    } else if (lon < rMinX) {
+      closestPt[0] = rMinX;
+    } else {
+      xSet = false;
+    }
+
+    if (lat > rMaxY) {
+      closestPt[1] = rMaxY;
+    } else if (lat < rMinY) {
+      closestPt[1] = rMinY;
+    } else {
+      ySet = false;
+    }
+
+    if (closestPt[0] == 0 && xSet == false) {
+      closestPt[0] = lon;
+    }
+
+    if (closestPt[1] == 0 && ySet == false) {
+      closestPt[1] = lat;
+    }
+  }
+
+  /** Returns the maximum distance/radius (in meters) from the point 'center' before overlapping */
+  public static double maxRadialDistanceMeters(final double centerLon, final double centerLat) {
+    if (Math.abs(centerLat) == GeoUtils.MAX_LAT_INCL) {
+      return SloppyMath.haversin(centerLat, centerLon, 0, centerLon)*1000.0;
+    }
+    return SloppyMath.haversin(centerLat, centerLon, centerLat, (GeoUtils.MAX_LON_INCL + centerLon) % 360)*1000.0;
+  }
+
+  /**
    * Compute the inverse haversine to determine distance in degrees longitude for provided distance in meters
    * @param lat latitude to compute delta degrees lon
    * @param distance distance in meters to convert to degrees lon

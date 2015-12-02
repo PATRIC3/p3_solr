@@ -16,6 +16,27 @@ package org.apache.solr.schema;
  * limitations under the License.
  */
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.commons.io.IOUtils;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.util.CharFilterFactory;
@@ -47,32 +68,11 @@ import org.apache.solr.core.SolrResourceLoader;
 import org.apache.solr.rest.schema.FieldTypeXmlAdapter;
 import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.solr.util.FileUtils;
+import org.apache.solr.util.RTimer;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Stat;
 import org.xml.sax.InputSource;
-
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.StringWriter;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 /** Solr-managed schema - non-user-editable, but can be mutable via internal and external REST API requests. */
 public final class ManagedIndexSchema extends IndexSchema {
@@ -212,7 +212,7 @@ public final class ManagedIndexSchema extends IndexSchema {
   public static void waitForSchemaZkVersionAgreement(String collection, String localCoreNodeName,
                                                      int schemaZkVersion, ZkController zkController, int maxWaitSecs)
   {
-    long startMs = System.currentTimeMillis();
+    RTimer timer = new RTimer();
 
     // get a list of active replica cores to query for the schema zk version (skipping this core of course)
     List<GetZkSchemaVersionCallable> concurrentTasks = new ArrayList<>();
@@ -268,12 +268,11 @@ public final class ManagedIndexSchema extends IndexSchema {
       Thread.currentThread().interrupt();
     } finally {
       if (!parallelExecutor.isShutdown())
-        parallelExecutor.shutdownNow();
+        parallelExecutor.shutdown();
     }
 
-    long diffMs = (System.currentTimeMillis() - startMs);
-    log.info("Took "+Math.round(diffMs/1000d)+" secs for "+concurrentTasks.size()+
-        " replicas to apply schema update version "+schemaZkVersion+" for collection "+collection);
+    log.info("Took {}ms for {} replicas to apply schema update version {} for collection {}",
+        timer.getTime(), concurrentTasks.size(), schemaZkVersion, collection);
   }
 
   protected static List<String> getActiveReplicaCoreUrls(ZkController zkController, String collection, String localCoreNodeName) {

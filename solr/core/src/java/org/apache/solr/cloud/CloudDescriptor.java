@@ -43,7 +43,11 @@ public class CloudDescriptor {
   volatile Slice.State shardState = Slice.State.ACTIVE;
   volatile String shardParent = null;
 
-  volatile boolean isLeader = false;
+  private volatile boolean isLeader = false;
+  
+  // set to true once a core has registered in zk
+  // set to false on detecting a session expiration
+  private volatile boolean hasRegistered = false;
   volatile Replica.State lastPublished = Replica.State.ACTIVE;
 
   public static final String NUM_SHARDS = "numShards";
@@ -66,12 +70,24 @@ public class CloudDescriptor {
     return lastPublished;
   }
 
+  public void setLastPublished(Replica.State state) {
+    lastPublished = state;
+  }
+
   public boolean isLeader() {
     return isLeader;
   }
   
   public void setLeader(boolean isLeader) {
     this.isLeader = isLeader;
+  }
+  
+  public boolean hasRegistered() {
+    return hasRegistered;
+  }
+  
+  public void setHasRegistered(boolean hasRegistered) {
+    this.hasRegistered = hasRegistered;
   }
 
   public void setShardId(String shardId) {
