@@ -22,7 +22,8 @@ parent.iml
 /prj.el
 /bin
 /bin.*
-**/pom.xml
+solr/**/pom.xml
+lucene/**/pom.xml
 /nbproject
 /nb-build
 
