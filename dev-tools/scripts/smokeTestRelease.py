@@ -84,7 +84,12 @@ def getHREFs(urlString):
   # Deref any redirects
   while True:
     url = urllib.parse.urlparse(urlString)
-    h = http.client.HTTPConnection(url.netloc)
+    if url.scheme == "http":
+      h = http.client.HTTPConnection(url.netloc)
+    elif url.scheme == "https":
+      h = http.client.HTTPSConnection(url.netloc)
+    else:
+      raise RuntimeError("Unknown protocol: %s" % url.scheme)
     h.request('GET', url.path)
     r = h.getresponse()
     newLoc = r.getheader('location')
@@ -759,7 +764,7 @@ def verifyUnpacked(java, project, artifact, unpackPath, svnRevision, version, te
 
   if project == 'lucene' and isSrc:
     print('  confirm all releases have coverage in TestBackwardsCompatibility')
-    confirmAllReleasesAreTestedForBackCompat(unpackPath)
+    confirmAllReleasesAreTestedForBackCompat(version, unpackPath)
 
 
 def testNotice(unpackPath):
@@ -1313,7 +1318,7 @@ def getAllLuceneReleases():
   l.sort()
   return l
 
-def confirmAllReleasesAreTestedForBackCompat(unpackPath):
+def confirmAllReleasesAreTestedForBackCompat(smokeVersion, unpackPath):
 
   print('    find all past Lucene releases...')
   allReleases = getAllLuceneReleases()
@@ -1373,8 +1378,14 @@ def confirmAllReleasesAreTestedForBackCompat(unpackPath):
   notTested = []
   for x in allReleases:
     if x not in testedIndices:
-      if '.'.join(str(y) for y in x) in ('1.4.3', '1.9.1', '2.3.1', '2.3.2'):
+      releaseVersion = '.'.join(str(y) for y in x)
+      if releaseVersion in ('1.4.3', '1.9.1', '2.3.1', '2.3.2'):
         # Exempt the dark ages indices
+        continue
+      if x >= tuple(int(y) for y in smokeVersion.split('.')):
+        # Exempt versions not less than the one being smoke tested
+        print('      Backcompat testing not required for release %s because it\'s not less than %s'
+              % (releaseVersion, smokeVersion))
         continue
       notTested.append(x)
 
