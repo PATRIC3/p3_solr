@@ -68,18 +68,6 @@ public class BoostingQuery extends Query {
     }
 
     @Override
-    public Query rewrite(IndexReader reader) throws IOException {
-      Query matchRewritten = match.rewrite(reader);
-      Query contextRewritten = context.rewrite(reader);
-      if (match != matchRewritten || context != contextRewritten) {
-        BoostingQuery rewritten = new BoostingQuery(matchRewritten, contextRewritten, boost);
-        rewritten.setBoost(getBoost());
-        return rewritten;
-      }
-      return super.rewrite(reader);
-    }
-
-    @Override
     public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
       if (needsScores == false) {
         return match.createWeight(searcher, needsScores);

@@ -39,13 +39,4 @@ public class TestUsageTrackingFilterCachingPolicy extends LuceneTestCase {
     assertFalse(policy.shouldCache(q, SlowCompositeReaderWrapper.wrap(new MultiReader()).getContext()));
   }
 
-  public void testNeverCacheMatchAll() throws Exception {
-    Query q = new MatchAllDocsQuery();
-    UsageTrackingQueryCachingPolicy policy = new UsageTrackingQueryCachingPolicy();
-    for (int i = 0; i < 1000; ++i) {
-      policy.onUse(q);
-    }
-    assertFalse(policy.shouldCache(q, SlowCompositeReaderWrapper.wrap(new MultiReader()).getContext()));
-  }
-
 }

@@ -168,23 +168,4 @@ public class MorfologikFilter extends TokenFilter {
     tagsList.clear();
     super.reset();
   }
-  
-  /** This method was added, because Morfologik uses context classloader and fails to load from our classloader (bug with absolute path). */
-  static Dictionary loadDictionaryResource(String resource) {
-    Objects.requireNonNull(resource, "Morfologik language code may not be null");
-    final String dictPath = "/morfologik/dictionaries/" + resource + ".dict";
-    final String metaPath = Dictionary.getExpectedFeaturesName(dictPath);
-
-    try (final InputStream dictIn = Objects.requireNonNull(Dictionary.class.getResourceAsStream(dictPath), "Unable to find Morfologik dictionary: " + dictPath);
-        final InputStream metaIn = Objects.requireNonNull(Dictionary.class.getResourceAsStream(metaPath), "Unable to find Morfologik metadata: " + metaPath)) {
-      return Dictionary.readAndClose(dictIn, metaIn);
-    } catch (IOException ioe) {
-      throw new RuntimeException("IOException while loading Morfologik dictionary and metadata.", ioe);
-    }
-  }
-
-  /** This holder is for the default Polish dictionary */
-  static final class DictionaryHolder {
-    static final Dictionary DEFAULT_DICT = loadDictionaryResource(MorfologikFilterFactory.DEFAULT_DICTIONARY_RESOURCE);
-  }
 }
