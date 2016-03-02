@@ -1,5 +1,3 @@
-package org.apache.solr.search.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,15 @@ package org.apache.solr.search.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.facet;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.lucene.search.Query;
 import org.apache.lucene.util.NumericUtils;
@@ -33,8 +34,8 @@ import org.apache.solr.schema.SchemaField;
 import org.apache.solr.schema.TrieDateField;
 import org.apache.solr.schema.TrieField;
 import org.apache.solr.search.DocSet;
-import org.apache.solr.util.DateMathParser;
 import org.apache.solr.util.DateFormatUtil;
+import org.apache.solr.util.DateMathParser;
 
 public class FacetRange extends FacetRequest {
   String field;
@@ -56,6 +57,17 @@ public class FacetRange extends FacetRequest {
   public FacetMerger createFacetMerger(Object prototype) {
     return new FacetRangeMerger(this);
   }
+  
+  @Override
+  public Map<String, Object> getFacetDescription() {
+    Map<String, Object> descr = new HashMap<String, Object>();
+    descr.put("field", field);
+    descr.put("start", start);
+    descr.put("end", end);
+    descr.put("gap", gap);
+    return descr;
+  }
+  
 }
 
 

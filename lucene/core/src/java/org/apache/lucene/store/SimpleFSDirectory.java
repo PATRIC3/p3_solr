@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -190,6 +190,10 @@ public class SimpleFSDirectory extends FSDirectory {
     }
 
     @Override
-    protected void seekInternal(long pos) throws IOException {}
+    protected void seekInternal(long pos) throws IOException {
+      if (pos > length()) {
+        throw new EOFException("read past EOF: pos=" + pos + " vs length=" + length() + ": " + this);
+      }
+    }
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.range;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet.range;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.range;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -36,6 +35,7 @@ import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.NumericUtils;
 
@@ -105,10 +105,11 @@ public class DoubleRangeFacetCounts extends RangeFacetCounts {
         final IndexSearcher searcher = new IndexSearcher(topLevelContext);
         searcher.setQueryCache(null);
         final Weight fastMatchWeight = searcher.createNormalizedWeight(fastMatchQuery, false);
-        fastMatchDocs = fastMatchWeight.scorer(hits.context);
-        if (fastMatchDocs == null) {
+        Scorer s = fastMatchWeight.scorer(hits.context);
+        if (s == null) {
           continue;
         }
+        fastMatchDocs = s.iterator();
       } else {
         fastMatchDocs = null;
       }

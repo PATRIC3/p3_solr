@@ -1,5 +1,3 @@
-package org.apache.solr.search.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,34 +14,21 @@ package org.apache.solr.search.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.facet;
 
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.EnumSet;
-import java.util.IdentityHashMap;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.search.BooleanClause;
-import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.FacetParams;
-import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.StrUtils;
-import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.request.SolrQueryRequest;
-import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.schema.IndexSchema;
-import org.apache.solr.schema.SchemaField;
-import org.apache.solr.search.BitDocSet;
-import org.apache.solr.search.DocIterator;
 import org.apache.solr.search.DocSet;
 import org.apache.solr.search.FunctionQParser;
 import org.apache.solr.search.FunctionQParserPlugin;
@@ -89,9 +74,22 @@ public abstract class FacetRequest {
     subFacets.put(key, facetRequest);
   }
 
+  @Override
+  public String toString() {
+    Map<String, Object> descr = getFacetDescription();
+    String s = "facet request: { ";
+    for (String key : descr.keySet()) {
+      s += key + ":" + descr.get(key) + ",";
+    }
+    s += "}";
+    return s;
+  }
+  
   public abstract FacetProcessor createFacetProcessor(FacetContext fcontext);
 
   public abstract FacetMerger createFacetMerger(Object prototype);
+  
+  public abstract Map<String, Object> getFacetDescription();
 }
 
 
@@ -106,7 +104,16 @@ class FacetContext {
   DocSet base;
   FacetContext parent;
   int flags;
-
+  FacetDebugInfo debugInfo;
+  
+  public void setDebugInfo(FacetDebugInfo debugInfo) {
+    this.debugInfo = debugInfo;
+  }
+  
+  public FacetDebugInfo getDebugInfo() {
+    return debugInfo;
+  }
+  
   public boolean isShard() {
     return (flags & IS_SHARD) != 0;
   }
@@ -154,7 +161,7 @@ abstract class FacetParser<FacetRequestT extends FacetRequest> {
   }
 
   protected RuntimeException err(String msg) {
-    return new SolrException(SolrException.ErrorCode.BAD_REQUEST, msg + " ,path="+getPathStr());
+    return new SolrException(SolrException.ErrorCode.BAD_REQUEST, msg + " , path="+getPathStr());
   }
 
   public abstract FacetRequest parse(Object o) throws SyntaxError;
@@ -184,7 +191,7 @@ abstract class FacetParser<FacetRequestT extends FacetRequest> {
         } else if (parsedValue instanceof AggValueSource) {
           facet.addStat(key, (AggValueSource)parsedValue);
         } else {
-          throw new RuntimeException("Huh? TODO: " + parsedValue);
+          throw err("Unknown facet type key=" + key + " class=" + (parsedValue == null ? "null" : parsedValue.getClass().getName()));
         }
       }
     } else {
@@ -240,7 +247,11 @@ abstract class FacetParser<FacetRequestT extends FacetRequest> {
       return parseRangeFacet(key, args);
     }
 
-    return parseStat(key, type, args);
+    AggValueSource stat = parseStat(key, type, args);
+    if (stat == null) {
+      throw err("Unknown facet or stat. key=" + key + " type=" + type + " args=" + args);
+    }
+    return stat;
   }
 
 

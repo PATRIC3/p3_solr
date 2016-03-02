@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -27,9 +26,9 @@ import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.search.BlockJoinComparatorSource;
-import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
@@ -37,7 +36,6 @@ import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BitSet;
 import org.apache.lucene.util.LuceneTestCase;
-import org.junit.Ignore;
 
 public class TestBlockJoinSorter extends LuceneTestCase {
 
@@ -74,8 +72,8 @@ public class TestBlockJoinSorter extends LuceneTestCase {
     final Query parentsFilter = new TermQuery(new Term("parent", "true"));
 
     final Weight weight = searcher.createNormalizedWeight(parentsFilter, false);
-    final DocIdSetIterator parents = weight.scorer(indexReader.leaves().get(0));
-    final BitSet parentBits = BitSet.of(parents, reader.maxDoc());
+    final Scorer parents = weight.scorer(indexReader.leaves().get(0));
+    final BitSet parentBits = BitSet.of(parents.iterator(), reader.maxDoc());
     final NumericDocValues parentValues = reader.getNumericDocValues("parent_val");
     final NumericDocValues childValues = reader.getNumericDocValues("child_val");
 

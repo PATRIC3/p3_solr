@@ -1,5 +1,3 @@
-package org.apache.solr.search.mlt;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search.mlt;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.mlt;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -107,6 +106,18 @@ public class CloudMLTQParserTest extends AbstractFullDistribZkTestBase {
     int[] expectedIds = new int[]{7, 13, 14, 15, 16, 20, 22, 24, 32, 9};
     int[] actualIds = new int[10];
     int i = 0;
+    for (SolrDocument solrDocument : solrDocuments) {
+      actualIds[i++] =  Integer.valueOf(String.valueOf(solrDocument.getFieldValue("id")));
+    }
+    assertArrayEquals(expectedIds, actualIds);
+
+    params = new ModifiableSolrParams();
+    params.set(CommonParams.Q, "{!mlt qf=lowerfilt boost=true}17");
+    queryResponse = queryServer(params);
+    solrDocuments = queryResponse.getResults();
+    expectedIds = new int[]{7, 13, 14, 15, 16, 20, 22, 24, 32, 9};
+    actualIds = new int[solrDocuments.size()];
+    i = 0;
     for (SolrDocument solrDocument : solrDocuments) {
       actualIds[i++] =  Integer.valueOf(String.valueOf(solrDocument.getFieldValue("id")));
     }

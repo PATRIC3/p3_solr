@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -205,6 +204,7 @@ public abstract class BaseLockFactoryTestCase extends LuceneTestCase {
     @Override
     public void run() {
       IndexWriter writer = null;
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
       for(int i=0;i<this.numIteration;i++) {
         if (VERBOSE) {
           System.out.println("TEST: WriterThread iter=" + i);
@@ -213,13 +213,17 @@ public abstract class BaseLockFactoryTestCase extends LuceneTestCase {
         IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
 
         // We only print the IW infoStream output on exc, below:
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PrintStream printStream;
         try {
-          iwc.setInfoStream(new PrintStreamInfoStream(new PrintStream(baos, true, "UTF8")));
+          printStream = new PrintStream(baos, true, "UTF8");
         } catch (UnsupportedEncodingException uee) {
           // shouldn't happen
           throw new RuntimeException(uee);
         }
+
+        iwc.setInfoStream(new PrintStreamInfoStream(printStream));
+
+        printStream.println("\nTEST: WriterThread iter=" + i);
         iwc.setOpenMode(OpenMode.APPEND);
         try {
           writer = new IndexWriter(dir, iwc);

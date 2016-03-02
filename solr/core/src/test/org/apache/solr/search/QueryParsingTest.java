@@ -1,4 +1,3 @@
-package org.apache.solr.search;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,17 +14,19 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.search;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.SchemaField;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -72,6 +73,22 @@ public class QueryParsingTest extends SolrTestCaseJ4 {
     }
   }
   
+  public void testLocalParamsWithLinkedHashMap() throws Exception {
+    LinkedHashMap<String, String> target = new LinkedHashMap<String, String>();
+    QueryParsing.parseLocalParams("{!handler foo1=bar1 foo2=bar2 multi=loser multi=winner}", 0, target, new ModifiableSolrParams(), "{!", '}');
+    assertEquals("bar1", target.get("foo1"));
+    assertEquals("bar2", target.get("foo2"));
+    assertEquals("winner", target.get("multi"));
+  }
+
+  public void testLocalParamsWithModifiableSolrParams() throws Exception {
+    ModifiableSolrParams target = new ModifiableSolrParams();
+    QueryParsing.parseLocalParams("{!handler foo1=bar1 foo2=bar2 multi=loser multi=winner}", 0, target, new ModifiableSolrParams(), "{!", '}');
+    assertEquals("bar1", target.get("foo1"));
+    assertEquals("bar2", target.get("foo2"));
+    assertArrayEquals(new String[]{"loser", "winner"}, target.getParams("multi"));
+  }
+
   public void testLiteralFunction() throws Exception {
     
     final String NAME = FunctionQParserPlugin.NAME;

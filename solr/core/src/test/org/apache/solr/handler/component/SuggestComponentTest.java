@@ -1,5 +1,3 @@
-package org.apache.solr.handler.component;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,22 +14,23 @@ package org.apache.solr.handler.component;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.component;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.SolrCore;
-import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.spelling.suggest.SuggesterParams;
-import org.apache.solr.util.RefCounted;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 
 public class SuggestComponentTest extends SolrTestCaseJ4 {
-  static String rh = "/suggest";
 
+  private static final String rh = "/suggest";
+
+  private static CoreContainer cc;
 
   @BeforeClass
   public static void beforeClass() throws Exception {
@@ -506,8 +505,9 @@ public class SuggestComponentTest extends SolrTestCaseJ4 {
       SolrCore core = h.getCore();
       String dataDir1 = core.getDataDir();
       CoreDescriptor cd = core.getCoreDescriptor();
-      cores.unload(core.getName());
-      SolrCore createdCore = cores.create(cd);
+      h.close();
+      createCore();
+      SolrCore createdCore = h.getCore();
       assertEquals(dataDir1, createdCore.getDataDir());
       assertEquals(createdCore, h.getCore());
     } else {

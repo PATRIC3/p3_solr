@@ -1,5 +1,3 @@
-package org.apache.solr.security;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.security;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.security;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
@@ -89,7 +88,7 @@ public class RuleBasedAuthorizationPlugin implements AuthorizationPlugin, Config
   public AuthorizationResponse authorize(AuthorizationContext context) {
     List<AuthorizationContext.CollectionRequest> collectionRequests = context.getCollectionRequests();
     if (context.getRequestType() == AuthorizationContext.RequestType.ADMIN) {
-      MatchStatus flag = checkCollPerm(mapping.get(""), context);
+      MatchStatus flag = checkCollPerm(mapping.get(null), context);
       return flag.rsp;
     }
 
@@ -98,8 +97,8 @@ public class RuleBasedAuthorizationPlugin implements AuthorizationPlugin, Config
       MatchStatus flag = checkCollPerm(mapping.get(collreq.collectionName), context);
       if (flag != MatchStatus.NO_PERMISSIONS_FOUND) return flag.rsp;
     }
-    //check global permissions.
-    MatchStatus flag = checkCollPerm(mapping.get(null), context);
+    //check wildcard (all=*) permissions.
+    MatchStatus flag = checkCollPerm(mapping.get("*"), context);
     return flag.rsp;
   }
 
@@ -146,6 +145,8 @@ public class RuleBasedAuthorizationPlugin implements AuthorizationPlugin, Config
         //this resource needs a principal but the request has come without
         //any credential.
         return MatchStatus.USER_REQUIRED;
+      } else if (permission.role.contains("*")) {
+        return MatchStatus.PERMITTED;
       }
 
       for (String role : permission.role) {
@@ -209,7 +210,7 @@ public class RuleBasedAuthorizationPlugin implements AuthorizationPlugin, Config
       if("collection".equals(key)){
         //for collection collection: null means a core admin/ collection admin request
         // otherwise it means a request where collection name is ignored
-        return m.containsKey(key) ?  Collections.singleton("") : Collections.<String>singleton(null);
+        return m.containsKey(key) ? singleton((String) null) : singleton("*");
       }
       return null;
     }
@@ -463,17 +464,19 @@ public class RuleBasedAuthorizationPlugin implements AuthorizationPlugin, Config
           "    update :{" +
           "      path:'/update/*'}," +
           "    read :{" +
-          "      path:['/select', '/get']}," +
+          "      path:['/select', '/get','/browse','/tvrh','/terms','/clustering','/elevate', '/export','/spell','/clustering']}," +
           "    config-edit:{" +
           "      method:POST," +
-          "      path:'/config/*'}}");
+              "      path:'/config/*'}," +
+              "    all:{collection:['*', null]}" +
+              "}");
 
   static {
-    ((Map) well_known_permissions.get("collection-admin-edit")).put(Predicate.class.getName(), getPredicate(true));
-    ((Map) well_known_permissions.get("collection-admin-read")).put(Predicate.class.getName(), getPredicate(false));
+    ((Map) well_known_permissions.get("collection-admin-edit")).put(Predicate.class.getName(), getCollectionActionPredicate(true));
+    ((Map) well_known_permissions.get("collection-admin-read")).put(Predicate.class.getName(), getCollectionActionPredicate(false));
   }
 
-  private static Predicate<AuthorizationContext> getPredicate(final boolean isEdit) {
+  private static Predicate<AuthorizationContext> getCollectionActionPredicate(final boolean isEdit) {
     return new Predicate<AuthorizationContext>() {
       @Override
       public boolean test(AuthorizationContext context) {

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
@@ -62,6 +62,23 @@ public final class SearcherManager extends ReferenceManager<IndexSearcher> {
   /**
    * Creates and returns a new SearcherManager from the given
    * {@link IndexWriter}.
+   * 
+   * @param writer
+   *          the IndexWriter to open the IndexReader from.
+   * @param searcherFactory
+   *          An optional {@link SearcherFactory}. Pass <code>null</code> if you
+   *          don't require the searcher to be warmed before going live or other
+   *          custom behavior.
+   * 
+   * @throws IOException if there is a low-level I/O error
+   */
+  public SearcherManager(IndexWriter writer, SearcherFactory searcherFactory) throws IOException {
+    this(writer, true, searcherFactory);
+  }
+
+  /**
+   * Expert: creates and returns a new SearcherManager from the given
+   * {@link IndexWriter}, controlling whether past deletions should be applied.
    * 
    * @param writer
    *          the IndexWriter to open the IndexReader from.

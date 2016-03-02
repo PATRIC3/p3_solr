@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
+
 
 import java.util.Objects;
 
@@ -159,7 +159,9 @@ public final class NumericTokenStream extends TokenStream {
     @Override
     public BytesRef getBytesRef() {
       assert valueSize == 64 || valueSize == 32;
-      if (valueSize == 64) {
+      if (shift >= valueSize) {
+        bytes.clear();
+      } else if (valueSize == 64) {
         NumericUtils.longToPrefixCoded(value, shift, bytes);
       } else {
         NumericUtils.intToPrefixCoded((int) value, shift, bytes);

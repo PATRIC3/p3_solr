@@ -1,4 +1,3 @@
-package org.apache.lucene.search.spans;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,6 +14,7 @@ package org.apache.lucene.search.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spans;
 
 
 import java.io.IOException;
@@ -95,7 +95,7 @@ public abstract class SpanPositionCheckQuery extends SpanQuery implements Clonea
     @Override
     public Spans getSpans(final LeafReaderContext context, Postings requiredPostings) throws IOException {
       Spans matchSpans = matchWeight.getSpans(context, requiredPostings);
-      return (matchSpans == null) ? null : new FilterSpans(matchSpans, getSimScorer(context)) {
+      return (matchSpans == null) ? null : new FilterSpans(matchSpans) {
         @Override
         protected AcceptStatus accept(Spans candidate) throws IOException {
           return acceptPosition(candidate);

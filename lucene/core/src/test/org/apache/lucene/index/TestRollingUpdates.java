@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.util.Random;
 
@@ -218,7 +218,7 @@ public class TestRollingUpdates extends LuceneTestCase {
           writer.updateDocument(new Term("id", br), doc);
           if (random().nextInt(3) == 0) {
             if (open == null) {
-              open = DirectoryReader.open(writer, true);
+              open = DirectoryReader.open(writer);
             }
             DirectoryReader reader = DirectoryReader.openIfChanged(open);
             if (reader != null) {

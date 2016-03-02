@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,6 +31,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -41,6 +42,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -572,6 +574,13 @@ public class TestRandomChains extends BaseTokenStreamTestCase {
           }
         }
       }    
+    });
+    put(DateFormat.class, new ArgProducer() {
+      @Override
+      public Object create(Random random) {
+        if (random.nextBoolean()) return null;
+        return DateFormat.getDateInstance(DateFormat.DEFAULT, randomLocale(random));
+      }
     });
   }};
   

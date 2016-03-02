@@ -1,5 +1,3 @@
-package org.apache.lucene.queries;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queries;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queries;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -116,9 +115,9 @@ public class BoostingQuery extends Query {
           if (contextScorer == null) {
             return matchScorer;
           }
-          final TwoPhaseIterator contextTwoPhase = contextScorer.asTwoPhaseIterator();
+          final TwoPhaseIterator contextTwoPhase = contextScorer.twoPhaseIterator();
           final DocIdSetIterator contextApproximation = contextTwoPhase == null
-              ? contextScorer
+              ? contextScorer.iterator()
               : contextTwoPhase.approximation();
           return new FilterScorer(matchScorer) {
             @Override

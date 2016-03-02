@@ -1,4 +1,3 @@
-package org.apache.solr.core;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.core;
 import java.io.File;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
@@ -56,19 +55,18 @@ public class StandardDirectoryFactory extends CachingDirectoryFactory {
   @Override
   protected LockFactory createLockFactory(String rawLockType) throws IOException {
     if (null == rawLockType) {
-      // we default to "native"
-      log.warn("No lockType configured, assuming 'native'.");
-      rawLockType = "native";
+      rawLockType = DirectoryFactory.LOCK_TYPE_NATIVE;
+      log.warn("No lockType configured, assuming '"+rawLockType+"'.");
     }
     final String lockType = rawLockType.toLowerCase(Locale.ROOT).trim();
     switch (lockType) {
-      case "simple":
+      case DirectoryFactory.LOCK_TYPE_SIMPLE:
         return SimpleFSLockFactory.INSTANCE;
-      case "native":
+      case DirectoryFactory.LOCK_TYPE_NATIVE:
         return NativeFSLockFactory.INSTANCE;
-      case "single":
+      case DirectoryFactory.LOCK_TYPE_SINGLE:
         return new SingleInstanceLockFactory();
-      case "none":
+      case DirectoryFactory.LOCK_TYPE_NONE:
         return NoLockFactory.INSTANCE;
       default:
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,

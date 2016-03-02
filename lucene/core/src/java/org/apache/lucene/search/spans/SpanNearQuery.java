@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spans;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -229,8 +229,8 @@ public class SpanNearQuery extends SpanQuery implements Cloneable {
       }
 
       // all NearSpans require at least two subSpans
-      return (!inOrder) ? new NearSpansUnordered(this, slop, subSpans, getSimScorer(context))
-          : new NearSpansOrdered(this, slop, subSpans, getSimScorer(context));
+      return (!inOrder) ? new NearSpansUnordered(slop, subSpans)
+          : new NearSpansOrdered(slop, subSpans);
     }
 
     @Override
@@ -339,7 +339,6 @@ public class SpanNearQuery extends SpanQuery implements Cloneable {
     final int width;
 
     GapSpans(int width) {
-      super(null, null);
       this.width = width;
     }
 

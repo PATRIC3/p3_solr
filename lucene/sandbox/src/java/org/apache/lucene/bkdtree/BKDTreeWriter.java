@@ -1,5 +1,3 @@
-package org.apache.lucene.bkdtree;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.bkdtree;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.bkdtree;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -71,8 +70,10 @@ import org.apache.lucene.util.RamUsageEstimator;
  *  <p>
  *  <b>NOTE</b>: This can write at most Integer.MAX_VALUE * <code>maxPointsInLeafNode</code> total points.
  *
- * @lucene.experimental */
-
+ * @lucene.experimental
+ *
+ * @deprecated Use dimensional values in Lucene 6.0 instead */
+@Deprecated
 class BKDTreeWriter {
 
   // latEnc (int) + lonEnc (int) + ord (long) + docID (int)

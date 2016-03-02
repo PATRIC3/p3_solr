@@ -1,3 +1,19 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.lucene.index;
 
 import java.io.IOException;
@@ -23,22 +39,6 @@ import org.apache.lucene.util.TestUtil;
 
 import com.carrotsearch.randomizedtesting.generators.RandomPicks;
 
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 
 public class TestMixedDocValuesUpdates extends LuceneTestCase {
 
@@ -54,7 +54,7 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
     final boolean isNRT = random.nextBoolean();
     DirectoryReader reader;
     if (isNRT) {
-      reader = DirectoryReader.open(writer, true);
+      reader = DirectoryReader.open(writer);
     } else {
       writer.commit();
       reader = DirectoryReader.open(dir);
@@ -223,10 +223,10 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
               if (random.nextDouble() < 0.1) { // reopen NRT reader (apply updates), on average once every 10 updates
                 if (reader == null) {
 //                  System.out.println("[" + Thread.currentThread().getName() + "] open NRT");
-                  reader = DirectoryReader.open(writer, true);
+                  reader = DirectoryReader.open(writer);
                 } else {
 //                  System.out.println("[" + Thread.currentThread().getName() + "] reopen NRT");
-                  DirectoryReader r2 = DirectoryReader.openIfChanged(reader, writer, true);
+                  DirectoryReader r2 = DirectoryReader.openIfChanged(reader, writer);
                   if (r2 != null) {
                     reader.close();
                     reader = r2;
@@ -310,7 +310,7 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
       long value = random().nextLong();
       writer.updateDocValues(t, new BinaryDocValuesField("f", TestBinaryDocValuesUpdates.toBytes(value)),
           new NumericDocValuesField("cf", value*2));
-      DirectoryReader reader = DirectoryReader.open(writer, true);
+      DirectoryReader reader = DirectoryReader.open(writer);
       for (LeafReaderContext context : reader.leaves()) {
         LeafReader r = context.reader();
         BinaryDocValues fbdv = r.getBinaryDocValues("f");

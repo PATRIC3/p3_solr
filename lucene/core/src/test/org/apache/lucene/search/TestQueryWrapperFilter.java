@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
@@ -219,7 +219,7 @@ public class TestQueryWrapperFilter extends LuceneTestCase {
     final Query query = new QueryWrapperFilter(new RandomApproximationQuery(new TermQuery(new Term("foo", "bar")), random()));
     final Weight weight = searcher.createNormalizedWeight(query, random().nextBoolean());
     final Scorer scorer = weight.scorer(reader.leaves().get(0));
-    assertNotNull(scorer.asTwoPhaseIterator());
+    assertNotNull(scorer.twoPhaseIterator());
     reader.close();
     dir.close();
   }

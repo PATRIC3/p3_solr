@@ -14,12 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.component;
 
 import org.apache.lucene.util.Constants;
 
 import org.apache.solr.BaseDistributedSearchTestCase;
+import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.params.TermVectorParams;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -188,7 +188,15 @@ public class TermVectorComponentDistributedTest extends BaseDistributedSearchTes
             "q", q,
             TermVectorComponent.COMPONENT_NAME, "true",
             TermVectorParams.ALL, "true");
-    
+
+      query("sort", "id desc",
+          "qt",tv,
+          "q", q,
+          "rows", 1,
+          ShardParams.DISTRIB_SINGLE_PASS, "true",
+          TermVectorComponent.COMPONENT_NAME, "true",
+          TermVectorParams.ALL, "true");
+
       // per field stuff
 
       query("sort", "id desc",

@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -611,7 +611,7 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
     List<IndexCommit> commits = DirectoryReader.listCommits(dir);
     assertEquals(1, commits.size());
     w.addDocument(doc);
-    DirectoryReader r = DirectoryReader.open(w, true);
+    DirectoryReader r = DirectoryReader.open(w);
 
     assertEquals(2, r.numDocs());
     IndexReader r2 = DirectoryReader.openIfChanged(r, commits.get(0));

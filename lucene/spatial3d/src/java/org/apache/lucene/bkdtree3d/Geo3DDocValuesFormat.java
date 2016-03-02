@@ -1,5 +1,3 @@
-package org.apache.lucene.bkdtree3d;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.bkdtree3d;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.bkdtree3d;
 
 import org.apache.lucene.codecs.DocValuesConsumer;
 import org.apache.lucene.codecs.DocValuesFormat;
@@ -61,8 +60,10 @@ import java.io.IOException;
  * <p>The disk format is experimental and free to change suddenly, and this code
  * likely has new and exciting bugs!
  *
- * @lucene.experimental */
-
+ * @lucene.experimental
+ *
+ * @deprecated Use dimensional values in Lucene 6.0 instead */
+@Deprecated
 public class Geo3DDocValuesFormat extends DocValuesFormat {
 
   static final String DATA_CODEC_NAME = "Geo3DData";

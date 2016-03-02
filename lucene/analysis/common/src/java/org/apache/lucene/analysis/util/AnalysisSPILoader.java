@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,15 @@ package org.apache.lucene.analysis.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.util;
 
+
+import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.ServiceConfigurationError;
@@ -31,7 +33,7 @@ import org.apache.lucene.util.SPIClassIterator;
  * Helper class for loading named SPIs from classpath (e.g. Tokenizers, TokenStreams).
  * @lucene.internal
  */
-final class AnalysisSPILoader<S extends AbstractAnalysisFactory> {
+public final class AnalysisSPILoader<S extends AbstractAnalysisFactory> {
 
   private volatile Map<String,Class<? extends S>> services = Collections.emptyMap();
   private final Class<S> clazz;
@@ -54,6 +56,9 @@ final class AnalysisSPILoader<S extends AbstractAnalysisFactory> {
     this.suffixes = suffixes;
     // if clazz' classloader is not a parent of the given one, we scan clazz's classloader, too:
     final ClassLoader clazzClassloader = clazz.getClassLoader();
+    if (classloader == null) {
+      classloader = clazzClassloader;
+    }
     if (clazzClassloader != null && !SPIClassIterator.isParentClassLoader(clazzClassloader, classloader)) {
       reload(clazzClassloader);
     }
@@ -72,6 +77,7 @@ final class AnalysisSPILoader<S extends AbstractAnalysisFactory> {
    * of new service providers on the given classpath/classloader!</em>
    */
   public synchronized void reload(ClassLoader classloader) {
+    Objects.requireNonNull(classloader, "classloader");
     final LinkedHashMap<String,Class<? extends S>> services =
       new LinkedHashMap<>(this.services);
     final SPIClassIterator<S> loader = SPIClassIterator.get(clazz, classloader);
@@ -106,12 +112,7 @@ final class AnalysisSPILoader<S extends AbstractAnalysisFactory> {
   
   public S newInstance(String name, Map<String,String> args) {
     final Class<? extends S> service = lookupClass(name);
-    try {
-      return service.getConstructor(Map.class).newInstance(args);
-    } catch (Exception e) {
-      throw new IllegalArgumentException("SPI class of type "+clazz.getName()+" with name '"+name+"' cannot be instantiated. " +
-            "This is likely due to a misconfiguration of the java class '" + service.getName() + "': ", e);
-    }
+    return newFactoryClassInstance(service, args);
   }
   
   public Class<? extends S> lookupClass(String name) {
@@ -128,4 +129,22 @@ final class AnalysisSPILoader<S extends AbstractAnalysisFactory> {
   public Set<String> availableServices() {
     return services.keySet();
   }  
+  
+  /** Creates a new instance of the given {@link AbstractAnalysisFactory} by invoking the constructor, passing the given argument map. */
+  public static <T extends AbstractAnalysisFactory> T newFactoryClassInstance(Class<T> clazz, Map<String,String> args) {
+    try {
+      return clazz.getConstructor(Map.class).newInstance(args);
+    } catch (InvocationTargetException ite) {
+      final Throwable cause = ite.getCause();
+      if (cause instanceof RuntimeException) {
+        throw (RuntimeException) cause;
+      }
+      if (cause instanceof Error) {
+        throw (Error) cause;
+      }
+      throw new RuntimeException("Unexpected checked exception while calling constructor of "+clazz.getName(), cause);
+    } catch (ReflectiveOperationException e) {
+      throw new UnsupportedOperationException("Factory "+clazz.getName()+" cannot be instantiated. This is likely due to missing Map<String,String> constructor.", e);
+    }
+  }
 }

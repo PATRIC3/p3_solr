@@ -1,5 +1,3 @@
-package org.apache.solr.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,7 @@ package org.apache.solr.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.util;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -57,7 +55,7 @@ public class RecordingJSONParser extends JSONParser{
     position = getPosition();
     // if reading a String , the getStringChars do not return the closing single quote or double quote
     //so, try to capture that
-    if(chars.getArray().length >=chars.getStart()+chars.size()) {
+    if(chars.getArray().length >chars.getStart()+chars.size()) {
       char next = chars.getArray()[chars.getStart() + chars.size()];
       if(next =='"' || next == '\'') {
         recordChar(next);
@@ -75,5 +73,9 @@ public class RecordingJSONParser extends JSONParser{
   public String getBuf() {
     if(sb != null) return sb.toString();
     return null;
+  }
+
+  public JSONParser.ParseException error(String msg) {
+    return err(msg);
   }
 }

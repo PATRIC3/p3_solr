@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.core;
 
 import javax.xml.xpath.XPathConstants;
@@ -124,11 +123,16 @@ public class TestConfig extends SolrTestCaseJ4 {
 
     ++numDefaultsTested; assertEquals("default ramBufferSizeMB", 100.0D, sic.ramBufferSizeMB, 0.0D);
     ++numDefaultsTested; assertEquals("default writeLockTimeout", -1, sic.writeLockTimeout);
-    ++numDefaultsTested; assertEquals("default LockType", SolrIndexConfig.LOCK_TYPE_NATIVE, sic.lockType);
+    ++numDefaultsTested; assertEquals("default LockType", DirectoryFactory.LOCK_TYPE_NATIVE, sic.lockType);
 
     ++numDefaultsTested; assertEquals("default infoStream", InfoStream.NO_OUTPUT, sic.infoStream);
 
-    ++numDefaultsTested; ++numNullDefaults; assertNull("default mergePolicyInfo", sic.mergePolicyInfo);
+    // mergePolicyInfo and mergePolicyFactoryInfo are mutually exclusive
+    // so ++ count them only once for both instead of individually
+    ++numDefaultsTested; ++numNullDefaults;
+    assertNull("default mergePolicyInfo", sic.mergePolicyInfo);
+    assertNull("default mergePolicyFactoryInfo", sic.mergePolicyFactoryInfo);
+
     ++numDefaultsTested; ++numNullDefaults; assertNull("default mergeSchedulerInfo", sic.mergeSchedulerInfo);
     ++numDefaultsTested; ++numNullDefaults; assertNull("default mergedSegmentWarmerInfo", sic.mergedSegmentWarmerInfo);
 
@@ -136,7 +140,7 @@ public class TestConfig extends SolrTestCaseJ4 {
     IndexWriterConfig iwc = sic.toIndexWriterConfig(h.getCore());
 
     assertNotNull("null mp", iwc.getMergePolicy());
-    assertTrue("mp is not TMP", iwc.getMergePolicy() instanceof TieredMergePolicy);
+    assertTrue("mp is not TieredMergePolicy", iwc.getMergePolicy() instanceof TieredMergePolicy);
 
     assertNotNull("null ms", iwc.getMergeScheduler());
     assertTrue("ms is not CMS", iwc.getMergeScheduler() instanceof ConcurrentMergeScheduler);

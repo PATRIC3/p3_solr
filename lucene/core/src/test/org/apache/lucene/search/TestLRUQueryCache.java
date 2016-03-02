@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -359,15 +359,12 @@ public class TestLRUQueryCache extends LuceneTestCase {
 
     @Override
     public boolean equals(Object obj) {
-      if (obj instanceof DummyQuery == false) {
-        return false;
-      }
-      return id == ((DummyQuery) obj).id;
+      return super.equals(obj) && id == ((DummyQuery) obj).id;
     }
 
     @Override
     public int hashCode() {
-      return id;
+      return 31 * super.hashCode() + id;
     }
 
     @Override
@@ -795,6 +792,7 @@ public class TestLRUQueryCache extends LuceneTestCase {
     final RandomIndexWriter w = new RandomIndexWriter(random(), dir);
     Document doc = new Document();
     doc.add(new StringField("foo", "bar", Store.YES));
+    doc.add(new StringField("foo", "quux", Store.YES));
     w.addDocument(doc);
     w.commit();
     final IndexReader reader = w.getReader();
@@ -808,7 +806,7 @@ public class TestLRUQueryCache extends LuceneTestCase {
     BooleanQuery.Builder bq = new BooleanQuery.Builder();
     TermQuery should = new TermQuery(new Term("foo", "baz"));
     TermQuery must = new TermQuery(new Term("foo", "bar"));
-    TermQuery filter = new TermQuery(new Term("foo", "bar"));
+    TermQuery filter = new TermQuery(new Term("foo", "quux"));
     TermQuery mustNot = new TermQuery(new Term("foo", "foo"));
     bq.add(should, Occur.SHOULD);
     bq.add(must, Occur.MUST);
@@ -1171,6 +1169,33 @@ public class TestLRUQueryCache extends LuceneTestCase {
     assertEquals(1, cache.getCacheCount());
 
     searcher.getIndexReader().close();
+    dir.close();
+  }
+
+  public void testEvictEmptySegmentCache() throws IOException {
+    Directory dir = newDirectory();
+    final RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    w.addDocument(new Document());
+    final DirectoryReader reader = w.getReader();
+    final IndexSearcher searcher = newSearcher(reader);
+    final LRUQueryCache queryCache = new LRUQueryCache(2, 100000) {
+      @Override
+      protected void onDocIdSetEviction(Object readerCoreKey, int numEntries, long sumRamBytesUsed) {
+        super.onDocIdSetEviction(readerCoreKey, numEntries, sumRamBytesUsed);
+        assertTrue(numEntries > 0);
+      }
+    };
+
+    searcher.setQueryCache(queryCache);
+    searcher.setQueryCachingPolicy(QueryCachingPolicy.ALWAYS_CACHE);
+
+    Query query = new DummyQuery();
+    searcher.count(query);
+    assertEquals(Collections.singletonList(query), queryCache.cachedQueries());
+    queryCache.clearQuery(query);
+
+    reader.close(); // make sure this does not trigger eviction of segment caches with no entries
+    w.close();
     dir.close();
   }
 }

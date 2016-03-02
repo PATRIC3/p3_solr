@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.servlet;
 
 import javax.servlet.FilterChain;
@@ -171,8 +170,11 @@ public class SolrDispatchFilter extends BaseSolrFilter {
   @Override
   public void destroy() {
     if (cores != null) {
-      cores.shutdown();
-      cores = null;
+      try {
+        cores.shutdown();
+      } finally {
+        cores = null;
+      }
     }
   }
   
@@ -216,8 +218,9 @@ public class SolrDispatchFilter extends BaseSolrFilter {
         }
       }
     }
-    
+
     HttpSolrCall call = getHttpSolrCall((HttpServletRequest) request, (HttpServletResponse) response, retry);
+    ExecutorUtil.setServerThreadFlag(Boolean.TRUE);
     try {
       Action result = call.call();
       switch (result) {
@@ -233,6 +236,7 @@ public class SolrDispatchFilter extends BaseSolrFilter {
       }  
     } finally {
       call.destroy();
+      ExecutorUtil.setServerThreadFlag(null);
     }
   }
   

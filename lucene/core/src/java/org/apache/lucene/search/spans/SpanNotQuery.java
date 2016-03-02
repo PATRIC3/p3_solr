@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spans;
+
 
 import java.io.IOException;
 import java.util.Map;
@@ -135,7 +135,7 @@ public final class SpanNotQuery extends SpanQuery {
       final TwoPhaseIterator excludeTwoPhase = excludeSpans.asTwoPhaseIterator();
       final DocIdSetIterator excludeApproximation = excludeTwoPhase == null ? null : excludeTwoPhase.approximation();
 
-      return new FilterSpans(includeSpans, getSimScorer(context)) {
+      return new FilterSpans(includeSpans) {
         // last document we have checked matches() against for the exclusion, and failed
         // when using approximations, so we don't call it again, and pass thru all inclusions.
         int lastApproxDoc = -1;
@@ -200,11 +200,10 @@ public final class SpanNotQuery extends SpanQuery {
     SpanQuery rewrittenInclude = (SpanQuery) include.rewrite(reader);
     SpanQuery rewrittenExclude = (SpanQuery) exclude.rewrite(reader);
     if (rewrittenInclude != include || rewrittenExclude != exclude) {
-      return new SpanNotQuery(rewrittenInclude, rewrittenExclude);
+      return new SpanNotQuery(rewrittenInclude, rewrittenExclude, pre, post);
     }
     return super.rewrite(reader);
   }
-
     /** Returns true iff <code>o</code> is equal to this. */
   @Override
   public boolean equals(Object o) {

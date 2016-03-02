@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.IOException;
 
@@ -265,12 +264,12 @@ public class TestDocValuesRangeQuery extends LuceneTestCase {
     Query q1 = DocValuesRangeQuery.newLongRange("dv1", 0L, 100L, random().nextBoolean(), random().nextBoolean());
     Weight w = searcher.createNormalizedWeight(q1, true);
     Scorer s = w.scorer(ctx);
-    assertNotNull(s.asTwoPhaseIterator());
+    assertNotNull(s.twoPhaseIterator());
 
     Query q2 = DocValuesRangeQuery.newBytesRefRange("dv2", toSortableBytes(0L), toSortableBytes(100L), random().nextBoolean(), random().nextBoolean());
     w = searcher.createNormalizedWeight(q2, true);
     s = w.scorer(ctx);
-    assertNotNull(s.asTwoPhaseIterator());
+    assertNotNull(s.twoPhaseIterator());
 
     reader.close();
     dir.close();

@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.util;
 
 import java.io.IOException;
 import java.text.DateFormat;
@@ -1092,7 +1091,7 @@ public abstract class QueryParserTestBase extends LuceneTestCase {
     Document doc = new Document();
     doc.add(newTextField("field", "the wizard of ozzy", Field.Store.NO));
     w.addDocument(doc);
-    IndexReader r = DirectoryReader.open(w, true);
+    IndexReader r = DirectoryReader.open(w);
     w.close();
     IndexSearcher s = newSearcher(r);
     

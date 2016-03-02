@@ -1,5 +1,3 @@
-package org.apache.lucene.search.join;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,10 @@ package org.apache.lucene.search.join;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.join;
 
 import java.io.IOException;
+import java.io.PrintStream;
 import java.util.Locale;
 import java.util.Set;
 
@@ -37,6 +37,7 @@ import org.apache.lucene.util.BitSetIterator;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
 import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.NumericUtils;
 
 class TermsIncludingScoreQuery extends Query {
 
@@ -181,8 +182,6 @@ class TermsIncludingScoreQuery extends Query {
     final float[] scores;
     final long cost;
 
-    int currentDoc = -1;
-
     SVInOrderScorer(Weight weight, TermsEnum termsEnum, int maxDoc, long cost) throws IOException {
       super(weight);
       FixedBitSet matchingDocs = new FixedBitSet(maxDoc);
@@ -211,7 +210,7 @@ class TermsIncludingScoreQuery extends Query {
 
     @Override
     public float score() throws IOException {
-      return scores[currentDoc];
+      return scores[docID()];
     }
 
     @Override
@@ -221,23 +220,14 @@ class TermsIncludingScoreQuery extends Query {
 
     @Override
     public int docID() {
-      return currentDoc;
+      return matchingDocsIterator.docID();
     }
 
     @Override
-    public int nextDoc() throws IOException {
-      return currentDoc = matchingDocsIterator.nextDoc();
+    public DocIdSetIterator iterator() {
+      return matchingDocsIterator;
     }
 
-    @Override
-    public int advance(int target) throws IOException {
-      return currentDoc = matchingDocsIterator.advance(target);
-    }
-
-    @Override
-    public long cost() {
-      return cost;
-    }
   }
 
   // This scorer deals with the fact that a document can have more than one score from multiple related documents.
@@ -271,5 +261,23 @@ class TermsIncludingScoreQuery extends Query {
       }
     }
   }
-
+  
+  void dump(PrintStream out){
+    out.println(field+":");
+    final BytesRef ref = new BytesRef();
+    for (int i = 0; i < terms.size(); i++) {
+      terms.get(ords[i], ref);
+      out.print(ref+" "+ref.utf8ToString()+" ");
+      try {
+        out.print(Long.toHexString(NumericUtils.prefixCodedToLong(ref))+"L");
+      } catch (Exception e) {
+        try {
+          out.print(Integer.toHexString(NumericUtils.prefixCodedToInt(ref))+"i");
+        } catch (Exception ee) {
+        }
+      }
+      out.println(" score="+scores[ords[i]]);
+      out.println("");
+    }
+  }
 }

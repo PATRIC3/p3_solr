@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -48,7 +48,7 @@ public class TestLiveFieldValues extends LuceneTestCase {
 
     final IndexWriter w = new IndexWriter(dir, iwc);
 
-    final SearcherManager mgr = new SearcherManager(w, true, new SearcherFactory() {
+    final SearcherManager mgr = new SearcherManager(w, new SearcherFactory() {
         @Override
         public IndexSearcher newSearcher(IndexReader r, IndexReader previous) {
           return new IndexSearcher(r);

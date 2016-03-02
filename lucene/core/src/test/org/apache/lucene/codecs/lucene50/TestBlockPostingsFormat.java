@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.lucene50;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs.lucene50;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.lucene50;
+
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
@@ -53,7 +53,7 @@ public class TestBlockPostingsFormat extends BasePostingsFormatTestCase {
     }
     w.forceMerge(1);
 
-    DirectoryReader r = DirectoryReader.open(w, true);
+    DirectoryReader r = DirectoryReader.open(w);
     assertEquals(1, r.leaves().size());
     FieldReader field = (FieldReader) r.leaves().get(0).reader().fields().terms("field");
     // We should see exactly two blocks: one root block (prefix empty string) and one block for z* terms (prefix z):

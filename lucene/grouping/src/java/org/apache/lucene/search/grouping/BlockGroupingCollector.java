@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping;
 
 import java.io.IOException;
 
@@ -231,8 +230,7 @@ public class BlockGroupingCollector extends SimpleCollector {
 
     this.needsScores = needsScores;
     this.lastDocPerGroup = lastDocPerGroup;
-    // TODO: allow null groupSort to mean "by relevance",
-    // and specialize it?
+
     this.groupSort = groupSort;
     
     this.topNGroups = topNGroups;
@@ -265,8 +263,7 @@ public class BlockGroupingCollector extends SimpleCollector {
    *  DocValues, etc.)
    *
    *  @param withinGroupSort The {@link Sort} used to sort
-   *    documents within each group.  Passing null is
-   *    allowed, to sort by relevance.
+   *    documents within each group.
    *  @param groupOffset Which group to start from
    *  @param withinGroupOffset Which document to start from
    *    within each group
@@ -300,7 +297,7 @@ public class BlockGroupingCollector extends SimpleCollector {
       // At this point we hold all docs w/ in each group,
       // unsorted; we now sort them:
       final TopDocsCollector<?> collector;
-      if (withinGroupSort == null) {
+      if (withinGroupSort.equals(Sort.RELEVANCE)) {
         // Sort by score
         if (!needsScores) {
           throw new IllegalArgumentException("cannot sort by relevance within group: needsScores=false");
@@ -356,7 +353,7 @@ public class BlockGroupingCollector extends SimpleCollector {
     */
 
     return new TopGroups<>(new TopGroups<>(groupSort.getSort(),
-                                       withinGroupSort == null ? null : withinGroupSort.getSort(),
+                                       withinGroupSort.getSort(),
                                        totalHitCount, totalGroupedHitCount, groups, maxScore),
                          totalGroupCount);
   }
@@ -480,7 +477,12 @@ public class BlockGroupingCollector extends SimpleCollector {
     subDocUpto = 0;
     docBase = readerContext.docBase;
     //System.out.println("setNextReader base=" + docBase + " r=" + readerContext.reader);
-    lastDocPerGroupBits = lastDocPerGroup.scorer(readerContext);
+    Scorer s = lastDocPerGroup.scorer(readerContext);
+    if (s == null) {
+      lastDocPerGroupBits = null;
+    } else {
+      lastDocPerGroupBits = s.iterator();
+    }
     groupEndDocID = -1;
 
     currentReaderContext = readerContext;

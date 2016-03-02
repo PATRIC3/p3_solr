@@ -26,10 +26,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import com.google.common.collect.ImmutableMap;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileSystem;
@@ -43,6 +43,7 @@ import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
+import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.HdfsDirectoryFactory;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrResourceLoader;
@@ -151,7 +152,7 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
 
     // TODO: This is fragile and should be well documented
     System.setProperty("solr.directoryFactory", HdfsDirectoryFactory.class.getName()); 
-    System.setProperty("solr.lock.type", "hdfs"); 
+    System.setProperty("solr.lock.type", DirectoryFactory.LOCK_TYPE_HDFS);
     System.setProperty("solr.hdfs.nrtcachingdirectory", "false");
     System.setProperty("solr.hdfs.blockcache.enabled", "false");
     System.setProperty("solr.autoCommit.maxTime", "600000");
@@ -159,13 +160,8 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
     
     CoreContainer container = new CoreContainer(loader);
     container.load();
-    
-    Properties props = new Properties();
-    props.setProperty(CoreDescriptor.CORE_DATADIR, dataDirStr);
-    
-    CoreDescriptor descr = new CoreDescriptor(container, "core1", solrHomeDir.toString(), props);
-    
-    SolrCore core = container.create(descr);
+
+    SolrCore core = container.create("core1", ImmutableMap.of(CoreDescriptor.CORE_DATADIR, dataDirStr));
     
     if (!(core.getDirectoryFactory() instanceof HdfsDirectoryFactory)) {
       throw new UnsupportedOperationException(

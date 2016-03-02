@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
@@ -163,8 +162,18 @@ public class DistributedMap {
     return stat.getNumChildren();
   }
 
-  public void remove(String trackingId) throws KeeperException, InterruptedException {
-    zookeeper.delete(dir + "/" + prefix + trackingId, -1, true);
+  /**
+   * return true if the znode was successfully deleted
+   *        false if the node didn't exist and therefore not deleted
+   *        exception an exception occurred while deleting
+   */
+  public boolean remove(String trackingId) throws KeeperException, InterruptedException {
+    try {
+      zookeeper.delete(dir + "/" + prefix + trackingId, -1, true);
+    } catch (KeeperException.NoNodeException e) {
+      return false;
+    }
+    return true;
   }
 
   /**

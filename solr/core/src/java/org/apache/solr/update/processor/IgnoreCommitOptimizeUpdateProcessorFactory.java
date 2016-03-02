@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
 
 import static org.apache.solr.common.SolrException.ErrorCode;
@@ -139,7 +138,7 @@ public class IgnoreCommitOptimizeUpdateProcessorFactory extends UpdateRequestPro
           } else {
             responseHeader = new SimpleOrderedMap<Object>();
             responseHeader.add("msg", responseMsg);
-            rsp.add("responseHeader", responseHeader);
+            rsp.addResponseHeader(responseHeader);
           }
         }
       }

@@ -1,5 +1,3 @@
-package org.apache.solr.search.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.facet;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -49,6 +48,7 @@ import org.apache.lucene.util.PriorityQueue;
 import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.SchemaField;
@@ -159,6 +159,14 @@ public class FacetField extends FacetRequest {
   @Override
   public FacetMerger createFacetMerger(Object prototype) {
     return new FacetFieldMerger(this);
+  }
+  
+  @Override
+  public Map<String, Object> getFacetDescription() {
+    Map<String, Object> descr = new HashMap<String, Object>();
+    descr.put("field", field);
+    descr.put("limit", new Long(limit));
+    return descr;
   }
 }
 
@@ -641,6 +649,9 @@ abstract class FacetFieldProcessorFCBase extends FacetFieldProcessor {
       }
     }
 
+    FacetDebugInfo fdebug = fcontext.getDebugInfo();
+    if (fdebug != null) fdebug.putInfoItem("numBuckets", new Long(numBuckets));
+    
     // if we are deep paging, we don't have to order the highest "offset" counts.
     int collectCount = Math.max(0, queue.size() - off);
     assert collectCount <= lim;

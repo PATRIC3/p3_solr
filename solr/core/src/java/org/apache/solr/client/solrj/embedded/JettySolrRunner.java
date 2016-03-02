@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.client.solrj.embedded;
 
 import javax.servlet.DispatcherType;
@@ -371,6 +370,9 @@ public class JettySolrRunner {
    * @return the {@link CoreContainer} for this node
    */
   public CoreContainer getCoreContainer() {
+    if (getSolrDispatchFilter() == null || getSolrDispatchFilter().getCores() == null) {
+      return null;
+    }
     return getSolrDispatchFilter().getCores();
   }
 

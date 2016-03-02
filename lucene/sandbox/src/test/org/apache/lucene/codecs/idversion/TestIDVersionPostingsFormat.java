@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.idversion;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.codecs.idversion;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.idversion;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -269,7 +268,7 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
     }
 
     IndexReader r = w.getReader();
-    //IndexReader r = DirectoryReader.open(w, true);
+    //IndexReader r = DirectoryReader.open(w);
     PerThreadVersionPKLookup lookup = new PerThreadVersionPKLookup(r, "id");
 
     List<Map.Entry<String,Long>> idValuesList = new ArrayList<>(idValues.entrySet());
@@ -655,7 +654,7 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
 
     final AtomicLong nextVersion = new AtomicLong();
 
-    final SearcherManager mgr = new SearcherManager(w.w, true, new SearcherFactory());
+    final SearcherManager mgr = new SearcherManager(w.w, new SearcherFactory());
 
     final Long missingValue = -1L;
 

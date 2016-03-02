@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -278,7 +278,13 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       "5.3.0-cfs",
       "5.3.0-nocfs",
       "5.3.1-cfs",
-      "5.3.1-nocfs"
+      "5.3.1-nocfs",
+      "5.3.2-cfs",
+      "5.3.2-nocfs",
+      "5.4.0-cfs",
+      "5.4.0-nocfs",
+      "5.4.1-cfs",
+      "5.4.1-nocfs"
   };
   
   final String[] unsupportedNames = {
@@ -1365,7 +1371,7 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
                                            .setOpenMode(OpenMode.APPEND));
       writer.addDocument(new Document());
-      DirectoryReader r = DirectoryReader.open(writer, true);
+      DirectoryReader r = DirectoryReader.open(writer);
       writer.commit();
       r.close();
       writer.forceMerge(1);

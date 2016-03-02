@@ -1,6 +1,3 @@
-package org.apache.lucene.search.highlight;
-
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -17,6 +14,9 @@ package org.apache.lucene.search.highlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.highlight;
+
+
 import java.util.List;
 
 import org.apache.lucene.analysis.TokenStream;
@@ -51,7 +51,7 @@ public class SimpleSpanFragmenter implements Fragmenter {
 
   /**
    * @param queryScorer QueryScorer that was used to score hits
-   * @param fragmentSize size in bytes of each fragment
+   * @param fragmentSize size in chars of each fragment
    */
   public SimpleSpanFragmenter(QueryScorer queryScorer, int fragmentSize) {
     this.fragmentSize = fragmentSize;
@@ -65,7 +65,7 @@ public class SimpleSpanFragmenter implements Fragmenter {
   public boolean isNewFragment() {
     position += posIncAtt.getPositionIncrement();
 
-    if (waitForPos == position) {
+    if (waitForPos <= position) {
       waitForPos = -1;
     } else if (waitForPos != -1) {
       return false;
@@ -76,9 +76,9 @@ public class SimpleSpanFragmenter implements Fragmenter {
     if (wSpanTerm != null) {
       List<PositionSpan> positionSpans = wSpanTerm.getPositionSpans();
 
-      for (int i = 0; i < positionSpans.size(); i++) {
-        if (positionSpans.get(i).start == position) {
-          waitForPos = positionSpans.get(i).end + 1;
+      for (PositionSpan positionSpan : positionSpans) {
+        if (positionSpan.start == position) {
+          waitForPos = positionSpan.end + 1;
           break;
         }
       }

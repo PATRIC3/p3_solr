@@ -1,5 +1,3 @@
-package org.apache.solr.handler.component;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.handler.component;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.component;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -173,6 +172,10 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
         false, requestHandlerName, random().nextBoolean(), extended, "true", count, "10", 
         collate, "true", maxCollationTries, "10", maxCollations, "1", collateExtended, "false",
         altTermCount, "5", maxResults, "10"));
+    query(buildRequest("lowerfilt:(\"rod fix\")", 
+        false, requestHandlerName, random().nextBoolean(), extended, "true", count, "10", 
+        collate, "true", maxCollationTries, "10", maxCollations, "1", collateExtended, "false",
+        altTermCount, "5", maxResults, ".10", "fq", "id:[13 TO 22]"));
     
     //Test word-break spellchecker
     query(buildRequest("lowerfilt:(+quock +redfox +jum +ped)", 

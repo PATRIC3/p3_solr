@@ -1,11 +1,10 @@
-package org.apache.lucene.index;
-
 /*
- * Copyright 2004 The Apache Software Foundation
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -15,6 +14,7 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -1062,7 +1062,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
     // Deletes nothing in reality...:
     w.deleteDocuments(new Term("foo", "bar"));
-    DirectoryReader r5 = DirectoryReader.openIfChanged(r3, w, true);
+    DirectoryReader r5 = DirectoryReader.openIfChanged(r3, w);
     assertNull(r5);
 
     r3.close();
@@ -1139,7 +1139,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
       Document doc = new Document();
       doc.add(newStringField("id", ""+i, Field.Store.NO));
       w.addDocument(doc);
-      IndexReader r = DirectoryReader.open(w, true);
+      IndexReader r = DirectoryReader.open(w);
       // Make sure segment count never exceeds 100:
       assertTrue(r.leaves().size() < 100);
       r.close();
@@ -1156,7 +1156,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
     w.addDocument(new Document());
 
     // Pull NRT reader; it has 1 segment:
-    DirectoryReader r1 = DirectoryReader.open(w, true);
+    DirectoryReader r1 = DirectoryReader.open(w);
     assertEquals(1, r1.leaves().size());
     w.addDocument(new Document());
     w.commit();

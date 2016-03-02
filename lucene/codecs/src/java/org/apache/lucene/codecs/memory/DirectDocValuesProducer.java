@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.memory;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs.memory;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.memory;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -278,7 +278,7 @@ class DirectDocValuesProducer extends DocValuesProducer {
 
   @Override
   public void checkIntegrity() throws IOException {
-    CodecUtil.checksumEntireFile(data);
+    CodecUtil.checksumEntireFile(data.clone());
   }
 
   @Override
@@ -297,6 +297,7 @@ class DirectDocValuesProducer extends DocValuesProducer {
   
   private NumericRawValues loadNumeric(NumericEntry entry) throws IOException {
     NumericRawValues ret = new NumericRawValues();
+    IndexInput data = this.data.clone();
     data.seek(entry.offset + entry.missingBytes);
     switch (entry.byteWidth) {
     case 1:
@@ -394,6 +395,7 @@ class DirectDocValuesProducer extends DocValuesProducer {
   }
   
   private BinaryRawValues loadBinary(BinaryEntry entry) throws IOException {
+    IndexInput data = this.data.clone();
     data.seek(entry.offset);
     final byte[] bytes = new byte[entry.numBytes];
     data.readBytes(bytes, 0, entry.numBytes);

@@ -1,9 +1,3 @@
-package org.apache.solr.common.util;
-
-import java.lang.invoke.MethodHandles;
-import java.util.ArrayList;
-import java.util.Collection;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -20,6 +14,11 @@ import java.util.Collection;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.common.util;
+
+import java.lang.invoke.MethodHandles;
+import java.util.ArrayList;
+import java.util.Collection;
 
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -255,8 +254,15 @@ public class ExecutorUtil {
 
   private static final ThreadLocal<Boolean> isServerPool = new ThreadLocal<>();
 
+  /// this tells whether a thread is owned/run by solr or not.
   public static boolean isSolrServerThread() {
     return Boolean.TRUE.equals(isServerPool.get());
+  }
+
+  public static void setServerThreadFlag(Boolean flag) {
+    if (flag == null) isServerPool.remove();
+    else isServerPool.set(flag);
+
   }
 
 }

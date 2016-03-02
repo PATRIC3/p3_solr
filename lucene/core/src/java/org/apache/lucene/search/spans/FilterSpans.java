@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,13 @@ package org.apache.lucene.search.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spans;
+
 
 import java.io.IOException;
 import java.util.Objects;
 
 import org.apache.lucene.search.TwoPhaseIterator;
-import org.apache.lucene.search.similarities.Similarity;
 
 /**
  * A {@link Spans} implementation wrapping another spans instance,
@@ -36,8 +35,7 @@ public abstract class FilterSpans extends Spans {
   private int startPos = -1;
   
   /** Wrap the given {@link Spans}. */
-  protected FilterSpans(Spans in, Similarity.SimScorer docScorer) {
-    super((SpanWeight)in.getWeight(), docScorer);
+  protected FilterSpans(Spans in) {
     this.in = Objects.requireNonNull(in);
   }
   

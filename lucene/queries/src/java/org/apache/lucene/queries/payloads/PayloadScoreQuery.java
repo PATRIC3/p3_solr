@@ -1,5 +1,3 @@
-package org.apache.lucene.queries.payloads;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queries.payloads;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queries.payloads;
 
 import java.io.IOException;
 import java.util.Map;
@@ -27,11 +26,13 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.Similarity.SimScorer;
+import org.apache.lucene.search.spans.FilterSpans;
 import org.apache.lucene.search.spans.SpanCollector;
 import org.apache.lucene.search.spans.SpanQuery;
+import org.apache.lucene.search.spans.SpanScorer;
 import org.apache.lucene.search.spans.SpanWeight;
 import org.apache.lucene.search.spans.Spans;
 import org.apache.lucene.util.BytesRef;
@@ -132,11 +133,13 @@ public class PayloadScoreQuery extends SpanQuery {
     }
 
     @Override
-    public Scorer scorer(LeafReaderContext context) throws IOException {
+    public PayloadSpanScorer scorer(LeafReaderContext context) throws IOException {
       Spans spans = getSpans(context, Postings.PAYLOADS);
       if (spans == null)
         return null;
-      return new PayloadSpans(spans, this, innerWeight.getSimScorer(context));
+      SimScorer docScorer = innerWeight.getSimScorer(context);
+      PayloadSpans payloadSpans = new PayloadSpans(spans, docScorer);
+      return new PayloadSpanScorer(this, payloadSpans, docScorer);
     }
 
     @Override
@@ -156,8 +159,8 @@ public class PayloadScoreQuery extends SpanQuery {
 
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-      PayloadSpans scorer = (PayloadSpans) scorer(context);
-      if (scorer == null || scorer.advance(doc) != doc)
+      PayloadSpanScorer scorer = scorer(context);
+      if (scorer == null || scorer.iterator().advance(doc) != doc)
         return Explanation.noMatch("No match");
 
       scorer.freq();  // force freq calculation
@@ -173,51 +176,26 @@ public class PayloadScoreQuery extends SpanQuery {
     }
   }
 
-  private class PayloadSpans extends Spans implements SpanCollector {
+  private class PayloadSpans extends FilterSpans implements SpanCollector {
 
-    private int payloadsSeen;
-    private float payloadScore;
-    private final Spans in;
+    private final SimScorer docScorer;
+    public int payloadsSeen;
+    public float payloadScore;
 
-    private PayloadSpans(Spans spans, SpanWeight weight, Similarity.SimScorer docScorer) throws IOException {
-      super(weight, docScorer);
-      this.in = spans;
+    private PayloadSpans(Spans in, SimScorer docScorer) {
+      super(in);
+      this.docScorer = docScorer;
     }
-
+    
     @Override
-    public int nextStartPosition() throws IOException {
-      return in.nextStartPosition();
+    protected AcceptStatus accept(Spans candidate) throws IOException {
+      return AcceptStatus.YES;
     }
-
-    @Override
-    public int startPosition() {
-      return in.startPosition();
-    }
-
-    @Override
-    public int endPosition() {
-      return in.endPosition();
-    }
-
-    @Override
-    public int width() {
-      return in.width();
-    }
-
-    @Override
-    public void collect(SpanCollector collector) throws IOException {
-      in.collect(collector);
-    }
-
+    
     @Override
     protected void doStartCurrentDoc() {
       payloadScore = 0;
       payloadsSeen = 0;
-    }
-
-    @Override
-    protected void doCurrentSpans() throws IOException {
-      in.collect(this);
     }
 
     @Override
@@ -231,12 +209,30 @@ public class PayloadScoreQuery extends SpanQuery {
       payloadsSeen++;
     }
 
+    @Override
+    public void reset() {}
+
+    @Override
+    protected void doCurrentSpans() throws IOException {
+      in.collect(this);
+    }
+  }
+
+  private class PayloadSpanScorer extends SpanScorer {
+
+    private final PayloadSpans spans;
+
+    private PayloadSpanScorer(SpanWeight weight, PayloadSpans spans, Similarity.SimScorer docScorer) throws IOException {
+      super(weight, spans, docScorer);
+      this.spans = spans;
+    }
+
     protected float getPayloadScore() {
-      return function.docScore(docID(), getField(), payloadsSeen, payloadScore);
+      return function.docScore(docID(), getField(), spans.payloadsSeen, spans.payloadScore);
     }
 
     protected Explanation getPayloadExplanation() {
-      return function.explain(docID(), getField(), payloadsSeen, payloadScore);
+      return function.explain(docID(), getField(), spans.payloadsSeen, spans.payloadScore);
     }
 
     protected float getSpanScore() throws IOException {
@@ -250,35 +246,6 @@ public class PayloadScoreQuery extends SpanQuery {
       return getPayloadScore();
     }
 
-    @Override
-    public void reset() {
-
-    }
-
-    @Override
-    public int docID() {
-      return in.docID();
-    }
-
-    @Override
-    public int nextDoc() throws IOException {
-      return in.nextDoc();
-    }
-
-    @Override
-    public int advance(int target) throws IOException {
-      return in.advance(target);
-    }
-
-    @Override
-    public long cost() {
-      return in.cost();
-    }
-
-    @Override
-    public float positionsCost() {
-      return in.positionsCost();
-    }
   }
 
 }

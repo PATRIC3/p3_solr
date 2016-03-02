@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -220,10 +220,11 @@ public abstract class SimilarityBase extends Similarity {
   private static final float[] NORM_TABLE = new float[256];
 
   static {
-    for (int i = 0; i < 256; i++) {
+    for (int i = 1; i < 256; i++) {
       float floatNorm = SmallFloat.byte315ToFloat((byte)i);
       NORM_TABLE[i] = 1.0f / (floatNorm * floatNorm);
     }
+    NORM_TABLE[0] = 1.0f / NORM_TABLE[255]; // otherwise inf
   }
 
   /** Encodes the document length in the same way as {@link TFIDFSimilarity}. */

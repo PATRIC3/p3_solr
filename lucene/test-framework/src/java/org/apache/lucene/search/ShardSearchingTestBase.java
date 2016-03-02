@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -461,7 +460,7 @@ public abstract class ShardSearchingTestBase extends LuceneTestCase {
         iwc.setInfoStream(new PrintStreamInfoStream(System.out));
       }
       writer = new IndexWriter(dir, iwc);
-      mgr = new SearcherManager(writer, true, null);
+      mgr = new SearcherManager(writer, null);
       searchers = new SearcherLifetimeManager();
 
       // Init w/ 0s... caller above will do initial

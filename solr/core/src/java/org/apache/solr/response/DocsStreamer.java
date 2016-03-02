@@ -1,5 +1,3 @@
-package org.apache.solr.response;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.response;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.response;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -52,7 +51,7 @@ import org.apache.solr.search.ReturnFields;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.SolrReturnFields;
 
-/*
+/**
  * This streams SolrDocuments from a DocList and applies transformer
  */
 public class DocsStreamer implements Iterator<SolrDocument> {
@@ -66,6 +65,7 @@ public class DocsStreamer implements Iterator<SolrDocument> {
   private boolean onlyPseudoFields;
   private Set<String> fnames;
   private TransformContext context;
+  private Set<String> dvFieldsToReturn;
   private int idx = -1;
 
   public DocsStreamer(DocList docList, Query query, SolrQueryRequest req, ReturnFields returnFields) {
@@ -83,6 +83,41 @@ public class DocsStreamer implements Iterator<SolrDocument> {
     fnames = returnFields.getLuceneFieldNames();
     onlyPseudoFields = (fnames == null && !returnFields.wantsAllFields() && !returnFields.hasPatternMatching())
         || (fnames != null && fnames.size() == 1 && SolrReturnFields.SCORE.equals(fnames.iterator().next()));
+
+    // add non-stored DV fields that may have been requested
+    if (returnFields.wantsAllFields()) {
+      // check whether there are no additional fields
+      Set<String> fieldNames = returnFields.getLuceneFieldNames(true);
+      if (fieldNames == null || fieldNames.isEmpty()) {
+        dvFieldsToReturn = searcher.getNonStoredDVs(true);
+      } else {
+        dvFieldsToReturn = new HashSet<>(searcher.getNonStoredDVs(true)); // copy
+        // add all requested fields that may be useDocValuesAsStored=false
+        for (String fl : fieldNames) {
+          if (searcher.getNonStoredDVs(false).contains(fl)) {
+            dvFieldsToReturn.add(fl);
+          }
+        }
+      }
+    } else {
+      if (returnFields.hasPatternMatching()) {
+        for (String s : searcher.getNonStoredDVs(true)) {
+          if (returnFields.wantsField(s)) {
+            if (null == dvFieldsToReturn) {
+              dvFieldsToReturn = new HashSet<>();
+            }
+            dvFieldsToReturn.add(s);
+          }
+        }
+      } else if (fnames != null) {
+        dvFieldsToReturn = new HashSet<>(fnames); // copy
+        // here we get all non-stored dv fields because even if a user has set
+        // useDocValuesAsStored=false in schema, he may have requested a field
+        // explicitly using the fl parameter
+        dvFieldsToReturn.retainAll(searcher.getNonStoredDVs(false));
+      }
+    }
+
     if (transformer != null) transformer.setContext(context);
   }
 
@@ -110,6 +145,11 @@ public class DocsStreamer implements Iterator<SolrDocument> {
       try {
         Document doc = searcher.doc(id, fnames);
         sdoc = getDoc(doc, schema);
+
+        // decorate the document with non-stored docValues fields
+        if (dvFieldsToReturn != null) {
+          searcher.decorateDocValueFields(sdoc, id, dvFieldsToReturn);
+        }
       } catch (IOException e) {
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error reading document with docId " + id, e);
       }

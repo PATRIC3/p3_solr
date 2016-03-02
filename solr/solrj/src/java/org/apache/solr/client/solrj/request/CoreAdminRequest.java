@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.client.solrj.request;
 
 import org.apache.solr.client.solrj.SolrClient;
@@ -319,34 +318,6 @@ public class CoreAdminRequest extends SolrRequest<CoreAdminResponse> {
 
     public void setCollection(String collection) {
       this.collection = collection;
-    }
-  }
-  
-    //a persist core request
-  public static class Persist extends CoreAdminRequest {
-    protected String fileName = null;
-    
-    public Persist() {
-      action = CoreAdminAction.PERSIST;
-    }
-    
-    public void setFileName(String name) {
-      fileName = name;
-    }
-    public String getFileName() {
-      return fileName;
-    }
-    @Override
-    public SolrParams getParams() {
-      if( action == null ) {
-        throw new RuntimeException( "no action specified!" );
-      }
-      ModifiableSolrParams params = new ModifiableSolrParams();
-      params.set( CoreAdminParams.ACTION, action.toString() );
-      if (fileName != null) {
-        params.set( CoreAdminParams.FILE, fileName);
-      }
-      return params;
     }
   }
   

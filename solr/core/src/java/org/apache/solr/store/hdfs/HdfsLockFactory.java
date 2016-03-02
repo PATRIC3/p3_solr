@@ -1,5 +1,3 @@
-package org.apache.solr.store.hdfs;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.store.hdfs;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.store.hdfs;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
@@ -89,17 +88,17 @@ public class HdfsLockFactory extends LockFactory {
       }
     }
 
-    return new HdfsLock(fs, lockFile);
+    return new HdfsLock(conf, lockFile);
   }
   
   private static final class HdfsLock extends Lock {
-    
-    private final FileSystem fs;
+
+    private final Configuration conf;
     private final Path lockFile;
     private volatile boolean closed;
     
-    HdfsLock(FileSystem fs, Path lockFile) {
-      this.fs = fs;
+    HdfsLock(Configuration conf, Path lockFile) {
+      this.conf = conf;
       this.lockFile = lockFile;
     }
     
@@ -108,6 +107,7 @@ public class HdfsLockFactory extends LockFactory {
       if (closed) {
         return;
       }
+      final FileSystem fs = FileSystem.get(lockFile.toUri(), conf);
       try {
         if (fs.exists(lockFile) && !fs.delete(lockFile, false)) {
           throw new LockReleaseFailedException("failed to delete: " + lockFile);
@@ -120,6 +120,11 @@ public class HdfsLockFactory extends LockFactory {
     @Override
     public void ensureValid() throws IOException {
       // no idea how to implement this on HDFS
+    }
+
+    @Override
+    public String toString() {
+      return "HdfsLock(lockFile=" + lockFile + ")";
     }
   }
 }

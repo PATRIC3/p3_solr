@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.Accountable;
@@ -696,8 +697,9 @@ class BufferedUpdatesStream implements Accountable {
       final IndexSearcher searcher = new IndexSearcher(readerContext.reader());
       searcher.setQueryCache(null);
       final Weight weight = searcher.createNormalizedWeight(query, false);
-      final DocIdSetIterator it = weight.scorer(readerContext);
-      if (it != null) {
+      final Scorer scorer = weight.scorer(readerContext);
+      if (scorer != null) {
+        final DocIdSetIterator it = scorer.iterator();
         final Bits liveDocs = readerContext.reader().getLiveDocs();
         while (true)  {
           int doc = it.nextDoc();

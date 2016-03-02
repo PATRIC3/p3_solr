@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.response.transform;
 
 import java.util.HashMap;
@@ -41,7 +40,7 @@ public abstract class TransformerFactory implements NamedListInitializedPlugin
 
   public abstract DocTransformer create(String field, SolrParams params, SolrQueryRequest req);
 
-  public static final Map<String,TransformerFactory> defaultFactories = new HashMap<>();
+  public static final Map<String,TransformerFactory> defaultFactories = new HashMap<>(7, 1.0f);
   static {
     defaultFactories.put( "explain", new ExplainAugmenterFactory() );
     defaultFactories.put( "value", new ValueAugmenterFactory() );

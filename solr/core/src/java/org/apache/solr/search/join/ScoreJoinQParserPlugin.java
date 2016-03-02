@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search.join;
 
 import java.io.IOException;
@@ -210,10 +209,6 @@ public class ScoreJoinQParserPlugin extends QParserPlugin {
       } else if (!toField.equals(other.toField)) return false;
       return true;
     }
-  }
-
-  @Override
-  public void init(NamedList args) {
   }
 
 

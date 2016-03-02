@@ -1,5 +1,3 @@
-package org.apache.lucene.uninverting;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.uninverting;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.uninverting;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -1002,7 +1001,7 @@ public class TestFieldCacheSort extends LuceneTestCase {
     doc.add(newStringField("t", "1", Field.Store.NO));
     w.addDocument(doc);
 
-    IndexReader r = UninvertingReader.wrap(DirectoryReader.open(w, true), 
+    IndexReader r = UninvertingReader.wrap(DirectoryReader.open(w), 
                     Collections.singletonMap("f", Type.SORTED));
     w.close();
     IndexSearcher s = newSearcher(r);
@@ -1063,7 +1062,7 @@ public class TestFieldCacheSort extends LuceneTestCase {
       w.commit();
     }
 
-    IndexReader r = UninvertingReader.wrap(DirectoryReader.open(w, true),
+    IndexReader r = UninvertingReader.wrap(DirectoryReader.open(w),
                     Collections.singletonMap("id", Type.INTEGER));
     w.close();
     Query q = new TermQuery(new Term("body", "text"));
@@ -1209,8 +1208,10 @@ public class TestFieldCacheSort extends LuceneTestCase {
     bq.add(new MatchAllDocsQuery(), Occur.SHOULD);
     TopDocs td = searcher.search(bq.build(), 10, sort);
     assertEquals(2, td.totalHits);
-    assertEquals(1, td.scoreDocs[0].doc);
-    assertEquals(0, td.scoreDocs[1].doc);
+    if (Float.isNaN(td.scoreDocs[0].score) == false && Float.isNaN(td.scoreDocs[1].score) == false) {
+      assertEquals(1, td.scoreDocs[0].doc);
+      assertEquals(0, td.scoreDocs[1].doc);
+    }
     TestUtil.checkReader(ir);
     ir.close();
     dir.close();

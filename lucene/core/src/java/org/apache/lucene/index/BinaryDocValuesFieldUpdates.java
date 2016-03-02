@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import org.apache.lucene.document.BinaryDocValuesField;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -169,12 +169,12 @@ class BinaryDocValuesFieldUpdates extends DocValuesFieldUpdates {
   @Override
   public void merge(DocValuesFieldUpdates other) {
     BinaryDocValuesFieldUpdates otherUpdates = (BinaryDocValuesFieldUpdates) other;
-    int newSize = size  + otherUpdates.size;
-    if (newSize > Integer.MAX_VALUE) {
+    if (otherUpdates.size > Integer.MAX_VALUE - size) {
       throw new IllegalStateException(
           "cannot support more than Integer.MAX_VALUE doc/value entries; size="
               + size + " other.size=" + otherUpdates.size);
     }
+    final int newSize = size  + otherUpdates.size;
     docs = docs.grow(newSize);
     offsets = offsets.grow(newSize);
     lengths = lengths.grow(newSize);

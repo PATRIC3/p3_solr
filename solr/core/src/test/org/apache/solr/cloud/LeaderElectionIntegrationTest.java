@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,26 +14,13 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import java.lang.invoke.MethodHandles;
-
-import org.apache.lucene.util.LuceneTestCase.Slow;
-import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.common.cloud.SolrZkClient;
-import org.apache.solr.common.cloud.ZkNodeProps;
-import org.apache.solr.common.cloud.ZkStateReader;
-import org.apache.solr.core.CoreContainer;
-import org.apache.solr.core.CoreDescriptor;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.xml.sax.SAXException;
+package org.apache.solr.cloud;
 
 import javax.xml.parsers.ParserConfigurationException;
-import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -43,6 +28,21 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import com.google.common.collect.ImmutableMap;
+import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.cloud.SolrZkClient;
+import org.apache.solr.common.cloud.ZkNodeProps;
+import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.core.CoreContainer;
+import org.apache.solr.core.SolrResourceLoader;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.xml.sax.SAXException;
 
 @Slow
 public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
@@ -134,11 +134,11 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
      
   private void setupContainer(int port, String shard) throws IOException,
       ParserConfigurationException, SAXException {
-    File data = createTempDir().toFile();
+    Path data = createTempDir();
     
     System.setProperty("hostPort", Integer.toString(port));
     System.setProperty("shard", shard);
-    System.setProperty("solr.data.dir", data.getAbsolutePath());
+    System.setProperty("solr.data.dir", data.toString());
     System.setProperty("solr.solr.home", TEST_HOME());
     Set<Integer> ports = shardPorts.get(shard);
     if (ports == null) {
@@ -146,9 +146,12 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
       shardPorts.put(shard, ports);
     }
     ports.add(port);
-    CoreContainer container = new CoreContainer();
+
+    SolrResourceLoader loader = new SolrResourceLoader(createTempDir());
+    Files.copy(TEST_PATH().resolve("solr.xml"), loader.getInstancePath().resolve("solr.xml"));
+    CoreContainer container = new CoreContainer(loader);
     container.load();
-    container.create(new CoreDescriptor(container, "collection1", "collection1", "collection", "collection1"));
+    container.create("collection1_" + shard, ImmutableMap.of("collection", "collection1"));
     containerMap.put(port, container);
     System.clearProperty("solr.solr.home");
     System.clearProperty("hostPort");

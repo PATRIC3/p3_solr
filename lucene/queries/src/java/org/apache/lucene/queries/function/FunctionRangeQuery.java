@@ -1,5 +1,3 @@
-package org.apache.lucene.queries.function;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queries.function;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queries.function;
 
 import java.io.IOException;
 import java.util.Map;
@@ -133,7 +132,7 @@ public class FunctionRangeQuery extends Query {
       //  which can be slow since if that doc doesn't match, it has to linearly find the next matching
       ValueSourceScorer scorer = scorer(context);
       if (scorer.matches(doc)) {
-        scorer.advance(doc);
+        scorer.iterator().advance(doc);
         return Explanation.match(scorer.score(), FunctionRangeQuery.this.toString(), functionValues.explain(doc));
       } else {
         return Explanation.noMatch(FunctionRangeQuery.this.toString(), functionValues.explain(doc));

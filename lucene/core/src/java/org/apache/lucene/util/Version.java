@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 
 import java.text.ParseException;
@@ -252,9 +252,30 @@ public final class Version {
   public static final Version LUCENE_5_3_1 = new Version(5, 3, 1);
 
   /**
-   * Match settings and bugs in Lucene's 5.4.0 release.
+   * Match settings and bugs in Lucene's 5.3.2 release.
+   * @deprecated Use latest
    */
+  @Deprecated
+  public static final Version LUCENE_5_3_2 = new Version(5, 3, 2);
+
+  /**
+   * Match settings and bugs in Lucene's 5.4.0 release.
+   * @deprecated (5.5.0) Use latest
+   */
+  @Deprecated
   public static final Version LUCENE_5_4_0 = new Version(5, 4, 0);
+
+  /**
+   * Match settings and bugs in Lucene's 5.4.1 release.
+   * @deprecated Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_5_4_1 = new Version(5, 4, 1);
+
+  /**
+   * Match settings and bugs in Lucene's 5.5.0 release.
+   */
+  public static final Version LUCENE_5_5_0 = new Version(5, 5, 0);
 
   // To add a new version:
   //  * Only add above this comment
@@ -275,7 +296,7 @@ public final class Version {
    * some defaults may have changed and may break functionality 
    * in your application.
    */
-  public static final Version LATEST = LUCENE_5_4_0;
+  public static final Version LATEST = LUCENE_5_5_0;
 
   /**
    * Constant for backwards compatibility.

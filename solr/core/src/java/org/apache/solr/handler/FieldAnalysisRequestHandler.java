@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler;
 
 import org.apache.lucene.util.BytesRef;
@@ -207,8 +206,8 @@ public class FieldAnalysisRequestHandler extends AnalysisRequestHandlerBase {
    *
    * @return NamedList containing the tokens produced by the analyzers of the given field, separated into an index and
    *         a query group
-   */
-  private NamedList<NamedList> analyzeValues(FieldAnalysisRequest analysisRequest, FieldType fieldType, String fieldName) {
+   */ // package access for testing
+  NamedList<NamedList> analyzeValues(FieldAnalysisRequest analysisRequest, FieldType fieldType, String fieldName) {
 
     final String queryValue = analysisRequest.getQuery();
     final Set<BytesRef> termsToMatch = (queryValue != null && analysisRequest.isShowMatch())

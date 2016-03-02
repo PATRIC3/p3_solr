@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -136,7 +135,7 @@ public class GroupingSearchTest extends LuceneTestCase {
     assertEquals(2, group.scoreDocs.length);
     assertEquals(5, group.scoreDocs[0].doc);
     assertEquals(4, group.scoreDocs[1].doc);
-    assertTrue(group.scoreDocs[0].score > group.scoreDocs[1].score);
+    assertTrue(group.scoreDocs[0].score >= group.scoreDocs[1].score);
 
     group = groups.groups[1];
     compareGroupValue("author1", group);
@@ -144,8 +143,8 @@ public class GroupingSearchTest extends LuceneTestCase {
     assertEquals(0, group.scoreDocs[0].doc);
     assertEquals(1, group.scoreDocs[1].doc);
     assertEquals(2, group.scoreDocs[2].doc);
-    assertTrue(group.scoreDocs[0].score > group.scoreDocs[1].score);
-    assertTrue(group.scoreDocs[1].score > group.scoreDocs[2].score);
+    assertTrue(group.scoreDocs[0].score >= group.scoreDocs[1].score);
+    assertTrue(group.scoreDocs[1].score >= group.scoreDocs[2].score);
 
     group = groups.groups[2];
     compareGroupValue("author2", group);

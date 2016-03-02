@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -300,7 +299,7 @@ abstract class BaseIndexFileFormatTestCase extends LuceneTestCase {
     oneDoc.add(customField);
     oneDoc.add(new NumericDocValuesField("field", 5));
     iw.addDocument(oneDoc);
-    LeafReader oneDocReader = getOnlySegmentReader(DirectoryReader.open(iw, true));
+    LeafReader oneDocReader = getOnlySegmentReader(DirectoryReader.open(iw));
     iw.close();
     
     // now feed to codec apis manually

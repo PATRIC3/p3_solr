@@ -1,5 +1,3 @@
-package org.apache.solr.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.core;
 
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -59,7 +58,7 @@ public class SolrCoreCheckLockOnStartupTest extends SolrTestCaseJ4 {
 
     ignoreException("locked");
     try {
-      System.setProperty("solr.tests.lockType","simple");
+      System.setProperty("solr.tests.lockType",DirectoryFactory.LOCK_TYPE_SIMPLE);
       //opening a new core on the same index
       initCore("solrconfig-basic.xml", "schema.xml");
       if (checkForCoreInitException(LockObtainFailedException.class))
@@ -85,7 +84,7 @@ public class SolrCoreCheckLockOnStartupTest extends SolrTestCaseJ4 {
 
     ignoreException("locked");
     try {
-      System.setProperty("solr.tests.lockType","native");
+      System.setProperty("solr.tests.lockType",DirectoryFactory.LOCK_TYPE_NATIVE);
       //opening a new core on the same index
       initCore("solrconfig-basic.xml", "schema.xml");
       CoreContainer cc = h.getCoreContainer();

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr;
 
 import java.io.IOException;
@@ -55,6 +54,7 @@ import org.apache.solr.handler.component.StatsField.Stat;
 import org.apache.solr.handler.component.TrackingShardHandlerFactory;
 import org.apache.solr.handler.component.TrackingShardHandlerFactory.RequestTrackingQueue;
 import org.apache.solr.handler.component.TrackingShardHandlerFactory.ShardRequestAndParams;
+import org.apache.solr.response.SolrQueryResponse;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -409,14 +409,14 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
     ,"facet.field",t1);
 
     // test filter tagging, facet exclusion, and naming (multi-select facet support)
-    query("q","*:*", "rows",0, "facet","true", "facet.query","{!key=myquick}quick", "facet.query","{!key=myall ex=a}all", "facet.query","*:*"
+    queryAndCompareUIF("q","*:*", "rows",0, "facet","true", "facet.query","{!key=myquick}quick", "facet.query","{!key=myall ex=a}all", "facet.query","*:*"
     ,"facet.field","{!key=mykey ex=a}"+t1
     ,"facet.field","{!key=other ex=b}"+t1
     ,"facet.field","{!key=again ex=a,b}"+t1
     ,"facet.field",t1
     ,"fq","{!tag=a}id:[1 TO 7]", "fq","{!tag=b}id:[3 TO 9]"
     );
-    query("q", "*:*", "facet", "true", "facet.field", "{!ex=t1}SubjectTerms_mfacet", "fq", "{!tag=t1}SubjectTerms_mfacet:(test 1)", "facet.limit", "10", "facet.mincount", "1");
+    queryAndCompareUIF("q", "*:*", "facet", "true", "facet.field", "{!ex=t1}SubjectTerms_mfacet", "fq", "{!tag=t1}SubjectTerms_mfacet:(test 1)", "facet.limit", "10", "facet.mincount", "1");
 
     // test field that is valid in schema but missing in all shards
     query("q","*:*", "rows",100, "facet","true", "facet.field",missingField, "facet.mincount",2);
@@ -1051,6 +1051,17 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
           "stats.facet", fieldName);
   }
 
+  /** comparing results with facet.method=uif */
+  private void queryAndCompareUIF(Object ... params) throws Exception {
+    final QueryResponse expect = query(params);
+    
+    final Object[] newParams = Arrays.copyOf(params, params.length+2);
+    newParams[newParams.length-2] = "facet.method";
+    newParams[newParams.length-1] = "uif";
+    final QueryResponse uifResult = query(newParams);
+    compareResponses(expect, uifResult);
+  }
+
   protected void checkMinCountsField(List<FacetField.Count> counts, Object[] pairs) {
     assertEquals("There should be exactly " + pairs.length / 2 + " returned counts. There were: " + counts.size(), counts.size(), pairs.length / 2);
     assertTrue("Variable len param must be an even number, it was: " + pairs.length, (pairs.length % 2) == 0);
@@ -1161,7 +1172,8 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
             assertTrue("Expected to find shardAddress in the up shard info",info.get("shardAddress") != null);
           }
           else {
-            assertEquals("Expected to find the partialResults header set if a shard is down", Boolean.TRUE, rsp.getHeader().get("partialResults"));
+            assertEquals("Expected to find the "+SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY+" header set if a shard is down",
+                Boolean.TRUE, rsp.getHeader().get(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY));
             assertTrue("Expected to find error in the down shard info",info.get("error") != null);
           }
         }
@@ -1173,7 +1185,8 @@ public class TestDistributedSearch extends BaseDistributedSearchTestCase {
   @Override
   public void validateControlData(QueryResponse control) throws Exception {
     super.validateControlData(control);
-    assertNull("Expected the partialResults header to be null", control.getHeader().get("partialResults"));
+    assertNull("Expected the "+SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY+" header to be null",
+        control.getHeader().get(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY));
   }
 
   private void validateCommonQueryParameters() throws Exception {

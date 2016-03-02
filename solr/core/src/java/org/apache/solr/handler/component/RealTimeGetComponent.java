@@ -1,5 +1,3 @@
-package org.apache.solr.handler.component;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.handler.component;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.component;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
@@ -59,6 +58,7 @@ import org.apache.solr.search.ReturnFields;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.SolrReturnFields;
 import org.apache.solr.update.DocumentBuilder;
+import org.apache.solr.update.IndexFingerprint;
 import org.apache.solr.update.PeerSync;
 import org.apache.solr.update.UpdateLog;
 import org.apache.solr.util.RefCounted;
@@ -219,7 +219,7 @@ public class RealTimeGetComponent extends SearchComponent
      rsp.add("doc", docList.size() > 0 ? docList.get(0) : null);
    } else {
      docList.setNumFound(docList.size());
-     rsp.add("response", docList);
+     rsp.addResponse(docList);
    }
 
   }
@@ -280,6 +280,7 @@ public class RealTimeGetComponent extends SearchComponent
         if (docid < 0) return null;
         Document luceneDocument = searcher.doc(docid);
         sid = toSolrInputDocument(luceneDocument, core.getLatestSchema());
+        searcher.decorateDocValueFields(sid, docid, searcher.getNonStoredDVs(false));
       }
     } finally {
       if (searcherHolder != null) {
@@ -297,7 +298,7 @@ public class RealTimeGetComponent extends SearchComponent
       SchemaField sf = schema.getFieldOrNull(f.name());
       Object val = null;
       if (sf != null) {
-        if (!sf.stored() || schema.isCopyFieldTarget(sf)) continue;
+        if ((!sf.hasDocValues() && !sf.stored()) || schema.isCopyFieldTarget(sf)) continue;
         val = sf.getType().toObject(f);   // object or external string?
       } else {
         val = f.stringValue();
@@ -497,7 +498,7 @@ public class RealTimeGetComponent extends SearchComponent
       rb.rsp.add("doc", docList.size() > 0 ? docList.get(0) : null);
     } else {
       docList.setNumFound(docList.size());
-      rb.rsp.add("response", docList);
+      rb.rsp.addResponse(docList);
     }
   }
 
@@ -536,6 +537,8 @@ public class RealTimeGetComponent extends SearchComponent
     int nVersions = params.getInt("getVersions", -1);
     if (nVersions == -1) return;
 
+    boolean doFingerprint = params.getBool("fingerprint", false);
+
     String sync = params.get("sync");
     if (sync != null) {
       processSync(rb, nVersions, sync);
@@ -545,11 +548,13 @@ public class RealTimeGetComponent extends SearchComponent
     UpdateLog ulog = req.getCore().getUpdateHandler().getUpdateLog();
     if (ulog == null) return;
 
-    UpdateLog.RecentUpdates recentUpdates = ulog.getRecentUpdates();
-    try {
+    try (UpdateLog.RecentUpdates recentUpdates = ulog.getRecentUpdates()) {
       rb.rsp.add("versions", recentUpdates.getVersions(nVersions));
-    } finally {
-      recentUpdates.close();  // cache this somehow?
+    }
+
+    if (doFingerprint) {
+      IndexFingerprint fingerprint = IndexFingerprint.getFingerprint(req.getCore(), Long.MAX_VALUE);
+      rb.rsp.add("fingerprint", fingerprint.toObject());
     }
   }
 
@@ -602,8 +607,7 @@ public class RealTimeGetComponent extends SearchComponent
     long minVersion = Long.MAX_VALUE;
 
     // TODO: get this from cache instead of rebuilding?
-    UpdateLog.RecentUpdates recentUpdates = ulog.getRecentUpdates();
-    try {
+    try (UpdateLog.RecentUpdates recentUpdates = ulog.getRecentUpdates()) {
       for (String versionStr : versions) {
         long version = Long.parseLong(versionStr);
         try {
@@ -613,7 +617,7 @@ public class RealTimeGetComponent extends SearchComponent
           if (version > 0) {
             minVersion = Math.min(minVersion, version);
           }
-          
+
           // TODO: do any kind of validation here?
           updates.add(o);
 
@@ -624,12 +628,10 @@ public class RealTimeGetComponent extends SearchComponent
 
       // Must return all delete-by-query commands that occur after the first add requested
       // since they may apply.
-      updates.addAll( recentUpdates.getDeleteByQuery(minVersion));
+      updates.addAll(recentUpdates.getDeleteByQuery(minVersion));
 
       rb.rsp.add("updates", updates);
 
-    } finally {
-      recentUpdates.close();  // cache this somehow?
     }
   }
 

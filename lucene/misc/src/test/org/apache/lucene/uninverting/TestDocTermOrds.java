@@ -1,5 +1,3 @@
-package org.apache.lucene.uninverting;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.uninverting;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.uninverting;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -439,10 +438,10 @@ public class TestDocTermOrds extends LuceneTestCase {
     doc.add(newStringField("foo", "car", Field.Store.NO));
     iw.addDocument(doc);
     
-    DirectoryReader r1 = DirectoryReader.open(iw, true);
+    DirectoryReader r1 = DirectoryReader.open(iw);
     
     iw.deleteDocuments(new Term("foo", "baz"));
-    DirectoryReader r2 = DirectoryReader.open(iw, true);
+    DirectoryReader r2 = DirectoryReader.open(iw);
     
     FieldCache.DEFAULT.getDocTermOrds(getOnlySegmentReader(r2), "foo", null);
     

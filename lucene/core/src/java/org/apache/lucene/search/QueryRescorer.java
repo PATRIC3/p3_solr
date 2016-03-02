@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -89,7 +89,7 @@ public abstract class QueryRescorer extends Rescorer {
         int targetDoc = docID - docBase;
         int actualDoc = scorer.docID();
         if (actualDoc < targetDoc) {
-          actualDoc = scorer.advance(targetDoc);
+          actualDoc = scorer.iterator().advance(targetDoc);
         }
 
         if (actualDoc == targetDoc) {

@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.taxonomy;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet.taxonomy;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -530,7 +529,7 @@ public class TestTaxonomyFacetCounts extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
     
     FacetsCollector sfc = new FacetsCollector();
@@ -558,7 +557,7 @@ public class TestTaxonomyFacetCounts extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
     
     FacetsCollector sfc = new FacetsCollector();
@@ -586,7 +585,7 @@ public class TestTaxonomyFacetCounts extends FacetTestCase {
     doc.add(new FacetField("b", "1"));
     iw.addDocument(config.build(taxoWriter, doc));
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
 
     final FacetsCollector sfc = new FacetsCollector();
@@ -615,7 +614,7 @@ public class TestTaxonomyFacetCounts extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
     
     FacetsCollector sfc = new FacetsCollector();

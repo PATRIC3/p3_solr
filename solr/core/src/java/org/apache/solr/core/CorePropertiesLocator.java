@@ -1,5 +1,3 @@
-package org.apache.solr.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.core;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,13 +23,18 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 import com.google.common.collect.Lists;
 import org.apache.solr.common.SolrException;
@@ -121,7 +125,10 @@ public class CorePropertiesLocator implements CoresLocator {
     logger.info("Looking for core definitions underneath {}", rootDirectory);
     final List<CoreDescriptor> cds = Lists.newArrayList();
     try {
-      Files.walkFileTree(this.rootDirectory, new SimpleFileVisitor<Path>() {
+      Set<FileVisitOption> options = new HashSet<>();
+      options.add(FileVisitOption.FOLLOW_LINKS);
+      final int maxDepth = 256;
+      Files.walkFileTree(this.rootDirectory, options, maxDepth, new SimpleFileVisitor<Path>() {
         @Override
         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
           if (file.getFileName().toString().equals(PROPERTIES_FILENAME)) {
@@ -159,7 +166,11 @@ public class CorePropertiesLocator implements CoresLocator {
     try (InputStream fis = Files.newInputStream(propertiesFile)) {
       coreProperties.load(new InputStreamReader(fis, StandardCharsets.UTF_8));
       String name = createName(coreProperties, instanceDir);
-      return new CoreDescriptor(cc, name, instanceDir.toString(), coreProperties);
+      Map<String, String> propMap = new HashMap<>();
+      for (String key : coreProperties.stringPropertyNames()) {
+        propMap.put(key, coreProperties.getProperty(key));
+      }
+      return new CoreDescriptor(cc, name, instanceDir, propMap);
     }
     catch (IOException e) {
       logger.error("Couldn't load core descriptor from {}:{}", propertiesFile, e.toString());
@@ -176,9 +187,6 @@ public class CorePropertiesLocator implements CoresLocator {
     Properties p = new Properties();
     p.putAll(cd.getPersistableStandardProperties());
     p.putAll(cd.getPersistableUserProperties());
-    // We don't persist the instance directory, as that's defined by the location
-    // of the properties file.
-    p.remove(CoreDescriptor.CORE_INSTDIR);
     return p;
   }
 

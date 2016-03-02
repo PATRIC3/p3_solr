@@ -1,3 +1,19 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.solr.handler.component;
 
 import java.io.IOException;
@@ -38,24 +54,6 @@ import org.apache.solr.search.SolrReturnFields;
 import org.apache.solr.util.SolrPluginUtils;
 import org.apache.solr.util.plugin.SolrCoreAware;
 
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-
 /**
  * Return term vectors for the documents in a query result set.
  * <p>
@@ -83,8 +81,11 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
 
   public static final String COMPONENT_NAME = "tv";
 
-  protected NamedList initParams;
   public static final String TERM_VECTORS = "termVectors";
+
+  private static final String TV_KEY_WARNINGS = "warnings";
+
+  protected NamedList initParams;
 
   /**
    * Helper method for determining the list of fields that we should 
@@ -147,7 +148,6 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
     String uniqFieldName = null;
     if (keyField != null) {
       uniqFieldName = keyField.getName();
-      termVectors.add("uniqueKeyFieldName", uniqFieldName);
     }
 
     FieldOptions allFields = new FieldOptions();
@@ -182,7 +182,7 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
       //we have specific fields to retrieve, or no fields
       for (String field : fields) {
 
-        // workarround SOLR-3523
+        // workaround SOLR-3523
         if (null == field || "score".equals(field)) continue; 
 
         // we don't want to issue warnings about the uniqueKey field
@@ -226,29 +226,24 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
       }
     } //else, deal with all fields
 
-    // NOTE: currently all typs of warnings are schema driven, and garunteed
+    // NOTE: currently all types of warnings are schema driven, and guaranteed
     // to be consistent across all shards - if additional types of warnings 
-    // are added that might be differnet between shards, finishStage() needs 
+    // are added that might be different between shards, finishStage() needs
     // to be changed to account for that.
-    boolean hasWarnings = false;
     if (!noTV.isEmpty()) {
       warnings.add("noTermVectors", noTV);
-      hasWarnings = true;
     }
     if (!noPos.isEmpty()) {
       warnings.add("noPositions", noPos);
-      hasWarnings = true;
     }
     if (!noOff.isEmpty()) {
       warnings.add("noOffsets", noOff);
-      hasWarnings = true;
     }
     if (!noPay.isEmpty()) {
       warnings.add("noPayloads", noPay);
-      hasWarnings = true;
     }
-    if (hasWarnings) {
-      termVectors.add("warnings", warnings);
+    if (warnings.size() > 0) {
+      termVectors.add(TV_KEY_WARNINGS, warnings);
     }
 
     DocListAndSet listAndSet = rb.getResults();
@@ -442,7 +437,7 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
   public void finishStage(ResponseBuilder rb) {
     if (rb.stage == ResponseBuilder.STAGE_GET_FIELDS) {
       
-      NamedList<Object> termVectors = new NamedList<>();
+      NamedList<Object> termVectorsNL = new NamedList<>();
       Map.Entry<String, Object>[] arr = new NamedList.NamedListEntry[rb.resultIds.size()];
 
       for (ShardRequest sreq : rb.finished) {
@@ -451,24 +446,21 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
         }
         for (ShardResponse srsp : sreq.responses) {
           NamedList<Object> nl = (NamedList<Object>)srsp.getSolrResponse().getResponse().get(TERM_VECTORS);
-          for (int i=0; i < nl.size(); i++) {
-            String key = nl.getName(i);
-            ShardDoc sdoc = rb.resultIds.get(key);
-            if (null == sdoc) {
-              // metadata, only need from one node, leave in order
-              if (termVectors.indexOf(key,0) < 0) {
-                termVectors.add(key, nl.getVal(i));
-              }
-            } else {
-              int idx = sdoc.positionInResponse;
-              arr[idx] = new NamedList.NamedListEntry<>(key, nl.getVal(i));
-            }
+
+          // Add metadata (that which isn't a uniqueKey value):
+          Object warningsNL = nl.get(TV_KEY_WARNINGS);
+          // assume if that if warnings is already present; we don't need to merge.
+          if (warningsNL != null && termVectorsNL.indexOf(TV_KEY_WARNINGS, 0) < 0) {
+            termVectorsNL.add(TV_KEY_WARNINGS, warningsNL);
           }
+
+          // UniqueKey data
+          SolrPluginUtils.copyNamedListIntoArrayByDocPosInResponse(nl, rb.resultIds, arr);
         }
       }
       // remove nulls in case not all docs were able to be retrieved
-      termVectors.addAll(SolrPluginUtils.removeNulls(arr, new NamedList<Object>()));
-      rb.rsp.add(TERM_VECTORS, termVectors);
+      SolrPluginUtils.removeNulls(arr, termVectorsNL);
+      rb.rsp.add(TERM_VECTORS, termVectorsNL);
     }
   }
 

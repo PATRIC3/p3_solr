@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import javax.servlet.Filter;
 import java.io.File;
@@ -195,7 +194,7 @@ public class MiniSolrCloudCluster {
     this.zkServer = zkTestServer;
 
     try(SolrZkClient zkClient = new SolrZkClient(zkServer.getZkHost(),
-        AbstractZkTestCase.TIMEOUT, 45000, null)) {
+        AbstractZkTestCase.TIMEOUT, AbstractZkTestCase.TIMEOUT, null)) {
       zkClient.makePath("/solr/solr.xml", solrXml.getBytes(Charset.defaultCharset()), true);
       if (jettyConfig.sslConfig != null && jettyConfig.sslConfig.isSSLMode()) {
         zkClient.makePath("/solr" + ZkStateReader.CLUSTER_PROPS, "{'urlScheme':'https'}".getBytes(Charsets.UTF_8), true);
@@ -366,7 +365,7 @@ public class MiniSolrCloudCluster {
   
   public void uploadConfigDir(File configDir, String configName) throws IOException, KeeperException, InterruptedException {
     try(SolrZkClient zkClient = new SolrZkClient(zkServer.getZkAddress(),
-        AbstractZkTestCase.TIMEOUT, 45000, null)) {
+        AbstractZkTestCase.TIMEOUT, AbstractZkTestCase.TIMEOUT, null)) {
       ZkConfigManager manager = new ZkConfigManager(zkClient);
       manager.uploadConfigDir(configDir.toPath(), configName);
     }

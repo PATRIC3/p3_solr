@@ -1,5 +1,3 @@
-package org.apache.solr.update.processor;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,9 @@ package org.apache.solr.update.processor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.update.processor;
+
+import static org.apache.solr.update.processor.DistributingUpdateProcessorFactory.DISTRIB_UPDATE_PARAM;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
@@ -83,15 +84,15 @@ import org.apache.solr.update.UpdateHandler;
 import org.apache.solr.update.UpdateLog;
 import org.apache.solr.update.VersionBucket;
 import org.apache.solr.update.VersionInfo;
+import org.apache.solr.util.TestInjection;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.apache.solr.update.processor.DistributingUpdateProcessorFactory.DISTRIB_UPDATE_PARAM;
-
 // NOT mt-safe... create a new processor for each add thread
 // TODO: we really should not wait for distrib after local? unless a certain replication factor is asked for
 public class DistributedUpdateProcessor extends UpdateRequestProcessor {
+  
   public static final String DISTRIB_FROM_SHARD = "distrib.from.shard";
   public static final String DISTRIB_FROM_COLLECTION = "distrib.from.collection";
   public static final String DISTRIB_FROM_PARENT = "distrib.from.parent";
@@ -346,6 +347,9 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
           // locally we think we are leader but the request says it came FROMLEADER
           // that could indicate a problem, let the full logic below figure it out
         } else {
+
+          assert TestInjection.injectFailReplicaRequests();
+          
           isLeader = false;     // we actually might be the leader, but we don't want leader-logic for these types of updates anyway.
           forwardToLeader = false;
           return nodes;
@@ -654,6 +658,9 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
 
   @Override
   public void processAdd(AddUpdateCommand cmd) throws IOException {
+    
+    assert TestInjection.injectFailUpdateRequests();
+    
     updateCommand = cmd;
 
     if (zkEnabled) {
@@ -1117,6 +1124,9 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
 
   @Override
   public void processDelete(DeleteUpdateCommand cmd) throws IOException {
+    
+    assert TestInjection.injectFailUpdateRequests();
+    
     updateCommand = cmd;
 
     if (!cmd.isDeleteById()) {
@@ -1572,6 +1582,9 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
 
   @Override
   public void processCommit(CommitUpdateCommand cmd) throws IOException {
+    
+    assert TestInjection.injectFailUpdateRequests();
+    
     updateCommand = cmd;
     List<Node> nodes = null;
     boolean singleLeader = false;

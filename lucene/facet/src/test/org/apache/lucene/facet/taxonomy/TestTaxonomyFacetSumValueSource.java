@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.taxonomy;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet.taxonomy;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -265,7 +264,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
     
     FacetsCollector fc = new FacetsCollector(true);
@@ -296,7 +295,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
 
     FacetsCollector sfc = new FacetsCollector();
@@ -323,7 +322,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
 
     ValueSource valueSource = new ValueSource() {
@@ -377,7 +376,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
 
     ValueSource valueSource = new LongFieldSource("price");
@@ -408,7 +407,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
     
     FacetsCollector fc = new FacetsCollector(true);

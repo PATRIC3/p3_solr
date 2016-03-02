@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -190,6 +190,60 @@ public class TestBooleanScorer extends LuceneTestCase {
     weight = searcher.createNormalizedWeight(query, true);
     scorer = ((BooleanWeight) weight).booleanScorer(ctx);
     assertTrue(scorer instanceof BooleanTopLevelScorers.BoostedBulkScorer);
+
+    w.close();
+    reader.close();
+    dir.close();
+  }
+
+  public void testOptimizeProhibitedClauses() throws IOException {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    doc.add(new StringField("foo", "bar", Store.NO));
+    doc.add(new StringField("foo", "baz", Store.NO));
+    w.addDocument(doc);
+    doc = new Document();
+    doc.add(new StringField("foo", "baz", Store.NO));
+    w.addDocument(doc);
+    w.forceMerge(1);
+    IndexReader reader = w.getReader();
+    IndexSearcher searcher = new IndexSearcher(reader);
+    searcher.setQueryCache(null); // so that weights are not wrapped
+    final LeafReaderContext ctx = reader.leaves().get(0);
+
+    Query query = new BooleanQuery.Builder()
+      .add(new TermQuery(new Term("foo", "baz")), Occur.SHOULD)
+      .add(new TermQuery(new Term("foo", "bar")), Occur.MUST_NOT)
+      .build();
+    Weight weight = searcher.createNormalizedWeight(query, true);
+    BulkScorer scorer = ((BooleanWeight) weight).booleanScorer(ctx);
+    assertTrue(scorer instanceof ReqExclBulkScorer);
+
+    query = new BooleanQuery.Builder()
+        .add(new TermQuery(new Term("foo", "baz")), Occur.SHOULD)
+        .add(new MatchAllDocsQuery(), Occur.SHOULD)
+        .add(new TermQuery(new Term("foo", "bar")), Occur.MUST_NOT)
+        .build();
+    weight = searcher.createNormalizedWeight(query, true);
+    scorer = ((BooleanWeight) weight).booleanScorer(ctx);
+    assertTrue(scorer instanceof ReqExclBulkScorer);
+
+    query = new BooleanQuery.Builder()
+        .add(new TermQuery(new Term("foo", "baz")), Occur.MUST)
+        .add(new TermQuery(new Term("foo", "bar")), Occur.MUST_NOT)
+        .build();
+    weight = searcher.createNormalizedWeight(query, true);
+    scorer = ((BooleanWeight) weight).booleanScorer(ctx);
+    assertTrue(scorer instanceof ReqExclBulkScorer);
+
+    query = new BooleanQuery.Builder()
+        .add(new TermQuery(new Term("foo", "baz")), Occur.FILTER)
+        .add(new TermQuery(new Term("foo", "bar")), Occur.MUST_NOT)
+        .build();
+    weight = searcher.createNormalizedWeight(query, true);
+    scorer = ((BooleanWeight) weight).booleanScorer(ctx);
+    assertTrue(scorer instanceof ReqExclBulkScorer);
 
     w.close();
     reader.close();

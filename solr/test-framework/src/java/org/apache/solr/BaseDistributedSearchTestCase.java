@@ -1,5 +1,3 @@
-package org.apache.solr;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr;
 
 import junit.framework.Assert;
 
@@ -779,10 +778,11 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
 
     String cmp;
     int f = flags(handle, "maxScore");
-    if ((f & SKIPVAL) == 0) {
+    if (f == 0) {
       cmp = compare(a.getMaxScore(), b.getMaxScore(), 0, handle);
       if (cmp != null) return ".maxScore" + cmp;
-    } else {
+    } else if ((f & SKIP) == 0) { // so we skip val but otherwise both should be present
+      assert (f & SKIPVAL) != 0;
       if (b.getMaxScore() != null) {
         if (a.getMaxScore() == null) {
           return ".maxScore missing";
@@ -962,7 +962,11 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
         createServers(numShards);
         RandVal.uniqueValues = new HashSet(); //reset random values
         statement.evaluate();
-        destroyServers();
+        try {
+          destroyServers();
+        } catch (Throwable t) {
+          log.error("Error while shutting down servers", t);
+        }
       }
     }
 

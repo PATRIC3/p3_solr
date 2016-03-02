@@ -1,5 +1,3 @@
-package org.apache.lucene.search.join;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.join;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.join;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -27,9 +26,9 @@ import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.search.DocIdSet;
-import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.BitSet;
@@ -68,12 +67,12 @@ public class QueryBitSetProducer implements BitSetProducer {
       final IndexSearcher searcher = new IndexSearcher(topLevelContext);
       searcher.setQueryCache(null);
       final Weight weight = searcher.createNormalizedWeight(query, false);
-      final DocIdSetIterator it = weight.scorer(context);
+      final Scorer s = weight.scorer(context);
 
-      if (it == null) {
+      if (s == null) {
         docIdSet = DocIdSet.EMPTY;
       } else {
-        docIdSet = new BitDocIdSet(BitSet.of(it, context.reader().maxDoc()));
+        docIdSet = new BitDocIdSet(BitSet.of(s.iterator(), context.reader().maxDoc()));
       }
       cache.put(key, docIdSet);
     }

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.text.DecimalFormat;
@@ -179,7 +179,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     final Weight dw = s.createNormalizedWeight(dq, true);
     LeafReaderContext context = (LeafReaderContext)s.getTopReaderContext();
     final Scorer ds = dw.scorer(context);
-    final boolean skipOk = ds.advance(3) != DocIdSetIterator.NO_MORE_DOCS;
+    final boolean skipOk = ds.iterator().advance(3) != DocIdSetIterator.NO_MORE_DOCS;
     if (skipOk) {
       fail("firsttime skipTo found a match? ... "
           + r.document(ds.docID()).get("id"));
@@ -196,7 +196,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     LeafReaderContext context = (LeafReaderContext)s.getTopReaderContext();
     final Scorer ds = dw.scorer(context);
     assertTrue("firsttime skipTo found no match",
-        ds.advance(3) != DocIdSetIterator.NO_MORE_DOCS);
+        ds.iterator().advance(3) != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals("found wrong docid", "d4", r.document(ds.docID()).get("id"));
   }
   

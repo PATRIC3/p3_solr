@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spans;
+
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -194,7 +194,7 @@ public class TestNearSpansOrdered extends LuceneTestCase {
     IndexReaderContext topReaderContext = searcher.getTopReaderContext();
     LeafReaderContext leave = topReaderContext.leaves().get(0);
     Scorer s = w.scorer(leave);
-    assertEquals(1, s.advance(1));
+    assertEquals(1, s.iterator().advance(1));
   }
 
   public void testOverlappedOrderedSpan() throws Exception {
@@ -251,7 +251,7 @@ public class TestNearSpansOrdered extends LuceneTestCase {
     Explanation e = searcher.explain(q, 1);
     assertTrue("Scorer explanation value for doc#1 isn't positive: "
                + e.toString(),
-               0.0f < e.getValue());
+               0.0f <= e.getValue());
   }
 
   public void testGaps() throws Exception {

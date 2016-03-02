@@ -1,5 +1,3 @@
-package org.apache.solr.search.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.facet;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -34,14 +33,17 @@ import org.apache.lucene.search.Query;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.handler.component.ResponseBuilder;
+import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.BitDocSet;
 import org.apache.solr.search.DocIterator;
 import org.apache.solr.search.DocSet;
 import org.apache.solr.search.QParser;
+import org.apache.solr.search.QueryContext;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.SyntaxError;
+import org.apache.solr.util.RTimer;
 
 public class FacetProcessor<FacetRequestT extends FacetRequest>  {
   protected SimpleOrderedMap<Object> response;
@@ -59,6 +61,26 @@ public class FacetProcessor<FacetRequestT extends FacetRequest>  {
 
   public void process() throws IOException {
     handleDomainChanges();
+  }
+  
+  /** factory method for invoking json facet framework as whole */
+  public static FacetProcessor<?> createProcessor(SolrQueryRequest req, 
+      Map<String, Object> params, DocSet docs){
+    FacetParser parser = new FacetTopParser(req);
+    FacetRequest facetRequest = null;
+    try {
+      facetRequest = parser.parse(params);
+    } catch (SyntaxError syntaxError) {
+      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, syntaxError);
+    }
+
+    FacetContext fcontext = new FacetContext();
+    fcontext.base = docs;
+    fcontext.req = req;
+    fcontext.searcher = req.getSearcher();
+    fcontext.qcontext = QueryContext.newContext(fcontext.searcher);
+
+    return facetRequest.createFacetProcessor(fcontext);
   }
 
   protected void handleDomainChanges() throws IOException {
@@ -219,7 +241,24 @@ public class FacetProcessor<FacetRequestT extends FacetRequest>  {
       // make a new context for each sub-facet since they can change the domain
       FacetContext subContext = fcontext.sub(filter, domain);
       FacetProcessor subProcessor = sub.getValue().createFacetProcessor(subContext);
-      subProcessor.process();
+      if (fcontext.getDebugInfo() != null) {   // if fcontext.debugInfo != null, it means rb.debug() == true
+        FacetDebugInfo fdebug = new FacetDebugInfo();
+        subContext.setDebugInfo(fdebug);
+        fcontext.getDebugInfo().addChild(fdebug);
+        
+        fdebug.setReqDescription(sub.getValue().getFacetDescription());
+        fdebug.setProcessor(subProcessor.getClass().getSimpleName());
+        if (subContext.filter != null) fdebug.setFilter(subContext.filter.toString());
+      
+        final RTimer timer = new RTimer();
+        subProcessor.process();
+        long timeElapsed = (long) timer.getTime();
+        fdebug.setElapse(timeElapsed);
+        fdebug.putInfoItem("domainSize", (long)subContext.base.size());
+      } else {
+        subProcessor.process();
+      }
+
       response.add( sub.getKey(), subProcessor.getResponse() );
     }
   }

@@ -1,5 +1,3 @@
-package org.apache.lucene;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,8 +57,8 @@ public class TestSearch extends LuceneTestCase {
         
         ScoreDoc[] hits = searcher.search(q, 1000).scoreDocs;
         assertEquals(1, hits.length);
-        assertTrue("score is not negative: " + hits[0].score,
-                   hits[0].score < 0);
+        assertTrue("score is positive: " + hits[0].score,
+                   hits[0].score <= 0);
 
         Explanation explain = searcher.explain(q, hits[0].doc);
         assertEquals("score doesn't match explanation",

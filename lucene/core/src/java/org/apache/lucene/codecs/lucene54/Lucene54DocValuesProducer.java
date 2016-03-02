@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.lucene54;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs.lucene54;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.lucene54;
+
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -356,7 +356,7 @@ final class Lucene54DocValuesProducer extends DocValuesProducer implements Close
         break;
       case MONOTONIC_COMPRESSED:
         final int blockShift = meta.readVInt();
-        entry.monotonicMeta = DirectMonotonicReader.loadMeta(meta, maxDoc, blockShift);
+        entry.monotonicMeta = DirectMonotonicReader.loadMeta(meta, maxDoc + 1, blockShift);
         ramBytesUsed.addAndGet(entry.monotonicMeta.ramBytesUsed());
         directAddressesMeta.put(info.name, entry.monotonicMeta);
         break;

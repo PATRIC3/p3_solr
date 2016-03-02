@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
 import java.io.Closeable;
@@ -46,28 +45,15 @@ import org.apache.lucene.document.LazyDocument;
 import org.apache.lucene.document.LongField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.ExitableDirectoryReader;
-import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FieldInfos;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.index.LeafReader;
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.MultiPostingsEnum;
-import org.apache.lucene.index.PostingsEnum;
-import org.apache.lucene.index.SlowCompositeReaderWrapper;
-import org.apache.lucene.index.StoredFieldVisitor;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.TermContext;
-import org.apache.lucene.index.Terms;
-import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.index.*;
 import org.apache.lucene.search.*;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.uninverting.UninvertingReader;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.NumericUtils;
+import org.apache.solr.common.SolrDocumentBase;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.params.ModifiableSolrParams;
@@ -82,8 +68,15 @@ import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.schema.EnumField;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
+import org.apache.solr.schema.StrField;
+import org.apache.solr.schema.TrieDateField;
+import org.apache.solr.schema.TrieDoubleField;
+import org.apache.solr.schema.TrieFloatField;
+import org.apache.solr.schema.TrieIntField;
+import org.apache.solr.schema.TrieLongField;
 import org.apache.solr.search.facet.UnInvertedField;
 import org.apache.solr.search.stats.StatsSource;
 import org.apache.solr.update.SolrIndexConfig;
@@ -142,6 +135,17 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   private final FieldInfos fieldInfos;
   // TODO: do we need this separate set of field names? we can just use the fieldinfos?
   private final Collection<String> fieldNames;
+
+  /**
+   * Contains the names/patterns of all docValues=true,stored=false fields in the schema
+   */
+  private final Set<String> allNonStoredDVs;
+
+  /**
+   * Contains the names/patterns of all docValues=true,stored=false,useDocValuesAsStored=true fields in the schema
+   */
+  private final Set<String> nonStoredDVsUsedAsStored;
+
   private Collection<String> storedHighlightFieldNames;
   private DirectoryFactory directoryFactory;
 
@@ -183,9 +187,9 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   private void buildAndRunCollectorChain(QueryResult qr, Query query,
       Collector collector, QueryCommand cmd, DelegatingCollector postFilter) throws IOException {
     
-    final boolean terminateEarly = (cmd.getFlags() & TERMINATE_EARLY) == TERMINATE_EARLY;
+    final boolean terminateEarly = cmd.getTerminateEarly();
     if (terminateEarly) {
-      collector = new EarlyTerminatingCollector(collector, cmd.len);
+      collector = new EarlyTerminatingCollector(collector, cmd.getLen());
     }
 
     final long timeAllowed = cmd.getTimeAllowed();
@@ -296,10 +300,22 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     }
 
     fieldNames = new HashSet<>();
+    Set<String> nonStoredDVsUsedAsStored = new HashSet<>();
+    Set<String> allNonStoredDVs = new HashSet<>();
     fieldInfos = leafReader.getFieldInfos();
     for(FieldInfo fieldInfo : fieldInfos) {
       fieldNames.add(fieldInfo.name);
+      SchemaField schemaField = schema.getFieldOrNull(fieldInfo.name);
+      if (schemaField != null && !schemaField.stored() && schemaField.hasDocValues()) {
+        if (schemaField.useDocValuesAsStored()) {
+          nonStoredDVsUsedAsStored.add(fieldInfo.name);
+        }
+        allNonStoredDVs.add(fieldInfo.name);
+      }
     }
+
+    this.nonStoredDVsUsedAsStored = Collections.unmodifiableSet(nonStoredDVsUsedAsStored);
+    this.allNonStoredDVs = Collections.unmodifiableSet(allNonStoredDVs);
 
     // We already have our own filter cache
     setQueryCache(null);
@@ -752,6 +768,88 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
   }
 
   /**
+   * This will fetch and add the docValues fields to a given SolrDocument/SolrInputDocument
+   *
+   * @param doc    A SolrDocument or SolrInputDocument instance where docValues will be added
+   * @param docid  The lucene docid of the document to be populated
+   * @param fields The list of docValues fields to be decorated
+   */
+  @SuppressWarnings("deprecation")
+  public void decorateDocValueFields(@SuppressWarnings("rawtypes") SolrDocumentBase doc, int docid,
+                                     Set<String> fields) throws IOException {
+    for (String fieldName : fields) {
+      SchemaField schemaField = schema.getFieldOrNull(fieldName);
+      if (schemaField == null || !schemaField.hasDocValues() || doc.containsKey(fieldName)) {
+        log.warn("Couldn't decorate docValues for field: {}, schemaField: {}", fieldName, schemaField);
+        continue;
+      }
+
+      if (schemaField.multiValued()) {
+        SortedSetDocValues values = getLeafReader().getSortedSetDocValues(fieldName);
+        if (values != null && values.getValueCount() > 0 &&
+            DocValues.getDocsWithField(leafReader, fieldName).get(docid)) {
+          values.setDocument(docid);
+          List<Object> outValues = new LinkedList<Object>();
+          for (long ord = values.nextOrd(); ord != SortedSetDocValues.NO_MORE_ORDS; ord = values.nextOrd()) {
+            if (schemaField.getType() instanceof TrieIntField) {
+              outValues.add(NumericUtils.prefixCodedToInt(values.lookupOrd(ord)));
+            } else if (schemaField.getType() instanceof TrieLongField) {
+              outValues.add(NumericUtils.prefixCodedToLong(values.lookupOrd(ord)));
+            } else if (schemaField.getType() instanceof TrieFloatField) {
+              outValues.add(NumericUtils.sortableIntToFloat(NumericUtils.prefixCodedToInt(values.lookupOrd(ord))));
+            } else if (schemaField.getType() instanceof TrieDoubleField) {
+              outValues.add(NumericUtils.sortableLongToDouble(NumericUtils.prefixCodedToLong(values.lookupOrd(ord))));
+            } else if (schemaField.getType() instanceof TrieDateField) {
+              outValues.add(new Date(NumericUtils.prefixCodedToLong(values.lookupOrd(ord))));
+            } else if (schemaField.getType() instanceof EnumField) {
+              outValues.add(((EnumField) schemaField.getType()).intValueToStringValue(
+                  NumericUtils.prefixCodedToInt(values.lookupOrd(ord))));
+            } else if (schemaField.getType() instanceof StrField) {
+              outValues.add(values.lookupOrd(ord).utf8ToString());
+            }
+          }
+          if (outValues.size() > 0)
+            doc.addField(fieldName, outValues);
+        }
+      } else {
+        DocValuesType dvType = fieldInfos.fieldInfo(fieldName).getDocValuesType();
+        switch (dvType) {
+          case NUMERIC:
+            if (DocValues.getDocsWithField(leafReader, fieldName).get(docid)) {
+              NumericDocValues ndv = leafReader.getNumericDocValues(fieldName);
+              Object val = ndv.get(docid);
+              if (schemaField.getType() instanceof TrieIntField) {
+                val = ((Long) val).intValue();
+              } else if (schemaField.getType() instanceof TrieFloatField) {
+                val = NumericUtils.sortableIntToFloat(((Long) val).intValue());
+              } else if (schemaField.getType() instanceof TrieDoubleField) {
+                val = NumericUtils.sortableLongToDouble((long) val);
+              } else if (schemaField.getType() instanceof TrieDateField) {
+                val = new Date((long) val);
+              } else if (schemaField.getType() instanceof EnumField) {
+                val = ((EnumField) schemaField.getType()).intValueToStringValue(((Long) val).intValue());
+              }
+              doc.addField(fieldName, val);
+            }
+            break;
+          case BINARY:
+            if (DocValues.getDocsWithField(leafReader, fieldName).get(docid)) {
+              BinaryDocValues bdv = leafReader.getBinaryDocValues(fieldName);
+              doc.addField(fieldName, bdv.get(docid));
+            }
+            break;
+          case SORTED:
+            SortedDocValues sdv = leafReader.getSortedDocValues(fieldName);
+            if (sdv.getOrd(docid) >= 0) {
+              doc.addField(fieldName, sdv.get(docid).utf8ToString());
+            }
+            break;
+        }
+      }
+    }
+  }
+
+  /**
    * Takes a list of docs (the doc ids actually), and reads them into an array 
    * of Documents.
    */
@@ -767,6 +865,17 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     for (int i=0; i<docs.length; i++) {
       docs[i] = doc(iter.nextDoc(), fields);
     }
+  }
+
+  /**
+   * Returns an unmodifiable set of non-stored docValues field names.
+   *
+   * @param onlyUseDocValuesAsStored If false, returns all non-stored docValues.
+   *                                 If true, returns only those non-stored docValues
+   *                                 which have the {@link SchemaField#useDocValuesAsStored()} flag true.
+   */
+  public Set<String> getNonStoredDVs(boolean onlyUseDocValuesAsStored) {
+    return onlyUseDocValuesAsStored ? nonStoredDVsUsedAsStored : allNonStoredDVs;
   }
 
   /* ********************** end document retrieval *************************/
@@ -953,6 +1062,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     public DocSet answer;  // the answer, if non-null
     public Filter filter;
     public DelegatingCollector postFilter;
+    public boolean hasDeletedDocs;  // true if it's possible that filter may match deleted docs
   }
 
 
@@ -1018,7 +1128,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
 
     for (final LeafReaderContext leaf : leafContexts) {
       final LeafReader reader = leaf.reader();
-      final Bits liveDocs = reader.getLiveDocs();   // TODO: the filter may already only have liveDocs...
+      Bits liveDocs = reader.getLiveDocs();
       DocIdSet idSet = null;
       if (pf.filter != null) {
         idSet = pf.filter.getDocIdSet(leaf, liveDocs);
@@ -1028,21 +1138,30 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       if (idSet != null) {
         idIter = idSet.iterator();
         if (idIter == null) continue;
+        if (!pf.hasDeletedDocs) liveDocs = null; // no need to check liveDocs
       }
 
       final LeafCollector leafCollector = collector.getLeafCollector(leaf);
       int max = reader.maxDoc();
 
       if (idIter == null) {
-        for (int docid = 0; docid<max; docid++) {
+        for (int docid = 0; docid < max; docid++) {
           if (liveDocs != null && !liveDocs.get(docid)) continue;
           leafCollector.collect(docid);
         }
       } else {
-        for (int docid = -1; (docid = idIter.advance(docid+1)) < max; ) {
-          leafCollector.collect(docid);
+        if (liveDocs != null) {
+          for (int docid = -1; (docid = idIter.advance(docid + 1)) < max; ) {
+            if (liveDocs.get(docid))
+              leafCollector.collect(docid);
+          }
+        } else {
+          for (int docid = -1; (docid = idIter.advance(docid + 1)) < max;) {
+            leafCollector.collect(docid);
+          }
         }
       }
+
     }
 
     if(collector instanceof DelegatingCollector) {
@@ -1144,6 +1263,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
         weights.add(createNormalizedWeight(qq, true));
       }
       pf.filter = new FilterImpl(answer, weights);
+      pf.hasDeletedDocs = (answer == null);  // if all clauses were uncached, the resulting filter may match deleted docs
     } else {
       if (postFilters == null) {
         if (answer == null) {
@@ -1357,7 +1477,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     return qr.getDocList();
   }
 
-  static final int NO_CHECK_QCACHE       = 0x80000000;
+  public static final int NO_CHECK_QCACHE       = 0x80000000;
   public static final int GET_DOCSET            = 0x40000000;
   static final int NO_CHECK_FILTERCACHE  = 0x20000000;
   static final int NO_SET_QCACHE         = 0x10000000;
@@ -2422,6 +2542,11 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     public QueryCommand setNeedDocSet(boolean needDocSet) {
       return needDocSet ? setFlags(GET_DOCSET) : clearFlags(GET_DOCSET);
     }
+
+    public boolean getTerminateEarly() { return (flags & TERMINATE_EARLY) != 0; }
+    public QueryCommand setTerminateEarly(boolean segmentTerminateEarly) {
+      return segmentTerminateEarly ? setFlags(TERMINATE_EARLY) : clearFlags(TERMINATE_EARLY);
+    }
   }
 
 
@@ -2511,7 +2636,7 @@ class FilterImpl extends Filter {
       for (Weight w : weights) {
         Scorer scorer = w.scorer(context);
         if (scorer == null) return null;
-        iterators.add(scorer);
+        iterators.add(scorer.iterator());
       }
       if (iterators.size()==0) return null;
       if (iterators.size()==1) return iterators.get(0);

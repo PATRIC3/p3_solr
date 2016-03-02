@@ -87,23 +87,13 @@
   <property name="ivy.resolution-cache.dir" location="${common.build.dir}/ivy-resolution-cache"/>
   <property name="ivy.lock-strategy" value="artifact-lock"/>
 
-  <property name="junit.jar" value="junit-4.10.jar"/>
-  <property name="junit-location.jar" location="${common.dir}/test-framework/lib/${junit.jar}"/>
-
   <property name="local.caches" location="${common.dir}/../.caches" />
   <property name="tests.cachedir"  location="${local.caches}/test-stats" />
   <property name="tests.cachefile" location="${common.dir}/tools/junit4/cached-timehints.txt" />
   <property name="tests.cachefilehistory" value="10" />
 
   <path id="junit-path">
-    <fileset dir="${common.dir}/test-framework/lib">
-      <include name="junit-*.jar" />
-      <include name="randomizedtesting-runner-*.jar" />
-    </fileset>
-  </path>
-
-  <path id="ant-path">
-    <fileset dir="${common.dir}/test-framework/lib" includes="ant-*.jar"/>
+    <fileset dir="${common.dir}/test-framework/lib"/>
   </path>
 
   <!-- default arguments to pass to JVM executing tests -->
@@ -248,14 +238,7 @@
 
   <property name="manifest.file" location="${build.dir}/MANIFEST.MF"/>
 
-  <!-- 
-    we attempt to exec svnversion to get details build information
-    for jar manifests.  this property can be set at runtime to an
-    explicit path as needed, or ant will just try to find it in the
-    default PATH. (this is useful for Hudson)
-  -->
-  <property name="svnversion.exe" value="svnversion" />
-  <property name="svn.exe" value="svn" />
+  <property name="git.exe" value="git" />
   <property name="perl.exe" value="perl" />
   
   <property name="python.exe" value="python" />
@@ -295,6 +278,7 @@
     <propertyref regex=".*\.loaded$$"/>
     <propertyref name="lucene.javadoc.url"/><!-- for Solr -->
     <propertyref name="tests.totals.tmpfile" />
+    <propertyref name="git-autoclean.disabled"/>
   </propertyset>
 
   <patternset id="lucene.local.src.package.patterns"
@@ -339,13 +323,17 @@
     We want to detect here only a limited set of versions and placed in normalized form in ${build.java.runtime},
     every other version is normalized to "unknown":
     - To define a target to be only run on a specific version, add <equals/> condition to one of the supplied versions.
-    - To explicitely exclude specific versions (and unknown ones), add a condition to disallow "unknown" and some versions like "1.9"!
+    - To explicitely exclude specific versions (and unknown ones), add a condition to disallow "unknown" and some versions like "1.9"/"9"!
+    - For Java 9, be sure to exclude both in custom checks: "9" and "1.9"
+    
+    TODO: Find a better solution in Ant without scripting to check supported Java versions!
    -->
   <condition property="build.java.runtime" value="${-cleaned.specification.version}" else="unknown">
     <or>
       <equals arg1="${-cleaned.specification.version}" arg2="1.7"/>
       <equals arg1="${-cleaned.specification.version}" arg2="1.8"/>
       <equals arg1="${-cleaned.specification.version}" arg2="1.9"/>
+      <equals arg1="${-cleaned.specification.version}" arg2="9"/>
     </or>
   </condition>
   
@@ -410,9 +398,41 @@
     <delete file="velocity.log"/>
   </target>
 
-  <target name="init" depends="resolve">
+  <target name="init" depends="git-autoclean,resolve">
     <!-- currently empty -->
   </target>
+  
+  <!-- Keep track of GIT branch and do "ant clean" on root folder when changed, to prevent bad builds... -->
+  
+  <property name="gitHeadFile" location="${common.dir}/../.git/HEAD"/>
+  <property name="gitHeadLocal" location="${common.dir}/build/git-HEAD"/>
+  <available file="${gitHeadFile}" property="isGitCheckout"/>
+
+  <target name="git-autoclean" depends="-check-git-state,-git-cleanroot,-copy-git-state"/>
+  
+  <target name="-check-git-state" if="isGitCheckout" unless="git-autoclean.disabled">
+    <condition property="gitHeadChanged">
+      <and>
+        <available file="${gitHeadLocal}"/>
+        <not><filesmatch file1="${gitHeadFile}" file2="${gitHeadLocal}"/></not>
+      </and>
+    </condition>
+  </target>
+
+  <target name="-git-cleanroot" depends="-check-git-state" if="gitHeadChanged" unless="git-autoclean.disabled">
+    <echo message="Git branch changed, cleaning up for sane build..."/>
+    <ant dir="${common.dir}/.." target="clean" inheritall="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+    </ant>
+  </target>
+  
+  <target name="-copy-git-state" if="isGitCheckout" unless="git-autoclean.disabled">
+    <mkdir dir="${common.dir}/build"/>
+    <copy file="${gitHeadFile}" tofile="${gitHeadLocal}"/>
+    <property name="git-autoclean.disabled" value="true"/>
+  </target>
+
+  <!-- IVY stuff -->
 
   <target name="ivy-configure">
      <!-- [DW] ivy loses its configuration for some reason. cannot explain this. if
@@ -639,15 +659,22 @@
     <attribute name="manifest.file" default="${manifest.file}"/>
     <element name="additional-manifest-attributes" optional="true"/>
     <sequential>
-      <local name="-svnversion-raw"/>
-      <local name="svnversion"/>
+      <local name="-checkoutid"/>
+      <local name="-giterr"/>
+      <local name="checkoutid"/>
       
-      <!-- If possible, include the svnversion -->
-      <exec dir="." executable="${svnversion.exe}" outputproperty="-svnversion-raw" failifexecutionfails="false"/>
-      <condition property="svnversion" value="${-svnversion-raw}" else="unknown">
-        <matches pattern="^\s*[\d:MSP]+\s*$" string="${-svnversion-raw}" casesensitive="true"/>
+      <!-- If possible, include the GIT hash into manifest: -->
+      <exec dir="." executable="${git.exe}" outputproperty="-checkoutid" errorproperty="-giterr" failifexecutionfails="false">
+        <arg value="log"/>
+        <arg value="--format=%H"/>
+        <arg value="-n"/>
+        <arg value="1"/>
+      </exec>
+      <condition property="checkoutid" value="${-checkoutid}" else="unknown">
+        <matches pattern="^[0-9a-z]+$" string="${-checkoutid}" casesensitive="false" multiline="true"/>
       </condition>
 
+      <!-- create manifest: -->
       <manifest file="@{manifest.file}">
         <!--
         http://java.sun.com/j2se/1.5.0/docs/guide/jar/jar.html#JAR%20Manifest
@@ -678,7 +705,7 @@
         <attribute name="Implementation-Title" value="@{implementation.title}"/>
         <!-- impl version can be any string -->
         <attribute name="Implementation-Version"
-                   value="${version} ${svnversion} - ${user.name} - ${DSTAMP} ${TSTAMP}"/>
+                   value="${version} ${checkoutid} - ${user.name} - ${DSTAMP} ${TSTAMP}"/>
         <attribute name="Implementation-Vendor"
                    value="The Apache Software Foundation"/>
         <attribute name="X-Compile-Source-JDK" value="${javac.source}"/>
@@ -1385,16 +1412,14 @@ ${tests-output}/junit4-*.suites     - per-JVM executed suites
 
   <target name="install-junit4-taskdef" depends="ivy-configure">
     <!-- JUnit4 taskdef. -->
-    <ivy:resolve   file="${common.dir}/test-framework/ivy.xml" type="jar" log="quiet" />
-    <ivy:cachepath file="${common.dir}/test-framework/ivy.xml" conf="junit4-stdalone" type="jar" transitive="false" pathid="path.junit4" />
+    <ivy:cachepath organisation="com.carrotsearch.randomizedtesting" module="junit4-ant" revision="${/com.carrotsearch.randomizedtesting/junit4-ant}"
+                   type="jar" inline="true" log="download-only" pathid="path.junit4" />
 
     <taskdef uri="antlib:com.carrotsearch.junit4">
       <classpath refid="path.junit4" />
     </taskdef>
   </target>
 
-  <!-- note: order here is important, the taskdef depends on test-framework
-       jars so we just order it after compile-test to ensure that -->
   <target name="test" depends="clover,compile-test,install-junit4-taskdef,validate,-init-totals,-test,-check-totals" description="Runs unit tests"/>
   <target name="beast" depends="clover,compile-test,install-junit4-taskdef,validate,-init-totals,-beast,-check-totals" description="Runs unit tests in a loop (-Dbeast.iters=n)"/>
 
@@ -1568,7 +1593,7 @@ ${tests-output}/junit4-*.suites     - per-JVM executed suites
   
   $ ant -Dclover.license.path=/path/to/clover.license -Drun.clover=true ...
   
-  Apache Lucene/Solr source checkouts from SVN already contain the
+  Apache Lucene/Solr source checkouts from Git already contain the
   file, but source distributions cannot because of legal reasons.
   #########################################################################
   
@@ -2264,48 +2289,18 @@ ${ant.project.name}.test.dependencies=${test.classpath.list}
   <target name="validate">
   </target>
 
-  <property name="svn.export.dir" location="${build.dir}/svn-export"/>
-  <macrodef name="svn-export-source"
-            description="Runs 'svn export' with the same URL and revision as the current working copy.">
+  <property name="src.export.dir" location="${build.dir}/src-export"/>
+  <macrodef name="export-source"
+            description="Exports the source to src.export.dir.">
     <attribute name="source.dir"/>
     <sequential>
-      <delete dir="${svn.export.dir}" includeemptydirs="true" failonerror="false"/>
-      <get-svn-info directory="@{source.dir}"/>
-      <exec dir="@{source.dir}" executable="${svn.exe}" failonerror="true">
-        <arg value="export"/>
-        <arg value="--native-eol"/>
-        <arg value="LF"/>
-        <arg value="-r"/>
-        <arg value="${svn.Revision}"/>
-        <arg value="${svn.URL}"/>
-        <arg value="${svn.export.dir}"/>
+      <delete dir="${src.export.dir}" includeemptydirs="true" failonerror="false"/>
+      <exec dir="@{source.dir}" executable="${git.exe}" failonerror="true">
+        <arg value="checkout-index"/>
+        <arg value="-a"/>
+        <arg value="-f"/>
+        <arg value="--prefix=${src.export.dir}/"/>
       </exec>
-    </sequential>
-  </macrodef>
-
-  <macrodef name="get-svn-info"
-            description="Populates properties svn.URL and svn.Revision using 'svn info'.">
-    <attribute name="directory"/>
-    <sequential>
-      <exec dir="@{directory}" executable="${svnversion.exe}" outputproperty="svn.ver"/>
-      <fail message="A subversion checkout is required for this target">
-        <condition>
-          <matches pattern="(exported|unversioned.*)" string="${svn.ver}" casesensitive="false"/>
-        </condition>
-      </fail>
-      <exec dir="@{directory}" executable="${svn.exe}" outputproperty="svn.info" failonerror="true">
-        <arg value="info"/>
-      </exec>
-      <loadproperties>
-        <propertyresource name="svn.info"/>
-        <filterchain>
-          <linecontainsregexp>
-            <regexp pattern="(URL|Revision):"/>
-          </linecontainsregexp>
-          <replacestring from=": " to="="/>
-          <prefixlines prefix="svn."/>
-        </filterchain>
-      </loadproperties>
     </sequential>
   </macrodef>
 

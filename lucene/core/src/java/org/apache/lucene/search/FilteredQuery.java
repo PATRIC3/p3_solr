@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -285,9 +284,9 @@ public class FilteredQuery extends Query {
           if (s == null) {
             match = false;
           } else {
-            final TwoPhaseIterator twoPhase = s.asTwoPhaseIterator();
+            final TwoPhaseIterator twoPhase = s.twoPhaseIterator();
             if (twoPhase == null) {
-              match = s.advance(doc) == doc;
+              match = s.iterator().advance(doc) == doc;
             } else {
               match = twoPhase.approximation().advance(doc) == doc && twoPhase.matches();
             }

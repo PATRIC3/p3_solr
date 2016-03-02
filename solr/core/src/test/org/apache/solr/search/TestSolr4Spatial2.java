@@ -1,5 +1,3 @@
-package org.apache.solr.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,12 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.FacetParams;
+import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.request.SolrQueryRequest;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -158,6 +158,19 @@ public class TestSolr4Spatial2 extends SolrTestCaseJ4 {
 
   protected Object getFirstLeafReaderKey() {
     return getSearcher().getRawReader().leaves().get(0).reader().getCoreCacheKey();
+  }
+
+  @Test// SOLR-8541
+  public void testConstantScoreQueryWithFilterPartOnly() {
+    final String[] doc1 = {"id", "1", "srptgeom", "56.9485,24.0980"};
+    assertU(adoc(doc1));
+    assertU(commit());
+
+    ModifiableSolrParams params = new ModifiableSolrParams();
+    params.add("q", "{!geofilt sfield=\"srptgeom\" pt=\"56.9484,24.0981\" d=100}");
+    params.add("hl", "true");
+    params.add("hl.fl", "srptgeom");
+    assertQ(req(params), "*[count(//doc)=1]", "count(//lst[@name='highlighting']/*)=1");
   }
 
 }

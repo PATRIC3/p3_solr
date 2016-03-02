@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
@@ -41,15 +41,9 @@ public class TestCachingCollector extends LuceneTestCase {
     public int docID() { return 0; }
 
     @Override
-    public int nextDoc() throws IOException { return 0; }
-
-    @Override
-    public int advance(int target) throws IOException { return 0; }
-
-    @Override
-    public long cost() {
-      return 1;
-    } 
+    public DocIdSetIterator iterator() {
+      throw new UnsupportedOperationException();
+    }
   }
   
   private static class NoOpCollector extends SimpleCollector {

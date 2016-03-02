@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import java.io.File;
 import java.lang.invoke.MethodHandles;
@@ -158,7 +157,7 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
               + " live:"
               + clusterState.liveNodesContain(shard.getValue().getNodeName()));
           final Replica.State state = shard.getValue().getState();
-          if ((state == Replica.State.RECOVERING || state == Replica.State.DOWN)
+          if ((state == Replica.State.RECOVERING || state == Replica.State.DOWN || state == Replica.State.RECOVERY_FAILED)
               && clusterState.liveNodesContain(shard.getValue().getStr(ZkStateReader.NODE_NAME_PROP))) {
             sawLiveRecovering = true;
           }
@@ -224,9 +223,12 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
     while(maxIterations-->0) {
       Slice slice = reader.getClusterState().getSlice(collection, shard);
       if(slice!=null) {
-        coreState = slice.getReplicasMap().get(coreNodeName).getState();
-        if(coreState == expectedState) {
-          return;
+        Replica replica = slice.getReplicasMap().get(coreNodeName);
+        if (replica != null) {
+          coreState = replica.getState();
+          if(coreState == expectedState) {
+            return;
+          }
         }
       }
       Thread.sleep(50);

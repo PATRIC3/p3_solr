@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.util;
 
 import java.io.IOException;
@@ -25,7 +24,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,9 +50,9 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.core.RequestParams;
-import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.component.HighlightComponent;
 import org.apache.solr.handler.component.ResponseBuilder;
+import org.apache.solr.handler.component.ShardDoc;
 import org.apache.solr.handler.component.ShardRequest;
 import org.apache.solr.highlight.SolrHighlighter;
 import org.apache.solr.parser.QueryParser;
@@ -783,6 +781,25 @@ public class SolrPluginUtils {
     return dest;
   }
 
+  /** Copies the given {@code namedList} assumed to have doc uniqueKey keyed data into {@code destArr}
+   * at the position of the document in the response.  destArr is assumed to be the same size as
+   * {@code resultIds} is.  {@code resultIds} comes from {@link ResponseBuilder#resultIds}.  If the doc key
+   * isn't in {@code resultIds} then it is ignored.
+   * Note: most likely you will call {@link #removeNulls(Map.Entry[], NamedList)} sometime after calling this. */
+  public static void copyNamedListIntoArrayByDocPosInResponse(NamedList namedList, Map<Object, ShardDoc> resultIds,
+                                                              Map.Entry<String, Object>[] destArr) {
+    assert resultIds.size() == destArr.length;
+    for (int i = 0; i < namedList.size(); i++) {
+      String id = namedList.getName(i);
+      // TODO: lookup won't work for non-string ids... String vs Float
+      ShardDoc sdoc = resultIds.get(id);
+      if (sdoc != null) { // maybe null when rb.onePassDistributedQuery
+        int idx = sdoc.positionInResponse;
+        destArr[idx] = new NamedList.NamedListEntry<>(id, namedList.getVal(i));
+      }
+    }
+  }
+
   /**
    * A subclass of SolrQueryParser that supports aliasing fields for
    * constructing DisjunctionMaxQueries.
@@ -994,28 +1011,15 @@ public class SolrPluginUtils {
   }
 
 
-  public static void invokeSetters(Object bean, NamedList initArgs) {
+  public static void invokeSetters(Object bean, Iterable<Map.Entry<String,Object>> initArgs) {
     if (initArgs == null) return;
-    Class clazz = bean.getClass();
-    Method[] methods = clazz.getMethods();
-    Iterator<Map.Entry<String, Object>> iterator = initArgs.iterator();
-    while (iterator.hasNext()) {
-      Map.Entry<String, Object> entry = iterator.next();
+    final Class<?> clazz = bean.getClass();
+    for (Map.Entry<String,Object> entry : initArgs) {
       String key = entry.getKey();
       String setterName = "set" + String.valueOf(Character.toUpperCase(key.charAt(0))) + key.substring(1);
-      Method method = null;
       try {
-        for (Method m : methods) {
-          if (m.getName().equals(setterName) && m.getParameterTypes().length == 1) {
-            method = m;
-            break;
-          }
-        }
-        if (method == null) {
-          throw new RuntimeException("no setter corrresponding to '" + key + "' in " + clazz.getName());
-        }
-        Class pClazz = method.getParameterTypes()[0];
-        Object val = entry.getValue();
+        final Method method = findSetter(clazz, setterName, key);
+        final Object val = entry.getValue();
         method.invoke(bean, val);
       } catch (InvocationTargetException | IllegalAccessException e1) {
         throw new RuntimeException("Error invoking setter " + setterName + " on class : " + clazz.getName(), e1);
@@ -1023,7 +1027,14 @@ public class SolrPluginUtils {
     }
   }
 
-
+  private static Method findSetter(Class<?> clazz, String setterName, String key) {
+    for (Method m : clazz.getMethods()) {
+      if (m.getName().equals(setterName) && m.getParameterTypes().length == 1) {
+        return m;
+      }
+    }
+    throw new RuntimeException("No setter corrresponding to '" + key + "' in " + clazz.getName());
+  }
 
    /**
    * Given the integer purpose of a request generates a readable value corresponding 

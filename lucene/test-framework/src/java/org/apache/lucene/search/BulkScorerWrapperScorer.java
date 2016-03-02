@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -84,29 +83,39 @@ public class BulkScorerWrapperScorer extends Scorer {
   }
 
   @Override
-  public int nextDoc() throws IOException {
-    return advance(docID() + 1);
-  }
+  public DocIdSetIterator iterator() {
+    return new DocIdSetIterator() {
+      @Override
+      public int docID() {
+        return doc;
+      }
 
-  @Override
-  public int advance(int target) throws IOException {
-    if (bufferLength == 0 || docs[bufferLength - 1] < target) {
-      refill(target);
-    }
+      @Override
+      public int nextDoc() throws IOException {
+        return advance(docID() + 1);
+      }
 
-    i = Arrays.binarySearch(docs, i + 1, bufferLength, target);
-    if (i < 0) {
-      i = -1 - i;
-    }
-    if (i == bufferLength) {
-      return doc = DocIdSetIterator.NO_MORE_DOCS;
-    }
-    return doc = docs[i];
-  }
+      @Override
+      public int advance(int target) throws IOException {
+        if (bufferLength == 0 || docs[bufferLength - 1] < target) {
+          refill(target);
+        }
 
-  @Override
-  public long cost() {
-    return scorer.cost();
+        i = Arrays.binarySearch(docs, i + 1, bufferLength, target);
+        if (i < 0) {
+          i = -1 - i;
+        }
+        if (i == bufferLength) {
+          return doc = DocIdSetIterator.NO_MORE_DOCS;
+        }
+        return doc = docs[i];
+      }
+
+      @Override
+      public long cost() {
+        return scorer.cost();
+      }
+    };
   }
 
 }

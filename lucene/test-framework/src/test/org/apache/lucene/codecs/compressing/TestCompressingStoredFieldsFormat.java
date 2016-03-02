@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.compressing;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.codecs.compressing;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.compressing;
 
 import java.io.IOException;
 import java.util.Random;
@@ -287,7 +286,7 @@ public class TestCompressingStoredFieldsFormat extends BaseStoredFieldsFormatTes
     // by this test.
     iwConf.setCodec(CompressingCodec.randomInstance(random(), 4*1024, 100, false, 8));
     IndexWriter iw = new IndexWriter(dir, iwConf);
-    DirectoryReader ir = DirectoryReader.open(iw, true);
+    DirectoryReader ir = DirectoryReader.open(iw);
     for (int i = 0; i < 5; i++) {
       Document doc = new Document();
       doc.add(new StoredField("text", "not very long at all"));

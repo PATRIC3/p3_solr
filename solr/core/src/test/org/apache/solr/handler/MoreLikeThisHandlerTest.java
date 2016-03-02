@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler;
 
 import java.util.ArrayList;
@@ -86,6 +85,12 @@ public class MoreLikeThisHandlerTest extends SolrTestCaseJ4 {
     params.set("indent","true");
 
     SolrQueryRequest mltreq = new LocalSolrQueryRequest( core, params);
+    assertQ("morelikethis - tom cruise",mltreq
+        ,"//result/doc[1]/int[@name='id'][.='46']"
+        ,"//result/doc[2]/int[@name='id'][.='43']");
+
+    params.set(MoreLikeThisParams.BOOST, "true");
+    mltreq.close(); mltreq = new LocalSolrQueryRequest( core, params);
     assertQ("morelikethis - tom cruise",mltreq
         ,"//result/doc[1]/int[@name='id'][.='46']"
         ,"//result/doc[2]/int[@name='id'][.='43']");

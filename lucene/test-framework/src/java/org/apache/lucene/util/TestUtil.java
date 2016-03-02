@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -1237,7 +1236,7 @@ public final class TestUtil {
     int evilness = TestUtil.nextInt(random, 0, 20);
 
     StringBuilder sb = new StringBuilder();
-    while (sb.length() < wordLength) {;
+    while (sb.length() < wordLength) {
       if (simple) {
         sb.append(random.nextBoolean() ? TestUtil.randomSimpleString(random, wordLength) : TestUtil.randomHtmlishString(random, wordLength));
       } else {

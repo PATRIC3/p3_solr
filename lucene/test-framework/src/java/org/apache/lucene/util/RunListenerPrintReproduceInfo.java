@@ -1,20 +1,3 @@
-package org.apache.lucene.util;
-
-import static org.apache.lucene.util.LuceneTestCase.*;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.regex.Pattern;
-
-import org.junit.runner.Description;
-import org.junit.runner.Result;
-import org.junit.runner.notification.Failure;
-import org.junit.runner.notification.RunListener;
-
-import com.carrotsearch.randomizedtesting.LifecycleScope;
-import com.carrotsearch.randomizedtesting.RandomizedContext;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -31,6 +14,22 @@ import com.carrotsearch.randomizedtesting.RandomizedContext;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
+import static org.apache.lucene.util.LuceneTestCase.*;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.regex.Pattern;
+
+import org.junit.runner.Description;
+import org.junit.runner.Result;
+import org.junit.runner.notification.Failure;
+import org.junit.runner.notification.RunListener;
+
+import com.carrotsearch.randomizedtesting.LifecycleScope;
+import com.carrotsearch.randomizedtesting.RandomizedContext;
 
 /**
  * A suite listener printing a "reproduce string". This ensures test result
@@ -129,7 +128,7 @@ public final class RunListenerPrintReproduceInfo extends RunListener {
     if (classEnvRule != null) {
       System.err.println("NOTE: test params are: codec=" + classEnvRule.codec +
           ", sim=" + classEnvRule.similarity +
-          ", locale=" + classEnvRule.locale +
+          ", locale=" + classEnvRule.locale.toLanguageTag() +
           ", timezone=" + (classEnvRule.timeZone == null ? "(null)" : classEnvRule.timeZone.getID()));
     }
     System.err.println("NOTE: " + System.getProperty("os.name") + " "
@@ -178,7 +177,7 @@ public final class RunListenerPrintReproduceInfo extends RunListener {
     // Environment.
     if (!TEST_LINE_DOCS_FILE.equals(DEFAULT_LINE_DOCS_FILE)) addVmOpt(b, "tests.linedocsfile", TEST_LINE_DOCS_FILE);
     if (classEnvRule != null) {
-      addVmOpt(b, "tests.locale", classEnvRule.locale);
+      addVmOpt(b, "tests.locale", classEnvRule.locale.toLanguageTag());
       if (classEnvRule.timeZone != null) {
         addVmOpt(b, "tests.timezone", classEnvRule.timeZone.getID());
       }

@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakLingering;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -59,12 +58,14 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
   @BeforeClass
   public static void beforeSuperClass() {
     schemaString = "schema15.xml";      // we need a string id
+    System.setProperty("solr.autoCommit.maxTime", "15000");
     SolrCmdDistributor.testing_errorHook = new Diagnostics.Callable() {
       @Override
       public void call(Object... data) {
         Exception e = (Exception) data[0];
         if (e == null) return;
-        if (e.getMessage().contains("Timeout")) {
+        String msg = e.getMessage();
+        if (msg != null && msg.contains("Timeout")) {
           Diagnostics.logThreadDumps("REQUESTING THREAD DUMP DUE TO TIMEOUT: " + e.getMessage());
         }
       }
@@ -73,6 +74,7 @@ public class ChaosMonkeyNothingIsSafeTest extends AbstractFullDistribZkTestBase 
   
   @AfterClass
   public static void afterSuperClass() {
+    System.clearProperty("solr.autoCommit.maxTime");
     SolrCmdDistributor.testing_errorHook = null;
   }
   

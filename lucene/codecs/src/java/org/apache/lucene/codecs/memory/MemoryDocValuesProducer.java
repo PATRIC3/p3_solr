@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.memory;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs.memory;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.memory;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -308,7 +308,7 @@ class MemoryDocValuesProducer extends DocValuesProducer {
 
   @Override
   public void checkIntegrity() throws IOException {
-    CodecUtil.checksumEntireFile(data);
+    CodecUtil.checksumEntireFile(data.clone());
   }
   
   @Override
@@ -323,6 +323,7 @@ class MemoryDocValuesProducer extends DocValuesProducer {
 
   private NumericDocValues loadNumeric(FieldInfo field) throws IOException {
     NumericEntry entry = numerics.get(field.name);
+    IndexInput data = this.data.clone();
     data.seek(entry.offset + entry.missingBytes);
     switch (entry.format) {
       case TABLE_COMPRESSED:
@@ -438,6 +439,7 @@ class MemoryDocValuesProducer extends DocValuesProducer {
   private BytesAndAddresses loadBinary(FieldInfo field) throws IOException {
     BytesAndAddresses bytesAndAddresses = new BytesAndAddresses();
     BinaryEntry entry = binaries.get(field.name);
+    IndexInput data = this.data.clone();
     data.seek(entry.offset);
     PagedBytes bytes = new PagedBytes(16);
     bytes.copy(data, entry.numBytes);
@@ -465,6 +467,7 @@ class MemoryDocValuesProducer extends DocValuesProducer {
     synchronized(this) {
       instance = fstInstances.get(field.name);
       if (instance == null) {
+        IndexInput data = this.data.clone();
         data.seek(entry.offset);
         instance = new FST<>(data, PositiveIntOutputs.getSingleton());
         if (!merging) {
@@ -545,6 +548,7 @@ class MemoryDocValuesProducer extends DocValuesProducer {
       synchronized (this) {
         MonotonicBlockPackedReader res = addresses.get(field.name);
         if (res == null) {
+          IndexInput data = this.data.clone();
           data.seek(entry.addressOffset);
           res = MonotonicBlockPackedReader.of(data, entry.packedIntsVersion, entry.blockSize, entry.valueCount, false);
           if (!merging) {
@@ -617,6 +621,7 @@ class MemoryDocValuesProducer extends DocValuesProducer {
     synchronized(this) {
       instance = fstInstances.get(field.name);
       if (instance == null) {
+        IndexInput data = this.data.clone();
         data.seek(entry.offset);
         instance = new FST<>(data, PositiveIntOutputs.getSingleton());
         if (!merging) {

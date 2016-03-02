@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -227,7 +227,7 @@ public class TestBufferedIndexInput extends LuceneTestCase {
 
         dir.allIndexInputs.clear();
 
-        IndexReader reader = DirectoryReader.open(writer, true);
+        IndexReader reader = DirectoryReader.open(writer);
         Term aaa = new Term("content", "aaa");
         Term bbb = new Term("content", "bbb");
         
@@ -235,7 +235,7 @@ public class TestBufferedIndexInput extends LuceneTestCase {
         
         dir.tweakBufferSizes();
         writer.deleteDocuments(new Term("id", "0"));
-        reader = DirectoryReader.open(writer, true);
+        reader = DirectoryReader.open(writer);
         IndexSearcher searcher = newSearcher(reader);
         ScoreDoc[] hits = searcher.search(new TermQuery(bbb), 1000).scoreDocs;
         dir.tweakBufferSizes();
@@ -245,7 +245,7 @@ public class TestBufferedIndexInput extends LuceneTestCase {
         
         dir.tweakBufferSizes();
         writer.deleteDocuments(new Term("id", "4"));
-        reader = DirectoryReader.open(writer, true);
+        reader = DirectoryReader.open(writer);
         searcher = newSearcher(reader);
 
         hits = searcher.search(new TermQuery(bbb), 1000).scoreDocs;

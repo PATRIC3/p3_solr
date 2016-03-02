@@ -1,5 +1,3 @@
-package org.apache.solr.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,7 @@ package org.apache.solr.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import org.w3c.dom.Document;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-import org.xml.sax.SAXException;
+package org.apache.solr.util;
 
 import javax.xml.bind.DatatypeConverter;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -60,12 +54,16 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 /**
  * A simple utility class for posting raw updates to a Solr server, 
@@ -87,7 +85,7 @@ public class SimplePostTool {
   private static final int DEFAULT_WEB_DELAY = 10;
   private static final int MAX_WEB_DEPTH = 10;
   private static final String DEFAULT_CONTENT_TYPE = "application/xml";
-  private static final String DEFAULT_FILE_TYPES = "xml,json,csv,pdf,doc,docx,ppt,pptx,xls,xlsx,odt,odp,ods,ott,otp,ots,rtf,htm,html,txt,log"; 
+  private static final String DEFAULT_FILE_TYPES = "xml,json,jsonl,csv,pdf,doc,docx,ppt,pptx,xls,xlsx,odt,odp,ods,ott,otp,ots,rtf,htm,html,txt,log";
 
   static final String DATA_MODE_FILES = "files";
   static final String DATA_MODE_ARGS = "args";
@@ -103,6 +101,7 @@ public class SimplePostTool {
   URL solrUrl;
   OutputStream out = null;
   String type;
+  String format;
   String mode;
   boolean commit;
   boolean optimize;
@@ -134,6 +133,7 @@ public class SimplePostTool {
     mimeMap.put("xml", "application/xml");
     mimeMap.put("csv", "text/csv");
     mimeMap.put("json", "application/json");
+    mimeMap.put("jsonl", "application/json");
     mimeMap.put("pdf", "application/pdf");
     mimeMap.put("rtf", "text/rtf");
     mimeMap.put("html", "text/html");
@@ -235,6 +235,7 @@ public class SimplePostTool {
       URL url = new URL(urlStr);
       boolean auto = isOn(System.getProperty("auto", DEFAULT_AUTO));
       String type = System.getProperty("type");
+      String format = System.getProperty("format");
       // Recursive
       int recursive = 0;
       String r = System.getProperty("recursive", DEFAULT_RECURSIVE);
@@ -254,7 +255,7 @@ public class SimplePostTool {
       boolean commit = isOn(System.getProperty("commit",DEFAULT_COMMIT));
       boolean optimize = isOn(System.getProperty("optimize",DEFAULT_OPTIMIZE));
       
-      return new SimplePostTool(mode, url, auto, type, recursive, delay, fileTypes, out, commit, optimize, args);
+      return new SimplePostTool(mode, url, auto, type, format, recursive, delay, fileTypes, out, commit, optimize, args);
     } catch (MalformedURLException e) {
       fatal("System Property 'url' is not a valid URL: " + urlStr);
       return null;
@@ -276,13 +277,14 @@ public class SimplePostTool {
    * @param optimize if true, will optimize at end of posting
    * @param args a String[] of arguments, varies between modes
    */
-  public SimplePostTool(String mode, URL url, boolean auto, String type,
+  public SimplePostTool(String mode, URL url, boolean auto, String type, String format,
       int recursive, int delay, String fileTypes, OutputStream out, 
       boolean commit, boolean optimize, String[] args) {
     this.mode = mode;
     this.solrUrl = url;
     this.auto = auto;
     this.type = type;
+    this.format = format;
     this.recursive = recursive;
     this.delay = delay;
     this.fileTypes = fileTypes;
@@ -774,7 +776,11 @@ public class SimplePostTool {
         }
         // TODO: Add a flag that disables /update and sends all to /update/extract, to avoid CSV, JSON, and XML files
         // TODO: from being interpreted as Solr documents internally
-        if(type.equals("application/xml") || type.equals("text/csv") || type.equals("application/json")) {
+        if (type.equals("application/json") && !"solr".equals(format))  {
+          suffix = "/json/docs";
+          String urlStr = appendUrlPath(solrUrl, suffix).toString();
+          url = new URL(urlStr);
+        } else if (type.equals("application/xml") || type.equals("text/csv") || type.equals("application/json")) {
           // Default handler
         } else {
           // SolrCell
@@ -791,7 +797,7 @@ public class SimplePostTool {
       }
       info("POSTing file " + file.getName() + (auto?" ("+type+")":"") + " to [base]" + suffix);
       is = new FileInputStream(file);
-      postData(is, (int)file.length(), output, type, url);
+      postData(is, file.length(), output, type, url);
     } catch (IOException e) {
       e.printStackTrace();
       warn("Can't open/read file: " + file);
@@ -861,7 +867,7 @@ public class SimplePostTool {
    * writes to the response to output
    * @return true if success
    */
-  public boolean postData(InputStream data, Integer length, OutputStream output, String type, URL url) {
+  public boolean postData(InputStream data, Long length, OutputStream output, String type, URL url) {
     if(mockMode) return true;
     boolean success = true;
     if(type == null)

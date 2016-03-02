@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.response;
 
 import java.io.IOException;
@@ -81,7 +80,7 @@ class PHPSerializedWriter extends JSONWriter {
   @Override
   public void writeResponse() throws IOException {
     Boolean omitHeader = req.getParams().getBool(CommonParams.OMIT_HEADER);
-    if(omitHeader != null && omitHeader) rsp.getValues().remove("responseHeader");
+    if(omitHeader != null && omitHeader) rsp.removeResponseHeader();
     writeNamedList(null, rsp.getValues());
   }
   

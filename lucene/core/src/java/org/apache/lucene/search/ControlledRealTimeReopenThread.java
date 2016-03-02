@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -181,7 +181,7 @@ public class ControlledRealTimeReopenThread<T> extends Thread implements Closeab
         if (maxMS < 0) {
           wait();
         } else {
-          long msLeft = (startMS + maxMS) - (System.nanoTime())/1000000;
+          long msLeft = (startMS + maxMS) - System.nanoTime()/1000000;
           if (msLeft <= 0) {
             return false;
           } else {
@@ -247,5 +247,10 @@ public class ControlledRealTimeReopenThread<T> extends Thread implements Closeab
         throw new RuntimeException(ioe);
       }
     }
+  }
+
+  /** Returns which {@code generation} the current searcher is guaranteed to include. */
+  public long getSearchingGen() {
+    return searchingGen;
   }
 }

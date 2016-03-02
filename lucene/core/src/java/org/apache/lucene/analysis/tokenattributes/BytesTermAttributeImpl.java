@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.tokenattributes;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,10 @@ package org.apache.lucene.analysis.tokenattributes;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.tokenattributes;
+
+
+import java.util.Objects;
 
 import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.AttributeReflector;
@@ -48,7 +50,7 @@ public class BytesTermAttributeImpl extends AttributeImpl implements BytesTermAt
   @Override
   public void copyTo(AttributeImpl target) {
     BytesTermAttributeImpl other = (BytesTermAttributeImpl) target;
-    other.bytes = BytesRef.deepCopyOf(bytes);
+    other.bytes = bytes == null ? null : BytesRef.deepCopyOf(bytes);
   }
 
   @Override
@@ -61,5 +63,18 @@ public class BytesTermAttributeImpl extends AttributeImpl implements BytesTermAt
   @Override
   public void reflectWith(AttributeReflector reflector) {
     reflector.reflect(TermToBytesRefAttribute.class, "bytes", bytes);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (!(o instanceof BytesTermAttributeImpl)) return false;
+    BytesTermAttributeImpl that = (BytesTermAttributeImpl) o;
+    return Objects.equals(bytes, that.bytes);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(bytes);
   }
 }

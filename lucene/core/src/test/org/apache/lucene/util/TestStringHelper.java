@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 public class TestStringHelper extends LuceneTestCase {
   
@@ -23,13 +23,6 @@ public class TestStringHelper extends LuceneTestCase {
     BytesRef left = new BytesRef("foobar");
     BytesRef right = new BytesRef("foozo");
     assertEquals(3, StringHelper.bytesDifference(left, right));
-  }
-
-  public void testEquals() {
-    assertTrue(StringHelper.equals("foo", "foo"));
-    assertFalse(StringHelper.equals("foo", null));
-    assertFalse(StringHelper.equals(null, "foo"));
-    assertTrue(StringHelper.equals(null, null));
   }
   
   public void testStartsWith() {

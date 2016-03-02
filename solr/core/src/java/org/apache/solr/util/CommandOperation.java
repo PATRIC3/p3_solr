@@ -1,5 +1,3 @@
-package org.apache.solr.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,12 @@ package org.apache.solr.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.util;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.io.input.CharSequenceReader;
 import org.apache.lucene.util.IOUtils;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.ContentStream;
@@ -58,6 +60,11 @@ public class CommandOperation {
     }
     Object o = getMapVal(key);
     return o == null ? def : String.valueOf(o);
+  }
+
+  public boolean getBoolean(String key, boolean def) {
+    String v = getStr(key,null);
+    return v == null? def:Boolean.parseBoolean(v);
   }
   public void setCommandData(Object o){
     commandData = o;

@@ -1,5 +1,3 @@
-package org.apache.lucene.bkdtree;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.bkdtree;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.bkdtree;
 
 import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.search.DocIdSet;
@@ -31,8 +30,10 @@ import java.util.Collections;
 
 /** Handles intersection of a shape with a BKD tree previously written with {@link BKDTreeWriter}.
  *
- * @lucene.experimental */
-
+ * @lucene.experimental
+ *
+ * @deprecated Use dimensional values in Lucene 6.0 instead */
+@Deprecated
 final class BKDTreeReader implements Accountable {
   final private int[] splitValues;
   final private int leafNodeOffset;

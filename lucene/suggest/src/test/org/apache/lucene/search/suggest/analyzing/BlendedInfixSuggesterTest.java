@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest.analyzing;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,16 +14,20 @@ package org.apache.lucene.search.suggest.analyzing;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest.analyzing;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.analysis.util.CharArraySet;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.suggest.Input;
 import org.apache.lucene.search.suggest.InputArrayIterator;
 import org.apache.lucene.search.suggest.Lookup;
@@ -109,6 +111,18 @@ public class BlendedInfixSuggesterTest extends LuceneTestCase {
     assertEquals(w, getInResults(suggester, "top", pl, 1));
     assertEquals((int) (w * 1 / (1 + 2)), getInResults(suggester, "the", pl, 1));
     assertEquals((int) (w * 1 / (1 + 3)), getInResults(suggester, "lake", pl, 1));
+    suggester.close();
+
+    // BlenderType.EXPONENTIAL_RECIPROCAL is using 1/(pow(1+p, exponent)) * w where w is weight and p the position of the word
+    suggester = new BlendedInfixSuggester(newFSDirectory(tempDir), a, a,
+        AnalyzingInfixSuggester.DEFAULT_MIN_PREFIX_CHARS,
+        BlendedInfixSuggester.BlenderType.POSITION_EXPONENTIAL_RECIPROCAL, 1, 4.0, false, true, false);
+
+    suggester.build(new InputArrayIterator(keys));
+
+    assertEquals(w, getInResults(suggester, "top", pl, 1));
+    assertEquals((int) (w * 1 / (Math.pow(1 + 2, 4.0))), getInResults(suggester, "the", pl, 1));
+    assertEquals((int) (w * 1 / (Math.pow(1 + 3, 4.0))), getInResults(suggester, "lake", pl, 1));
 
     suggester.close();
   }
@@ -254,6 +268,72 @@ public class BlendedInfixSuggesterTest extends LuceneTestCase {
     duplicateCheck(inputDocuments, 2);
 
   }
+
+
+  public void testSuggesterCountForAllLookups() throws IOException {
+
+
+    Input keys[] = new Input[]{
+        new Input("lend me your ears", 1),
+        new Input("as you sow so shall you reap", 1),
+    };
+
+    Path tempDir = createTempDir("BlendedInfixSuggesterTest");
+    Analyzer a = new StandardAnalyzer(CharArraySet.EMPTY_SET);
+
+    // BlenderType.LINEAR is used by default (remove position*10%)
+    BlendedInfixSuggester suggester = new BlendedInfixSuggester(newFSDirectory(tempDir), a);
+    suggester.build(new InputArrayIterator(keys));
+
+
+    String term = "you";
+
+    List<Lookup.LookupResult> responses = suggester.lookup(term, false, 1);
+    assertEquals(1, responses.size());
+
+    responses = suggester.lookup(term, false, 2);
+    assertEquals(2, responses.size());
+
+
+    responses = suggester.lookup(term, 1, false, false);
+    assertEquals(1, responses.size());
+
+    responses = suggester.lookup(term, 2, false, false);
+    assertEquals(2, responses.size());
+
+
+    responses = suggester.lookup(term, (Map) null, 1, false, false);
+    assertEquals(1, responses.size());
+
+    responses = suggester.lookup(term, (Map) null, 2, false, false);
+    assertEquals(2, responses.size());
+
+
+    responses = suggester.lookup(term, (Set) null, 1, false, false);
+    assertEquals(1, responses.size());
+
+    responses = suggester.lookup(term, (Set) null, 2, false, false);
+    assertEquals(2, responses.size());
+
+
+    responses = suggester.lookup(term, null, false, 1);
+    assertEquals(1, responses.size());
+
+    responses = suggester.lookup(term, null, false, 2);
+    assertEquals(2, responses.size());
+
+
+    responses = suggester.lookup(term, (BooleanQuery) null, 1, false, false);
+    assertEquals(1, responses.size());
+
+    responses = suggester.lookup(term, (BooleanQuery) null, 2, false, false);
+    assertEquals(2, responses.size());
+
+
+    suggester.close();
+
+  }
+
 
   public void /*testT*/rying() throws IOException {
 

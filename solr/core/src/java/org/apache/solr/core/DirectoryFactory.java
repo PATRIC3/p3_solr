@@ -1,5 +1,3 @@
-package org.apache.solr.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.core;
 
 import java.io.Closeable;
 import java.io.File;
@@ -54,6 +53,13 @@ public abstract class DirectoryFactory implements NamedListInitializedPlugin,
   public enum DirContext {DEFAULT, META_DATA}
 
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+  // Available lock types
+  public final static String LOCK_TYPE_SIMPLE = "simple";
+  public final static String LOCK_TYPE_NATIVE = "native";
+  public final static String LOCK_TYPE_SINGLE = "single";
+  public final static String LOCK_TYPE_NONE   = "none";
+  public final static String LOCK_TYPE_HDFS   = "hdfs";
   
   /**
    * Indicates a Directory will no longer be used, and when its ref count
@@ -266,8 +272,7 @@ public abstract class DirectoryFactory implements NamedListInitializedPlugin,
 
   public String getDataHome(CoreDescriptor cd) throws IOException {
     // by default, we go off the instance directory
-    String instanceDir = new File(cd.getInstanceDir()).getAbsolutePath();
-    return normalize(SolrResourceLoader.normalizeDir(instanceDir) + cd.getDataDir());
+    return cd.getInstanceDir().resolve(cd.getDataDir()).toAbsolutePath().toString();
   }
 
   /**

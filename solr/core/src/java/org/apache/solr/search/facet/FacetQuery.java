@@ -1,5 +1,3 @@
-package org.apache.solr.search.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,11 @@ package org.apache.solr.search.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.facet;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.lucene.search.Query;
 import org.apache.solr.common.util.SimpleOrderedMap;
@@ -34,6 +35,13 @@ public class FacetQuery extends FacetRequest {
   @Override
   public FacetMerger createFacetMerger(Object prototype) {
     return new FacetQueryMerger(this);
+  }
+  
+  @Override
+  public Map<String, Object> getFacetDescription() {
+    Map<String, Object> descr = new HashMap<String, Object>();
+    descr.put("query", q);
+    return descr;
   }
 }
 

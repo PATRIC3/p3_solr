@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,16 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
 
+
+import java.io.EOFException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -150,14 +151,43 @@ public class TestRAMDirectory extends BaseDirectoryTestCase {
         }
       };
     }
-    for (int i=0; i<numThreads; i++)
+    for (int i=0; i<numThreads; i++) {
       threads[i].start();
-    for (int i=0; i<numThreads; i++)
+    }
+    for (int i=0; i<numThreads; i++) {
       threads[i].join();
+    }
 
     writer.forceMerge(1);
     assertEquals(ramDir.sizeInBytes(), ramDir.getRecomputedSizeInBytes());
     
     writer.close();
+  }
+
+  public void testShouldThrowEOFException() throws Exception {
+    final Random random = random();
+
+    try (Directory dir = newDirectory()) {
+      final int len = 16 + random().nextInt(2048) / 16 * 16;
+      final byte[] bytes = new byte[len];
+
+      try (IndexOutput os = dir.createOutput("foo", newIOContext(random))) {
+        os.writeBytes(bytes, bytes.length);
+      }
+
+      try (IndexInput is = dir.openInput("foo", newIOContext(random))) {
+        try {
+          is.seek(0);
+          // Here, I go past EOF.
+          is.seek(len + random().nextInt(2048));
+          // since EOF is not enforced by the previous call in RAMInputStream
+          // this call to readBytes should throw the exception.
+          is.readBytes(bytes, 0, 16);
+          fail("Did not get EOFException");
+        } catch (EOFException eof) {
+          // expected!
+        }
+      }
+    }
   }
 }

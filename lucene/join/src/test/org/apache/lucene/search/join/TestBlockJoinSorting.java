@@ -1,5 +1,3 @@
-package org.apache.lucene.search.join;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.join;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.join;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -208,7 +207,7 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     w.addDocuments(docs);
     w.commit();
 
-    IndexSearcher searcher = new IndexSearcher(DirectoryReader.open(w.w, false));
+    IndexSearcher searcher = new IndexSearcher(DirectoryReader.open(w.w));
     w.close();
     BitSetProducer parentFilter = new QueryBitSetProducer(new TermQuery(new Term("__type", "parent")));
     CheckJoinIndex.check(searcher.getIndexReader(), parentFilter);

@@ -1,5 +1,3 @@
-package org.apache.lucene.bkdtree3d;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.bkdtree3d;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.bkdtree3d;
 
 import org.apache.lucene.geo3d.PlanetModel;
 import org.apache.lucene.geo3d.GeoPoint;
@@ -27,8 +26,10 @@ import org.apache.lucene.util.BytesRef;
 // TODO: allow multi-valued, packing all points into a single BytesRef
 
 /** Add this to a document to index lat/lon point, but be sure to use {@link Geo3DDocValuesFormat} for the field.
-
- *  @lucene.experimental */
+ *  @lucene.experimental
+ *
+ *  @deprecated Use dimensional values in Lucene 6.0 instead */
+@Deprecated
 public final class Geo3DPointField extends Field {
 
   /** Indexing {@link FieldType}. */

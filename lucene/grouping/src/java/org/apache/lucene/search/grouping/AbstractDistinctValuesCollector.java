@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping;
 
 import java.util.HashSet;
 import java.util.List;
@@ -50,6 +49,11 @@ public abstract class AbstractDistinctValuesCollector<GC extends AbstractDistinc
       this.groupValue = groupValue;
       this.uniqueValues = new HashSet<>();
     }
+  }
+
+  @Override
+  public boolean needsScores() {
+    return false; // not needed to fetch all values
   }
 
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.bkdtree3d;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.bkdtree3d;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.bkdtree3d;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -30,8 +29,10 @@ import org.apache.lucene.util.RamUsageEstimator;
 
 /** Handles intersection of a shape with a BKD tree previously written with {@link BKD3DTreeWriter}.
  *
- * @lucene.experimental */
-
+ * @lucene.experimental
+ *
+ * @deprecated Use dimensional values in Lucene 6.0 instead */
+@Deprecated
 final class BKD3DTreeReader implements Accountable {
   final private int[] splitValues; 
   final private int leafNodeOffset;

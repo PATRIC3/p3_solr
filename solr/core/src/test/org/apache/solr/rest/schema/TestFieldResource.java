@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.rest.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.rest.schema;
 import org.apache.solr.rest.SolrRestletTestBase;
 import org.junit.Test;
 
@@ -24,7 +23,7 @@ public class TestFieldResource extends SolrRestletTestBase {
   public void testGetField() throws Exception {
     assertQ("/schema/fields/test_postv?indent=on&wt=xml&showDefaults=true",
             "count(/response/lst[@name='field']) = 1",
-            "count(/response/lst[@name='field']/*) = 16",
+            "count(/response/lst[@name='field']/*) = 17",
             "/response/lst[@name='field']/str[@name='name'] = 'test_postv'",
             "/response/lst[@name='field']/str[@name='type'] = 'text'",
             "/response/lst[@name='field']/bool[@name='indexed'] = 'true'",
@@ -40,7 +39,8 @@ public class TestFieldResource extends SolrRestletTestBase {
             "/response/lst[@name='field']/bool[@name='storeOffsetsWithPositions'] = 'false'",
             "/response/lst[@name='field']/bool[@name='multiValued'] = 'false'",
             "/response/lst[@name='field']/bool[@name='required'] = 'false'",
-            "/response/lst[@name='field']/bool[@name='tokenized'] = 'true'");
+            "/response/lst[@name='field']/bool[@name='tokenized'] = 'true'",
+            "/response/lst[@name='field']/bool[@name='useDocValuesAsStored'] = 'true'");
   }
 
   @Test

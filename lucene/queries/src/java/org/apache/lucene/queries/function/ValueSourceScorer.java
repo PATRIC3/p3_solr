@@ -1,5 +1,3 @@
-package org.apache.lucene.queries.function;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queries.function;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queries.function;
 
 import java.io.IOException;
 
@@ -48,10 +47,11 @@ public abstract class ValueSourceScorer extends Scorer {
   protected ValueSourceScorer(IndexReader reader, FunctionValues values) {
     super(null);//no weight
     this.values = values;
-    this.twoPhaseIterator = new TwoPhaseIterator(DocIdSetIterator.all(reader.maxDoc())) { // no approximation!
+    final DocIdSetIterator approximation = DocIdSetIterator.all(reader.maxDoc()); // no approximation!
+    this.twoPhaseIterator = new TwoPhaseIterator(approximation) {
       @Override
       public boolean matches() throws IOException {
-        return ValueSourceScorer.this.matches(docID());
+        return ValueSourceScorer.this.matches(approximation.docID());
       }
 
       @Override
@@ -66,23 +66,18 @@ public abstract class ValueSourceScorer extends Scorer {
   public abstract boolean matches(int doc);
 
   @Override
-  public TwoPhaseIterator asTwoPhaseIterator() {
+  public DocIdSetIterator iterator() {
+    return disi;
+  }
+
+  @Override
+  public TwoPhaseIterator twoPhaseIterator() {
     return twoPhaseIterator;
   }
 
   @Override
   public int docID() {
     return disi.docID();
-  }
-
-  @Override
-  public int nextDoc() throws IOException {
-    return disi.nextDoc();
-  }
-
-  @Override
-  public int advance(int target) throws IOException {
-    return disi.advance(target);
   }
 
   @Override
@@ -100,8 +95,4 @@ public abstract class ValueSourceScorer extends Scorer {
     return 1;
   }
 
-  @Override
-  public long cost() {
-    return disi.cost();
-  }
 }

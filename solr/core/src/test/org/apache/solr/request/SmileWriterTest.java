@@ -1,5 +1,3 @@
-package org.apache.solr.request;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,7 @@ package org.apache.solr.request;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.request;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -130,7 +128,7 @@ public class SmileWriterTest extends SolrTestCaseJ4 {
     list.setMaxScore(0.7f);
     list.add(solrDoc);
 
-    rsp.add("response", list);
+    rsp.addResponse(list);
 
     w.write(buf, req, rsp);
 

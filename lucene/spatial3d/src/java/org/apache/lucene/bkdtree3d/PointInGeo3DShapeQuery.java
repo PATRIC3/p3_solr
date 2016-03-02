@@ -1,5 +1,3 @@
-package org.apache.lucene.bkdtree3d;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.bkdtree3d;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.bkdtree3d;
 
 import org.apache.lucene.geo3d.GeoArea;
 import org.apache.lucene.geo3d.GeoAreaFactory;
@@ -47,8 +46,10 @@ import java.io.IOException;
  *
  *  <p><b>NOTE</b>: for fastest performance, this allocates FixedBitSet(maxDoc) for each segment.  The score of each hit is the query boost.
  *
- * @lucene.experimental */
-
+ * @lucene.experimental
+ *
+ * @deprecated Use dimensional values in Lucene 6.0 instead */
+@Deprecated
 public class PointInGeo3DShapeQuery extends Query {
   final String field;
   final PlanetModel planetModel;

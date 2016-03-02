@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.Closeable;
 import java.io.FileNotFoundException;
@@ -1333,7 +1333,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
 
   /** Expert: attempts to delete by document ID, as long as
    *  the provided reader is a near-real-time reader (from {@link
-   *  DirectoryReader#open(IndexWriter,boolean)}).  If the
+   *  DirectoryReader#open(IndexWriter)}).  If the
    *  provided reader is an NRT reader obtained from this
    *  writer, and its segment has not been merged away, then
    *  the delete succeeds and this method returns true; else, it
@@ -4491,7 +4491,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
     }
   }
 
-  /** If {@link DirectoryReader#open(IndexWriter,boolean)} has
+  /** If {@link DirectoryReader#open(IndexWriter)} has
    *  been called (ie, this writer is in near real-time
    *  mode), then after a merge completes, this class can be
    *  invoked to warm the reader on the newly merged

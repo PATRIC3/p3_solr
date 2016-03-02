@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
 import java.io.IOException;
@@ -33,6 +32,7 @@ import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.ReaderUtil;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.FieldComparator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.LeafCollector;
@@ -70,10 +70,6 @@ import org.junit.Ignore;
 @Ignore
 public class TestRankQueryPlugin extends QParserPlugin {
 
-
-  public void init(NamedList params) {
-
-  }
 
   public QParser createParser(String query, SolrParams localParams, SolrParams params, SolrQueryRequest req) {
     return new TestRankQueryParser(query, localParams, params, req);
@@ -227,7 +223,7 @@ public class TestRankQueryPlugin extends QParserPlugin {
         }
 
         NamedList<?> responseHeader = (NamedList<?>)srsp.getSolrResponse().getResponse().get("responseHeader");
-        if (responseHeader != null && Boolean.TRUE.equals(responseHeader.get("partialResults"))) {
+        if (responseHeader != null && Boolean.TRUE.equals(responseHeader.get(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY))) {
           partialResults = true;
         }
 
@@ -316,7 +312,7 @@ public class TestRankQueryPlugin extends QParserPlugin {
       rb.setResponseDocs(responseDocs);
 
       if (partialResults) {
-        rb.rsp.getResponseHeader().add( "partialResults", Boolean.TRUE );
+        rb.rsp.getResponseHeader().add(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY, Boolean.TRUE );
       }
     }
   }
@@ -469,18 +465,8 @@ public class TestRankQueryPlugin extends QParserPlugin {
       }
 
       @Override
-      public int nextDoc() throws IOException {
+      public DocIdSetIterator iterator() {
         throw new UnsupportedOperationException();
-      }
-
-      @Override
-      public int advance(int target) throws IOException {
-        throw new UnsupportedOperationException();
-      }
-
-      @Override
-      public long cost() {
-        return 1;
       }
 
       @Override
@@ -556,7 +542,7 @@ public class TestRankQueryPlugin extends QParserPlugin {
         }
 
         NamedList<?> responseHeader = (NamedList<?>)srsp.getSolrResponse().getResponse().get("responseHeader");
-        if (responseHeader != null && Boolean.TRUE.equals(responseHeader.get("partialResults"))) {
+        if (responseHeader != null && Boolean.TRUE.equals(responseHeader.get(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY))) {
           partialResults = true;
         }
 
@@ -647,7 +633,7 @@ public class TestRankQueryPlugin extends QParserPlugin {
       rb.setResponseDocs(responseDocs);
 
       if (partialResults) {
-        rb.rsp.getResponseHeader().add( "partialResults", Boolean.TRUE );
+        rb.rsp.getResponseHeader().add(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY, Boolean.TRUE );
       }
     }
 

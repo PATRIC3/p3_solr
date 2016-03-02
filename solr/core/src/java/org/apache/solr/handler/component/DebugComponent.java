@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.component;
 
 import java.io.IOException;
@@ -24,6 +23,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,6 +40,7 @@ import org.apache.solr.common.util.SuppressForbidden;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.search.DocList;
 import org.apache.solr.search.QueryParsing;
+import org.apache.solr.search.facet.FacetDebugInfo;
 import org.apache.solr.util.SolrPluginUtils;
 
 import static org.apache.solr.common.params.CommonParams.FQ;
@@ -108,6 +109,11 @@ public class DebugComponent extends SearchComponent
         info.addAll( stdinfo );
       }
 
+      FacetDebugInfo fdebug = (FacetDebugInfo)(rb.req.getContext().get("FacetDebugInfo"));
+      if (fdebug != null) {
+        info.add("facet-trace", fdebug.getFacetDebugInfo());
+      }
+      
       if (rb.req.getJSON() != null) {
         info.add(JSON, rb.req.getJSON());
       }
@@ -224,13 +230,7 @@ public class DebugComponent extends SearchComponent
             hasGetDebugResponses = true;
             if (rb.isDebugResults()) {
               NamedList sexplain = (NamedList)sdebug.get("explain");
-              for (int i = 0; i < sexplain.size(); i++) {
-                String id = sexplain.getName(i);
-                // TODO: lookup won't work for non-string ids... String vs Float
-                ShardDoc sdoc = rb.resultIds.get(id);
-                int idx = sdoc.positionInResponse;
-                arr[idx] = new NamedList.NamedListEntry<>(id, sexplain.getVal(i));
-              }
+              SolrPluginUtils.copyNamedListIntoArrayByDocPosInResponse(sexplain, rb.resultIds, arr);
             }
           }
         }
@@ -289,7 +289,7 @@ public class DebugComponent extends SearchComponent
     return namedList;
   }
 
-  Object merge(Object source, Object dest, Set<String> exclude) {
+  protected Object merge(Object source, Object dest, Set<String> exclude) {
     if (source == null) return dest;
     if (dest == null) {
       if (source instanceof NamedList) {
@@ -300,6 +300,10 @@ public class DebugComponent extends SearchComponent
     } else {
 
       if (dest instanceof Collection) {
+        // merge as Set
+        if (!(dest instanceof Set)) {
+          dest = new LinkedHashSet<>((Collection<?>) dest);
+        }
         if (source instanceof Collection) {
           ((Collection)dest).addAll((Collection)source);
         } else {
@@ -331,7 +335,7 @@ public class DebugComponent extends SearchComponent
       NamedList<Object> dl = (NamedList<Object>)dest;
       for (int i=0; i<sl.size(); i++) {
         String skey = sl.getName(i);
-        if (exclude != null && exclude.contains(skey)) continue;
+        if (exclude.contains(skey)) continue;
         Object sval = sl.getVal(i);
         int didx = -1;
 
@@ -348,9 +352,9 @@ public class DebugComponent extends SearchComponent
         }
 
         if (didx == -1) {
-          tmp.add(skey, merge(sval, null, null));
+          tmp.add(skey, merge(sval, null, Collections.<String>emptySet()));
         } else {
-          dl.setVal(didx, merge(sval, dl.getVal(didx), null));
+          dl.setVal(didx, merge(sval, dl.getVal(didx), Collections.<String>emptySet()));
         }
       }
       dl.addAll(tmp);

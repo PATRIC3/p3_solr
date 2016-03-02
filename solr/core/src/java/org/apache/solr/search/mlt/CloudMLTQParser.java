@@ -1,4 +1,3 @@
-package org.apache.solr.search.mlt;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.search.mlt;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.search.mlt;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.mlt.MoreLikeThis;
 import org.apache.lucene.search.BooleanClause;
@@ -98,8 +97,8 @@ public class CloudMLTQParser extends QParser {
 
     mlt.setAnalyzer(req.getSchema().getIndexAnalyzer());
 
-    Map<String, Collection<Object>> filteredDocument = new HashMap();
-    ArrayList<String> fieldNames = new ArrayList();
+    Map<String, Collection<Object>> filteredDocument = new HashMap<>();
+    ArrayList<String> fieldNames = new ArrayList<>();
 
     if (qf != null) {
       for (String fieldName : qf) {
@@ -146,12 +145,14 @@ public class CloudMLTQParser extends QParser {
 
         for (BooleanClause clause : boostedMLTQuery) {
           Query q = clause.getQuery();
-          Float b = boostFields.get(((TermQuery) q).getTerm().field());
-
-          if (b != null) {
-            q = new BoostQuery(q, b);
+          float originalBoost = 1f;
+          if (q instanceof BoostQuery) {
+            BoostQuery bq = (BoostQuery) q;
+            q = bq.getQuery();
+            originalBoost = bq.getBoost();
           }
-
+          Float fieldBoost = boostFields.get(((TermQuery) q).getTerm().field());
+          q = ((fieldBoost != null) ? new BoostQuery(q, fieldBoost * originalBoost) : clause.getQuery());
           newQ.add(q, clause.getOccur());
         }
 

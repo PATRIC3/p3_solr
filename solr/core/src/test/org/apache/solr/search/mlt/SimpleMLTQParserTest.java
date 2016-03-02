@@ -1,5 +1,3 @@
-package org.apache.solr.search.mlt;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search.mlt;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.mlt;
 
 import java.util.ArrayList;
 
@@ -84,6 +83,21 @@ public class SimpleMLTQParserTest extends SolrTestCaseJ4 {
 
     ModifiableSolrParams params = new ModifiableSolrParams();
     params.set(CommonParams.Q, "{!mlt qf=lowerfilt}17");
+    assertQ(req(params),
+        "//result/doc[1]/int[@name='id'][.='13']",
+        "//result/doc[2]/int[@name='id'][.='14']",
+        "//result/doc[3]/int[@name='id'][.='15']",
+        "//result/doc[4]/int[@name='id'][.='16']",
+        "//result/doc[5]/int[@name='id'][.='18']",
+        "//result/doc[6]/int[@name='id'][.='19']",
+        "//result/doc[7]/int[@name='id'][.='20']",
+        "//result/doc[8]/int[@name='id'][.='21']",
+        "//result/doc[9]/int[@name='id'][.='22']",
+        "//result/doc[10]/int[@name='id'][.='23']"
+    );
+
+    params = new ModifiableSolrParams();
+    params.set(CommonParams.Q, "{!mlt qf=lowerfilt boost=true}17");
     assertQ(req(params),
         "//result/doc[1]/int[@name='id'][.='13']",
         "//result/doc[2]/int[@name='id'][.='14']",

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.schema;
 
 import java.io.IOException;
@@ -98,6 +97,8 @@ public final class SchemaField extends FieldProperties {
   public boolean omitTermFreqAndPositions() { return (properties & OMIT_TF_POSITIONS)!=0; }
   public boolean omitPositions() { return (properties & OMIT_POSITIONS)!=0; }
   public boolean storeOffsetsWithPositions() { return (properties & STORE_OFFSETS)!=0; }
+
+  public boolean useDocValuesAsStored() { return (properties & USE_DOCVALUES_AS_STORED)!=0; }
 
   public boolean multiValued() { return (properties & MULTIVALUED)!=0; }
   public boolean sortMissingFirst() { return (properties & SORT_MISSING_FIRST)!=0; }
@@ -335,6 +336,7 @@ public final class SchemaField extends FieldProperties {
       }
       properties.add(getPropertyName(REQUIRED), isRequired());
       properties.add(getPropertyName(TOKENIZED), isTokenized());
+      properties.add(getPropertyName(USE_DOCVALUES_AS_STORED), useDocValuesAsStored());
       // The BINARY property is always false
       // properties.add(getPropertyName(BINARY), isBinary());
     } else {

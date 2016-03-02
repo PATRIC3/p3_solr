@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.messages;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.messages;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.messages;
 
 import java.util.Locale;
 
@@ -101,6 +100,6 @@ public class TestNLS extends LuceneTestCase {
         MessagesTestBundle.Q0005E_MESSAGE_NOT_IN_BUNDLE, locale);
 
     assertEquals("Message with key:Q0005E_MESSAGE_NOT_IN_BUNDLE and locale: "
-        + locale.toString() + " not found.", message);
+        + locale.toLanguageTag() + " not found.", message);
   }
 }

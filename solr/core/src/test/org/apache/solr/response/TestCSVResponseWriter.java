@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.response;
 
 import org.apache.solr.SolrTestCaseJ4;
@@ -143,7 +142,7 @@ public class TestCSVResponseWriter extends SolrTestCaseJ4 {
     
     SolrQueryRequest req = req("q","*:*");
     SolrQueryResponse rsp = new SolrQueryResponse();
-    rsp.add("response", sdl);
+    rsp.addResponse(sdl);
     QueryResponseWriter w = new CSVResponseWriter();
     
     rsp.setReturnFields( new SolrReturnFields("id,foo_s", req) );

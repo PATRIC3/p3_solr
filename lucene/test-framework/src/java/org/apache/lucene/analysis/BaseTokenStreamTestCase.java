@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -445,6 +444,17 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
    */
   public static void checkRandomData(Random random, Analyzer a, int iterations, boolean simple) throws IOException {
     checkRandomData(random, a, iterations, 20, simple, true);
+  }
+  
+  /** Asserts that the given stream has expected number of tokens. */
+  public static void assertStreamHasNumberOfTokens(TokenStream ts, int expectedCount) throws IOException {
+    ts.reset();
+    int count = 0;
+    while (ts.incrementToken()) {
+      count++;
+    }
+    ts.end();
+    assertEquals("wrong number of tokens", expectedCount, count);
   }
   
   static class AnalysisThread extends Thread {

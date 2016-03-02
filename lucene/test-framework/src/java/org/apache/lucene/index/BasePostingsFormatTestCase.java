@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
 import static org.apache.lucene.index.PostingsEnum.ALL;
 import static org.apache.lucene.index.PostingsEnum.FREQS;
@@ -567,7 +566,7 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
     Document doc = new Document();
     doc.add(new StringField("foo", "bar", Field.Store.NO));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     // sugar method (FREQS)
     PostingsEnum postings = getOnlySegmentReader(reader).postings(new Term("foo", "bar"));
@@ -625,7 +624,7 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
     ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS);
     doc.add(new Field("foo", "bar bar", ft));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     // sugar method (FREQS)
     PostingsEnum postings = getOnlySegmentReader(reader).postings(new Term("foo", "bar"));
@@ -703,7 +702,7 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
     Document doc = new Document();
     doc.add(new TextField("foo", "bar bar", Field.Store.NO));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     // sugar method (FREQS)
     PostingsEnum postings = getOnlySegmentReader(reader).postings(new Term("foo", "bar"));
@@ -883,7 +882,7 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
     ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
     doc.add(new Field("foo", "bar bar", ft));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     // sugar method (FREQS)
     PostingsEnum postings = getOnlySegmentReader(reader).postings(new Term("foo", "bar"));
@@ -1068,7 +1067,7 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
     token2.setPayload(new BytesRef("pay2"));
     doc.add(new TextField("foo", new CannedTokenStream(token1, token2)));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     // sugar method (FREQS)
     PostingsEnum postings = getOnlySegmentReader(reader).postings(new Term("foo", "bar"));
@@ -1254,7 +1253,7 @@ public abstract class BasePostingsFormatTestCase extends BaseIndexFileFormatTest
     ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
     doc.add(new Field("foo", new CannedTokenStream(token1, token2), ft));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     // sugar method (FREQS)
     PostingsEnum postings = getOnlySegmentReader(reader).postings(new Term("foo", "bar"));

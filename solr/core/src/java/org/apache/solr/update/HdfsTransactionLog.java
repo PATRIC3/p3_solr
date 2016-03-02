@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
 import java.io.IOException;
@@ -59,6 +58,8 @@ import org.slf4j.LoggerFactory;
  */
 public class HdfsTransactionLog extends TransactionLog {
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  private static boolean debug = log.isDebugEnabled();
+  private static boolean trace = log.isTraceEnabled();
 
 
   Path tlogFile;
@@ -302,7 +303,7 @@ public class HdfsTransactionLog extends TransactionLog {
   }
   
   @Override
-  protected void close() {
+  public void close() {
     try {
       if (debug) {
         log.debug("Closing tlog" + this);

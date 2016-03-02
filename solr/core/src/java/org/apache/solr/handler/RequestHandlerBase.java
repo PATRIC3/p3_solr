@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler;
 
 import org.apache.solr.common.SolrException;
@@ -157,7 +156,7 @@ public abstract class RequestHandlerBase implements SolrRequestHandler, SolrInfo
       // count timeouts
       NamedList header = rsp.getResponseHeader();
       if(header != null) {
-        Object partialResults = header.get("partialResults");
+        Object partialResults = header.get(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY);
         boolean timedOut = partialResults == null ? false : (Boolean)partialResults;
         if( timedOut ) {
           numTimeouts.incrementAndGet();

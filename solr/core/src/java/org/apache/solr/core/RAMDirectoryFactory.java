@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.core;
 
 import java.io.IOException;
@@ -33,9 +32,9 @@ public class RAMDirectoryFactory extends EphemeralDirectoryFactory {
 
   @Override
   protected LockFactory createLockFactory(String rawLockType) throws IOException {
-    if (!(rawLockType == null || "single".equalsIgnoreCase(rawLockType.trim()))) {
+    if (!(rawLockType == null || DirectoryFactory.LOCK_TYPE_SINGLE.equalsIgnoreCase(rawLockType.trim()))) {
       throw new SolrException(ErrorCode.FORBIDDEN,
-          "RAMDirectory can only be used with the 'single' lock factory type.");
+          "RAMDirectory can only be used with the '"+DirectoryFactory.LOCK_TYPE_SINGLE+"' lock factory type.");
     }
     return new SingleInstanceLockFactory();
   }

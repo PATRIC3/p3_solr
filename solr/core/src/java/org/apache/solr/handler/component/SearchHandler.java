@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.component;
 
 import java.io.PrintWriter;
@@ -290,17 +289,17 @@ public class SearchHandler extends RequestHandlerBase implements SolrCoreAware ,
         }
       } catch (ExitableDirectoryReader.ExitingReaderException ex) {
         log.warn( "Query: " + req.getParamString() + "; " + ex.getMessage());
-        SolrDocumentList r = (SolrDocumentList) rb.rsp.getValues().get("response");
+        SolrDocumentList r = (SolrDocumentList) rb.rsp.getResponse();
         if(r == null)
           r = new SolrDocumentList();
         r.setNumFound(0);
-        rb.rsp.add("response", r);
+        rb.rsp.addResponse(r);
         if(rb.isDebug()) {
           NamedList debug = new NamedList();
           debug.add("explain", new NamedList());
           rb.rsp.add("debug", debug);
         }
-        rb.rsp.getResponseHeader().add("partialResults", Boolean.TRUE);
+        rb.rsp.getResponseHeader().add(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY, Boolean.TRUE);
       } finally {
         SolrQueryTimeoutImpl.reset();
       }
@@ -393,8 +392,8 @@ public class SearchHandler extends RequestHandlerBase implements SolrCoreAware ,
                   throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, srsp.getException());
                 }
               } else {
-                if(rsp.getResponseHeader().get("partialResults") == null) {
-                  rsp.getResponseHeader().add("partialResults", Boolean.TRUE);
+                if(rsp.getResponseHeader().get(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY) == null) {
+                  rsp.getResponseHeader().add(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY, Boolean.TRUE);
                 }
               }
             }

@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping.term;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.grouping.term;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping.term;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -38,18 +37,19 @@ import org.apache.lucene.util.SentinelIntSet;
  */
 public class TermSecondPassGroupingCollector extends AbstractSecondPassGroupingCollector<BytesRef> {
 
-  private final SentinelIntSet ordSet;
-  private SortedDocValues index;
   private final String groupField;
+  private final SentinelIntSet ordSet;
+
+  private SortedDocValues index;
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   public TermSecondPassGroupingCollector(String groupField, Collection<SearchGroup<BytesRef>> groups, Sort groupSort, Sort withinGroupSort,
                                          int maxDocsPerGroup, boolean getScores, boolean getMaxScores, boolean fillSortFields)
       throws IOException {
     super(groups, groupSort, withinGroupSort, maxDocsPerGroup, getScores, getMaxScores, fillSortFields);
-    ordSet = new SentinelIntSet(groupMap.size(), -2);
     this.groupField = groupField;
-    groupDocs = (SearchGroupDocs<BytesRef>[]) new SearchGroupDocs[ordSet.keys.length];
+    this.ordSet = new SentinelIntSet(groupMap.size(), -2);
+    super.groupDocs = (SearchGroupDocs<BytesRef>[]) new SearchGroupDocs[ordSet.keys.length];
   }
 
   @Override
@@ -76,9 +76,5 @@ public class TermSecondPassGroupingCollector extends AbstractSecondPassGroupingC
     }
     return null;
   }
-  
-  @Override
-  public boolean needsScores() {
-    return true; // TODO, maybe we don't?
-  }
+
 }

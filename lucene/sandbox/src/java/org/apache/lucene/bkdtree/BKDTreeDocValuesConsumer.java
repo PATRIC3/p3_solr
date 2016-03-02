@@ -1,5 +1,3 @@
-package org.apache.lucene.bkdtree;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.bkdtree;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.bkdtree;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -32,6 +31,8 @@ import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
 
+/* @deprecated Use dimensional values in Lucene 6.0 instead */
+@Deprecated
 class BKDTreeDocValuesConsumer extends DocValuesConsumer implements Closeable {
   final DocValuesConsumer delegate;
   final int maxPointsInLeafNode;

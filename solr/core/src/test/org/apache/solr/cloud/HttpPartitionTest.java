@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import java.io.File;
 import java.io.IOException;
@@ -74,7 +73,8 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
   // recognizes (and propagates) partitions
   protected static final long sleepMsBeforeHealPartition = 2000L;
 
-  protected static final int maxWaitSecsToSeeAllActive = 30;
+  // give plenty of time for replicas to recover when running in slow Jenkins test envs
+  protected static final int maxWaitSecsToSeeAllActive = 90;
 
   public HttpPartitionTest() {
     super();

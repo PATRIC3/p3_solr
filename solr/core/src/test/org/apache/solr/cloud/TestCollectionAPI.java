@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.cloud;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -30,6 +28,7 @@ import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.CloudSolrClient;
+import org.apache.solr.client.solrj.impl.HttpSolrClient.RemoteSolrException;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
@@ -80,6 +79,8 @@ public class TestCollectionAPI extends ReplicaPropertiesBase {
     replicaPropTest();
     clusterStatusZNodeVersion();
     testClusterStateMigration();
+    testCollectionCreationNameValidation();
+    testAliasCreationNameValidation();
   }
 
   private void clusterStatusWithCollectionAndShard() throws IOException, SolrServerException {
@@ -627,6 +628,47 @@ public class TestCollectionAPI extends ReplicaPropertiesBase {
 
       QueryResponse response = client.query("testClusterStateMigration", new SolrQuery("*:*"));
       assertEquals(10, response.getResults().getNumFound());
+    }
+  }
+  
+  private void testCollectionCreationNameValidation() throws Exception {
+    try (CloudSolrClient client = createCloudClient(null)) {
+      ModifiableSolrParams params = new ModifiableSolrParams();
+      params.set("action", CollectionParams.CollectionAction.CREATE.toString());
+      params.set("name", "invalid@name#with$weird%characters");
+      SolrRequest request = new QueryRequest(params);
+      request.setPath("/admin/collections");
+
+      try {
+        client.request(request);
+        fail();
+      } catch (RemoteSolrException e) {
+        final String errorMessage = e.getMessage();
+        assertTrue(errorMessage.contains("Invalid name"));
+        assertTrue(errorMessage.contains("invalid@name#with$weird%characters"));
+        assertTrue(errorMessage.contains("Identifiers must consist entirely of"));
+      }
+    }
+  }
+  
+  private void testAliasCreationNameValidation() throws Exception{
+    try (CloudSolrClient client = createCloudClient(null)) {
+      ModifiableSolrParams params = new ModifiableSolrParams();
+      params.set("action", CollectionParams.CollectionAction.CREATEALIAS.toString());
+      params.set("name", "invalid@name#with$weird%characters");
+      params.set("collections", COLLECTION_NAME);
+      SolrRequest request = new QueryRequest(params);
+      request.setPath("/admin/collections");
+
+      try {
+        client.request(request);
+        fail();
+      } catch (RemoteSolrException e) {
+        final String errorMessage = e.getMessage();
+        assertTrue(errorMessage.contains("Invalid name"));
+        assertTrue(errorMessage.contains("invalid@name#with$weird%characters"));
+        assertTrue(errorMessage.contains("Identifiers must consist entirely of"));
+      }
     }
   }
 

@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,11 @@ package org.apache.lucene.search.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spans;
+
 
 import java.io.IOException;
 import java.util.List;
-
-import org.apache.lucene.search.similarities.Similarity;
 
 /**
  * A Spans that is formed from the ordered subspans of a SpanNearQuery
@@ -52,8 +50,8 @@ public class NearSpansOrdered extends ConjunctionSpans {
 
   private final int allowedSlop;
 
-  public NearSpansOrdered(SpanWeight weight, int allowedSlop, List<Spans> subSpans, Similarity.SimScorer simScorer) throws IOException {
-    super(subSpans, weight, simScorer);
+  public NearSpansOrdered(int allowedSlop, List<Spans> subSpans) throws IOException {
+    super(subSpans);
     this.atFirstInCurrentDoc = true; // -1 startPosition/endPosition also at doc -1
     this.allowedSlop = allowedSlop;
   }
@@ -150,11 +148,6 @@ public class NearSpansOrdered extends ConjunctionSpans {
     for (Spans spans : subSpans) {
       spans.collect(collector);
     }
-  }
-
-  @Override
-  public String toString() {
-    return "NearSpansOrdered("+weight.getQuery().toString()+")@"+docID()+": "+startPosition()+" - "+endPosition();
   }
 
 }

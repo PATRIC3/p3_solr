@@ -1,5 +1,3 @@
-package org.apache.solr.schema;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.schema;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.request.SolrQueryRequest;
@@ -137,10 +136,6 @@ public class EnumFieldTest extends SolrTestCaseJ4 {
     }
 
     assertU(commit());
-
-    SolrQueryRequest eoe = req("fl", "" + FIELD_NAME, "q",
-        FIELD_NAME + ":bla");
-    String eoe1 = eoe.toString();
 
     assertQ(req("fl", "" + FIELD_NAME, "q",
             FIELD_NAME + ":bla"),

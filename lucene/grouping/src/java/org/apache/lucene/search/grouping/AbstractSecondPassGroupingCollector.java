@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping;
 
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.*;
@@ -24,6 +23,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * SecondPassGroupingCollector is the second of two passes
@@ -39,12 +39,14 @@ import java.util.Map;
  */
 public abstract class AbstractSecondPassGroupingCollector<GROUP_VALUE_TYPE> extends SimpleCollector {
 
-  protected final Map<GROUP_VALUE_TYPE, SearchGroupDocs<GROUP_VALUE_TYPE>> groupMap;
-  private final int maxDocsPerGroup;
-  protected SearchGroupDocs<GROUP_VALUE_TYPE>[] groupDocs;
   private final Collection<SearchGroup<GROUP_VALUE_TYPE>> groups;
-  private final Sort withinGroupSort;
   private final Sort groupSort;
+  private final Sort withinGroupSort;
+  private final int maxDocsPerGroup;
+  private final boolean needsScores;
+  protected final Map<GROUP_VALUE_TYPE, SearchGroupDocs<GROUP_VALUE_TYPE>> groupMap;
+
+  protected SearchGroupDocs<GROUP_VALUE_TYPE>[] groupDocs;
 
   private int totalHitCount;
   private int totalGroupedHitCount;
@@ -54,30 +56,34 @@ public abstract class AbstractSecondPassGroupingCollector<GROUP_VALUE_TYPE> exte
     throws IOException {
 
     //System.out.println("SP init");
-    if (groups.size() == 0) {
-      throw new IllegalArgumentException("no groups to collect (groups.size() is 0)");
+    if (groups.isEmpty()) {
+      throw new IllegalArgumentException("no groups to collect (groups is empty)");
     }
 
-    this.groupSort = groupSort;
-    this.withinGroupSort = withinGroupSort;
-    this.groups = groups;
+    this.groups = Objects.requireNonNull(groups);
+    this.groupSort = Objects.requireNonNull(groupSort);
+    this.withinGroupSort = Objects.requireNonNull(withinGroupSort);
     this.maxDocsPerGroup = maxDocsPerGroup;
-    groupMap = new HashMap<>(groups.size());
+    this.needsScores = getScores || getMaxScores || withinGroupSort.needsScores();
 
+    this.groupMap = new HashMap<>(groups.size());
     for (SearchGroup<GROUP_VALUE_TYPE> group : groups) {
       //System.out.println("  prep group=" + (group.groupValue == null ? "null" : group.groupValue.utf8ToString()));
       final TopDocsCollector<?> collector;
-      if (withinGroupSort == null) {
+      if (withinGroupSort.equals(Sort.RELEVANCE)) { // optimize to use TopScoreDocCollector
         // Sort by score
         collector = TopScoreDocCollector.create(maxDocsPerGroup);
       } else {
         // Sort by fields
         collector = TopFieldCollector.create(withinGroupSort, maxDocsPerGroup, fillSortFields, getScores, getMaxScores);
       }
-      groupMap.put(group.groupValue,
-          new SearchGroupDocs<>(group.groupValue,
-              collector));
+      groupMap.put(group.groupValue, new SearchGroupDocs<>(group.groupValue, collector));
     }
+  }
+
+  @Override
+  public boolean needsScores() {
+    return needsScores;
   }
 
   @Override
@@ -133,7 +139,7 @@ public abstract class AbstractSecondPassGroupingCollector<GROUP_VALUE_TYPE> exte
     }
 
     return new TopGroups<>(groupSort.getSort(),
-                                           withinGroupSort == null ? null : withinGroupSort.getSort(),
+                                           withinGroupSort.getSort(),
                                            totalHitCount, totalGroupedHitCount, groupDocsResult,
                                            maxScore);
   }

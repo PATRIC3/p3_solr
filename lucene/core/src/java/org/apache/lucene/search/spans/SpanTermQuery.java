@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spans;
+
 
 import java.io.IOException;
 import java.util.Collections;
@@ -119,7 +119,7 @@ public class SpanTermQuery extends SpanQuery {
 
       final PostingsEnum postings = termsEnum.postings(null, requiredPostings.getRequiredPostings());
       float positionsCost = termPositionsCost(termsEnum) * PHRASE_TO_SPAN_TERM_POSITIONS_COST;
-      return new TermSpans(this, getSimScorer(context), postings, term, positionsCost);
+      return new TermSpans(getSimScorer(context), postings, term, positionsCost);
     }
   }
 

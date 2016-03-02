@@ -1,5 +1,3 @@
-package org.apache.solr.security;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.security;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.security;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -23,6 +22,8 @@ import java.util.Map;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.util.CommandOperation;
+
+import static java.util.Collections.singletonMap;
 
 public class TestSha256AuthenticationProvider extends SolrTestCaseJ4 {
   public void testAuthenticate(){
@@ -41,6 +42,25 @@ public class TestSha256AuthenticationProvider extends SolrTestCaseJ4 {
     assertTrue(zkAuthenticationProvider.authenticate(user, pwd));
     assertFalse(zkAuthenticationProvider.authenticate(user, "WrongPassword"));
     assertFalse(zkAuthenticationProvider.authenticate("unknownuser", "WrongPassword"));
+
+  }
+
+  public void testBasicAuthCommands(){
+    BasicAuthPlugin basicAuthPlugin = new BasicAuthPlugin();
+    basicAuthPlugin.init(Collections.EMPTY_MAP);
+
+    Map latestConf = new LinkedHashMap<>();
+
+    CommandOperation blockUnknown = new CommandOperation("set-property", singletonMap("blockUnknown", true));
+    basicAuthPlugin.edit(latestConf, Collections.singletonList(blockUnknown));
+    assertEquals(Boolean.TRUE,  latestConf.get("blockUnknown"));
+    basicAuthPlugin.init(latestConf);
+    assertTrue(basicAuthPlugin.getBlockUnknown());
+    blockUnknown = new CommandOperation("set-property", singletonMap("blockUnknown", false));
+    basicAuthPlugin.edit(latestConf, Collections.singletonList(blockUnknown));
+    assertEquals(Boolean.FALSE,  latestConf.get("blockUnknown"));
+    basicAuthPlugin.init(latestConf);
+    assertFalse(basicAuthPlugin.getBlockUnknown());
 
   }
 }

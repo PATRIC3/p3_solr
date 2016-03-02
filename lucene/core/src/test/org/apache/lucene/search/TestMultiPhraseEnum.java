@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -45,7 +45,7 @@ public class TestMultiPhraseEnum extends LuceneTestCase {
     doc.add(new TextField("field", "foo bar", Field.Store.NO));
     writer.addDocument(doc);
     
-    DirectoryReader ir = DirectoryReader.open(writer, true);
+    DirectoryReader ir = DirectoryReader.open(writer);
     writer.close();
 
     PostingsEnum p1 = getOnlySegmentReader(ir).postings(new Term("field", "foo"), PostingsEnum.POSITIONS);
@@ -87,7 +87,7 @@ public class TestMultiPhraseEnum extends LuceneTestCase {
     writer.addDocument(doc);
     
     writer.forceMerge(1);
-    DirectoryReader ir = DirectoryReader.open(writer, true);
+    DirectoryReader ir = DirectoryReader.open(writer);
     writer.close();
 
     PostingsEnum p1 = getOnlySegmentReader(ir).postings(new Term("field", "foo"), PostingsEnum.POSITIONS);

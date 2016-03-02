@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.autoprefix;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs.autoprefix;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.autoprefix;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -114,7 +114,7 @@ public class TestAutoPrefixTerms extends LuceneTestCase {
     }
 
     if (VERBOSE) System.out.println("\nTEST: now done");
-    IndexReader r = DirectoryReader.open(w, true);
+    IndexReader r = DirectoryReader.open(w);
 
     List<String> sortedTerms = new ArrayList<>(terms);
     Collections.sort(sortedTerms);
@@ -242,7 +242,7 @@ public class TestAutoPrefixTerms extends LuceneTestCase {
       w.forceMerge(1);
     }
 
-    IndexReader r = DirectoryReader.open(w, true);
+    IndexReader r = DirectoryReader.open(w);
 
     List<Integer> sortedTerms = new ArrayList<>(terms);
     Collections.sort(sortedTerms);
@@ -365,7 +365,7 @@ public class TestAutoPrefixTerms extends LuceneTestCase {
       w.forceMerge(1);
     }
 
-    IndexReader r = DirectoryReader.open(w, true);
+    IndexReader r = DirectoryReader.open(w);
 
     List<String> sortedTerms = new ArrayList<>(terms);
     Collections.sort(sortedTerms);
@@ -475,7 +475,7 @@ public class TestAutoPrefixTerms extends LuceneTestCase {
       w.forceMerge(1);
     }
 
-    IndexReader r = DirectoryReader.open(w, true);
+    IndexReader r = DirectoryReader.open(w);
     Terms terms = MultiFields.getTerms(r, "field");
     if (VERBOSE) {
       System.out.println("\nTEST: now intersect");

@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -141,12 +141,12 @@ public class TestStressNRT extends LuceneTestCase {
                       if (VERBOSE) {
                         System.out.println("TEST: " + Thread.currentThread().getName() + ": call writer.getReader");
                       }
-                      newReader = writer.getReader(true);
+                      newReader = writer.getReader();
                     } else {
                       if (VERBOSE) {
                         System.out.println("TEST: " + Thread.currentThread().getName() + ": reopen reader=" + oldReader + " version=" + version);
                       }
-                      newReader = DirectoryReader.openIfChanged(oldReader, writer.w, true);
+                      newReader = DirectoryReader.openIfChanged(oldReader, writer.w);
                     }
                   } else {
                     // assertU(commit());

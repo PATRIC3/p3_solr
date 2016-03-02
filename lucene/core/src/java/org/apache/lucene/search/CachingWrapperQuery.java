@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -132,7 +131,7 @@ public class CachingWrapperQuery extends Query implements Accountable, Cloneable
           if (scorer == null) {
             docIdSet = DocIdSet.EMPTY;
           } else {
-            docIdSet = cacheImpl(scorer, context.reader());
+            docIdSet = cacheImpl(scorer.iterator(), context.reader());
           }
           cache.put(key, docIdSet);
         } else {

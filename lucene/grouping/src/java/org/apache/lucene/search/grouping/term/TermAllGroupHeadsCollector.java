@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping.term;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.grouping.term;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping.term;
 
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.DocValues;
@@ -171,6 +170,11 @@ public abstract class TermAllGroupHeadsCollector<GH extends AbstractAllGroupHead
     }
 
     @Override
+    public boolean needsScores() {
+      return sortWithinGroup.needsScores();
+    }
+
+    @Override
     public void setScorer(Scorer scorer) throws IOException {
       this.scorer = scorer;
       for (GroupHead groupHead : groups.values()) {
@@ -247,6 +251,11 @@ public abstract class TermAllGroupHeadsCollector<GH extends AbstractAllGroupHead
     @Override
     protected Collection<GroupHead> getCollectedGroupHeads() {
       return collectedGroups;
+    }
+
+    @Override
+    public boolean needsScores() {
+      return true;
     }
 
     @Override
@@ -410,6 +419,11 @@ public abstract class TermAllGroupHeadsCollector<GH extends AbstractAllGroupHead
     }
 
     @Override
+    public boolean needsScores() {
+      return false;
+    }
+
+    @Override
     public void setScorer(Scorer scorer) throws IOException {
     }
 
@@ -541,6 +555,11 @@ public abstract class TermAllGroupHeadsCollector<GH extends AbstractAllGroupHead
     }
 
     @Override
+    public boolean needsScores() {
+      return true;
+    }
+
+    @Override
     public void setScorer(Scorer scorer) throws IOException {
       this.scorer = scorer;
     }
@@ -626,9 +645,5 @@ public abstract class TermAllGroupHeadsCollector<GH extends AbstractAllGroupHead
     }
 
   }
-  
-  @Override
-  public boolean needsScores() {
-    return true; // TODO, maybe we don't?
-  }
+
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import static org.apache.lucene.search.similarities.SimilarityBase.log2;
 
@@ -28,7 +28,7 @@ import static org.apache.lucene.search.similarities.SimilarityBase.log2;
  * <p>
  * WARNING: for terms that do not meet the expected random distribution
  * (e.g. stopwords), this model may give poor performance, such as
- * abnormally high scores for low tf values.
+ * abnormally high or NaN scores for low tf values.
  * @lucene.experimental
  */
 public class BasicModelD extends BasicModel {

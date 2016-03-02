@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -123,22 +123,25 @@ class BooleanTopLevelScorers {
       this.coordReq = coordReq;
       this.coordBoth = coordBoth;
     }
-    
+
     @Override
     public float score() throws IOException {
+      // TODO: sum into a double and cast to float if we ever send required clauses to BS1
       int curDoc = reqScorer.docID();
-      float reqScore = reqScorer.score();
-      if (optScorer == null) {
-        return reqScore * coordReq;
+      float score = reqScorer.score();
+
+      int optScorerDoc = optIterator.docID();
+      if (optScorerDoc < curDoc) {
+        optScorerDoc = optIterator.advance(curDoc);
       }
       
-      int optScorerDoc = optScorer.docID();
-      if (optScorerDoc < curDoc && (optScorerDoc = optScorer.advance(curDoc)) == NO_MORE_DOCS) {
-        optScorer = null;
-        return reqScore * coordReq;
+      if (optScorerDoc == curDoc) {
+        score = (score + optScorer.score()) * coordBoth;
+      } else {
+        score = score * coordReq;
       }
       
-      return optScorerDoc == curDoc ? (reqScore + optScorer.score()) * coordBoth : reqScore * coordReq;
+      return score;
     }
   }
 
@@ -155,22 +158,25 @@ class BooleanTopLevelScorers {
       this.requiredCount = requiredCount;
       this.coords = coords;
     }
-    
+
     @Override
     public float score() throws IOException {
+      // TODO: sum into a double and cast to float if we ever send required clauses to BS1
       int curDoc = reqScorer.docID();
-      float reqScore = reqScorer.score();
-      if (optScorer == null) {
-        return reqScore * coords[requiredCount];
+      float score = reqScorer.score();
+
+      int optScorerDoc = optIterator.docID();
+      if (optScorerDoc < curDoc) {
+        optScorerDoc = optIterator.advance(curDoc);
       }
       
-      int optScorerDoc = optScorer.docID();
-      if (optScorerDoc < curDoc && (optScorerDoc = optScorer.advance(curDoc)) == NO_MORE_DOCS) {
-        optScorer = null;
-        return reqScore * coords[requiredCount];
+      if (optScorerDoc == curDoc) {
+        score = (score + optScorer.score()) * coords[requiredCount + optScorer.freq()];
+      } else {
+        score = score * coords[requiredCount];
       }
       
-      return optScorerDoc == curDoc ? (reqScore + optScorer.score()) * coords[requiredCount + optScorer.freq()] : reqScore * coords[requiredCount];
+      return score;
     }
   }
 }

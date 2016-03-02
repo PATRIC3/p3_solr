@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
  
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -30,6 +30,7 @@ import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
 import java.security.PrivilegedActionException;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.concurrent.Future;
 import java.lang.reflect.Method;
 
@@ -165,13 +166,18 @@ public class MMapDirectory extends FSDirectory {
    */
   public static final boolean UNMAP_SUPPORTED = AccessController.doPrivileged(new PrivilegedAction<Boolean>() {
     @Override
-    @SuppressForbidden(reason = "Java 9 Jigsaw whitelists access to sun.misc.Cleaner, so setAccessible works")
+    @SuppressForbidden(reason = "Needs access to private APIs in DirectBuffer and sun.misc.Cleaner to enable hack")
     public Boolean run() {
       try {
-        Class<?> clazz = Class.forName("java.nio.DirectByteBuffer");
-        Method method = clazz.getMethod("cleaner");
-        method.setAccessible(true);
-        return true;
+        // inspect DirectByteBuffer:
+        final Class<?> dbClazz = Class.forName("java.nio.DirectByteBuffer");
+        final Method cleanerMethod = dbClazz.getMethod("cleaner");
+        cleanerMethod.setAccessible(true);
+        // try to lookup the clean method from sun.misc.Cleaner:
+        final Class<?> cleanerClazz = Class.forName("sun.misc.Cleaner");
+        cleanerClazz.getMethod("clean"); // no setAccessible needed as everything is public!
+        // check return type fits cleaner class return our decision:
+        return Objects.equals(cleanerMethod.getReturnType(), cleanerClazz);
       } catch (Exception e) {
         return false;
       }
@@ -315,7 +321,7 @@ public class MMapDirectory extends FSDirectory {
       try {
         AccessController.doPrivileged(new PrivilegedExceptionAction<Void>() {
           @Override
-          @SuppressForbidden(reason = "Java 9 Jigsaw whitelists access to sun.misc.Cleaner, so setAccessible works")
+          @SuppressForbidden(reason = "Needs access to private APIs in DirectBuffer and sun.misc.Cleaner to enable hack")
           public Void run() throws Exception {
             final Method getCleanerMethod = buffer.getClass()
               .getMethod("cleaner");

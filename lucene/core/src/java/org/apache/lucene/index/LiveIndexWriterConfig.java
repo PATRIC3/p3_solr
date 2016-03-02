@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.codecs.Codec;
@@ -393,7 +393,7 @@ public class LiveIndexWriterConfig {
 
   /**
    * Returns {@code true} if {@link IndexWriter} should pool readers even if
-   * {@link DirectoryReader#open(IndexWriter, boolean)} has not been called.
+   * {@link DirectoryReader#open(IndexWriter)} has not been called.
    */
   public boolean getReaderPooling() {
     return readerPooling;

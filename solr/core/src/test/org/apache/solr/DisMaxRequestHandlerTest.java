@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr;
 
 import org.apache.solr.common.params.CommonParams;
@@ -98,6 +97,11 @@ public class DisMaxRequestHandlerTest extends SolrTestCaseJ4 {
                 ,"qf", "subject"
                 ,"qf", "features_t"
                 )
+            ,"//*[@numFound='3']"
+            );
+    
+    assertQ("multi qf as local params",
+            req("q", "{!dismax qf=subject qf=features_t}cool")
             ,"//*[@numFound='3']"
             );
 

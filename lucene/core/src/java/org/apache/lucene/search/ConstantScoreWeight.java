@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.Set;
@@ -82,9 +82,9 @@ public abstract class ConstantScoreWeight extends Weight {
     if (s == null) {
       exists = false;
     } else {
-      final TwoPhaseIterator twoPhase = s.asTwoPhaseIterator();
+      final TwoPhaseIterator twoPhase = s.twoPhaseIterator();
       if (twoPhase == null) {
-        exists = s.advance(doc) == doc;
+        exists = s.iterator().advance(doc) == doc;
       } else {
         exists = twoPhase.approximation().advance(doc) == doc && twoPhase.matches();
       }

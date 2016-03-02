@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
 import java.util.List;
@@ -345,7 +344,7 @@ public class DocumentBuilderTest extends SolrTestCaseJ4 {
       SolrQueryResponse rsp = new SolrQueryResponse();
       core.execute(core.getRequestHandler(req.getParams().get(CommonParams.QT)), req, rsp);
 
-      DocList dl = ((ResultContext) rsp.getValues().get("response")).docs;
+      DocList dl = ((ResultContext) rsp.getResponse()).docs;
       assertTrue("can't find the doc we just added", 1 == dl.size());
       int docid = dl.iterator().nextDoc();
 

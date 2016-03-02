@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.taxonomy;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet.taxonomy;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy;
 
 import java.io.IOException;
 
@@ -52,7 +51,7 @@ public class TestCachedOrdinalsReader extends FacetTestCase {
     doc.add(new FacetField("A", "2"));
     writer.addDocument(config.build(taxoWriter, doc));
     
-    final DirectoryReader reader = DirectoryReader.open(writer, true);
+    final DirectoryReader reader = DirectoryReader.open(writer);
     final CachedOrdinalsReader ordsReader = new CachedOrdinalsReader(new DocValuesOrdinalsReader(FacetsConfig.DEFAULT_INDEX_FIELD_NAME));
     Thread[] threads = new Thread[3];
     for (int i = 0; i < threads.length; i++) {

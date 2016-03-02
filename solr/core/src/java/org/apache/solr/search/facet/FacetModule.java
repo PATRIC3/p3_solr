@@ -1,5 +1,3 @@
-package org.apache.solr.search.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.facet;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -41,6 +40,7 @@ import org.apache.solr.handler.component.ShardRequest;
 import org.apache.solr.handler.component.ShardResponse;
 import org.apache.solr.search.QueryContext;
 import org.apache.solr.search.SyntaxError;
+import org.apache.solr.util.RTimer;
 
 public class FacetModule extends SearchComponent {
 
@@ -81,7 +81,22 @@ public class FacetModule extends SearchComponent {
     }
 
     FacetProcessor fproc = facetState.facetRequest.createFacetProcessor(fcontext);
-    fproc.process();
+    if (rb.isDebug()) {
+      FacetDebugInfo fdebug = new FacetDebugInfo();
+      fcontext.setDebugInfo(fdebug);
+      fdebug.setReqDescription(facetState.facetRequest.getFacetDescription());
+      fdebug.setProcessor(fproc.getClass().getSimpleName());
+     
+      final RTimer timer = new RTimer();
+      fproc.process();
+      long timeElapsed = (long) timer.getTime();
+      fdebug.setElapse(timeElapsed);
+      fdebug.putInfoItem("domainSize", (long)fcontext.base.size());
+      rb.req.getContext().put("FacetDebugInfo", fdebug);
+    } else {
+      fproc.process();
+    }
+    
     rb.rsp.add("facets", fproc.getResponse());
   }
 

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
@@ -86,7 +86,9 @@ public class TestDocBoost extends LuceneTestCase {
       if (VERBOSE) {
         System.out.println(searcher.explain(new TermQuery(new Term("field", "word")), i));
       }
-      assertTrue("score: " + scores[i] + " should be > lastScore: " + lastScore, scores[i] > lastScore);
+      if (scores[i] != 0.0) {
+        assertTrue("score: " + scores[i] + " should be > lastScore: " + lastScore, scores[i] > lastScore);
+      }
       lastScore = scores[i];
     }
     

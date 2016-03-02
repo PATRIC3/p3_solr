@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.rest.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.rest.schema;
 import org.apache.solr.rest.SolrRestletTestBase;
 import org.junit.Test;
 
@@ -24,7 +23,7 @@ public class TestSchemaVersionResource extends SolrRestletTestBase {
   public void testGetSchemaVersion() throws Exception {
     assertQ("/schema/version?indent=on&wt=xml",
             "count(/response/float[@name='version']) = 1",
-            "/response/float[@name='version'][.='1.5']");
+            "/response/float[@name='version'][.='1.6']");
   }
 }
 

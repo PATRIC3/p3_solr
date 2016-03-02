@@ -1,5 +1,3 @@
-package org.apache.solr.client.solrj.request;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.client.solrj.request;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.client.solrj.request;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -127,7 +126,7 @@ public class SchemaTest extends RestTestBase {
     SchemaRepresentation schemaRepresentation = schemaResponse.getSchemaRepresentation();
     assertNotNull(schemaRepresentation);
     assertEquals("test", schemaRepresentation.getName());
-    assertTrue(1.5 == schemaRepresentation.getVersion());
+    assertEquals(1.6, schemaRepresentation.getVersion(), 0.001f);
     assertEquals("id", schemaRepresentation.getUniqueKey());
     assertFalse(schemaRepresentation.getFields().isEmpty());
     assertFalse(schemaRepresentation.getDynamicFields().isEmpty());
@@ -148,7 +147,7 @@ public class SchemaTest extends RestTestBase {
     SchemaRequest.SchemaVersion schemaVersionRequest = new SchemaRequest.SchemaVersion();
     SchemaResponse.SchemaVersionResponse schemaVersionResponse = schemaVersionRequest.process(getSolrClient());
     assertValidSchemaResponse(schemaVersionResponse);
-    assertTrue(1.5 == schemaVersionResponse.getSchemaVersion());
+    assertEquals(1.6, schemaVersionResponse.getSchemaVersion(), 0.001);
   }
 
   @Test

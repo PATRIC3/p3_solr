@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -1787,7 +1787,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         }
 
         @Override
-        public TokenStream tokenStream(Analyzer analyzer, TokenStream reuse) throws IOException {
+        public TokenStream tokenStream(Analyzer analyzer, TokenStream reuse) {
           return null;
         }
       });
@@ -1796,7 +1796,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     } catch (UnsupportedOperationException expected) {
       // expected
     }
-    DirectoryReader ir = DirectoryReader.open(iw, false);
+    DirectoryReader ir = DirectoryReader.open(iw);
     assertEquals(1, ir.numDocs());
     assertEquals("sometext", ir.document(0).get("field1"));
     ir.close();
@@ -1850,6 +1850,9 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       iwc = new IndexWriterConfig(new MockAnalyzer(random()));
       try {
         iw = new IndexWriter(dir, iwc);
+      } catch (AssertionError ex) {
+        // This is fine: we tripped IW's assert that all files it's about to fsync do exist:
+        assertTrue(ex.getMessage().matches("file .* does not exist; files=\\[.*\\]"));
       } catch (CorruptIndexException ex) {
         // Exceptions are fine - we are running out of file handlers here
         continue;
@@ -1998,7 +2001,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         }
 
         // Trigger writeLiveDocs + writeFieldUpdates so we hit fake exc:
-        IndexReader r = w.getReader(true);
+        IndexReader r = w.getReader();
 
         // Sometimes we will make it here (we only randomly
         // throw the exc):
@@ -2201,7 +2204,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     iw.addDocument(doc);
     
     // pool readers
-    DirectoryReader r = DirectoryReader.open(iw, false);
+    DirectoryReader r = DirectoryReader.open(iw);
 
     // sometimes sneak in a pending commit: we don't want to leak a file handle to that segments_N
     if (random().nextBoolean()) {
@@ -2272,7 +2275,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       iw.addDocument(doc);
       
       // pool readers
-      DirectoryReader r = DirectoryReader.open(iw, false);
+      DirectoryReader r = DirectoryReader.open(iw);
       
       // sometimes sneak in a pending commit: we don't want to leak a file handle to that segments_N
       if (random().nextBoolean()) {
@@ -2329,6 +2332,13 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       });
 
     IndexWriterConfig iwc = newIndexWriterConfig();
+    MergePolicy mp = iwc.getMergePolicy();
+    if (mp instanceof TieredMergePolicy) {
+      TieredMergePolicy tmp = (TieredMergePolicy) mp;
+      if (tmp.getMaxMergedSegmentMB() < 0.2) {
+        tmp.setMaxMergedSegmentMB(0.2);
+      }
+    }
     MergeScheduler ms = iwc.getMergeScheduler();
     if (ms instanceof ConcurrentMergeScheduler) {
       ((ConcurrentMergeScheduler) ms).setSuppressExceptions();
@@ -2342,7 +2352,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         w.addDocument(doc);
         if (random().nextInt(10) == 7) {
           // Flush new segment:
-          DirectoryReader.open(w, true).close();
+          DirectoryReader.open(w).close();
         }
       } catch (AlreadyClosedException ace) {
         // OK: e.g. CMS hit the exc in BG thread and closed the writer

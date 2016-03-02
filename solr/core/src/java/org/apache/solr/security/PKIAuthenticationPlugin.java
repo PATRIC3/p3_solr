@@ -1,5 +1,3 @@
-package org.apache.solr.security;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.security;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.security;
 
 import javax.servlet.FilterChain;
 import javax.servlet.ServletRequest;
@@ -65,7 +64,7 @@ public class PKIAuthenticationPlugin extends AuthenticationPlugin implements Htt
   private final Map<String, PublicKey> keyCache = new ConcurrentHashMap<>();
   private final CryptoKeys.RSAKeyPair keyPair = new CryptoKeys.RSAKeyPair();
   private final CoreContainer cores;
-  private final int MAX_VALIDITY = 5000;
+  private final int MAX_VALIDITY = Integer.parseInt(System.getProperty("pkiauth.ttl", "5000"));
   private final String myNodeName;
 
   private boolean interceptorRegistered = false;

@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping;
 
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.CachingCollector;
@@ -58,7 +57,7 @@ public class GroupingSearch {
   private final Query groupEndDocs;
 
   private Sort groupSort = Sort.RELEVANCE;
-  private Sort sortWithinGroup;
+  private Sort sortWithinGroup = Sort.RELEVANCE;
 
   private int groupDocsOffset;
   private int groupDocsLimit = 1;

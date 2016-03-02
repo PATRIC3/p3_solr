@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.client.solrj.request;
 
 import org.apache.solr.client.solrj.SolrClient;
@@ -23,6 +22,7 @@ import org.apache.solr.client.solrj.response.CollectionAdminResponse;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.common.params.CollectionAdminParams;
 import org.apache.solr.common.params.CollectionParams.CollectionAction;
 import org.apache.solr.common.params.CommonAdminParams;
 import org.apache.solr.common.params.CoreAdminParams;
@@ -82,7 +82,7 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
   protected CollectionAdminResponse createResponse(SolrClient client) {
     return new CollectionAdminResponse();
   }
-  
+
   protected void addProperties(ModifiableSolrParams params, Properties props) {
     Iterator<Map.Entry<Object, Object>> iter = props.entrySet().iterator();
     while(iter.hasNext()) {
@@ -90,6 +90,28 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       String key = (String) prop.getKey();
       String value = (String) prop.getValue();
       params.set(PROPERTY_PREFIX + key, value);
+    }
+  }
+
+  protected abstract static class AsyncCollectionAdminRequest <T extends CollectionAdminRequest<T>> extends CollectionAdminRequest<T> {
+    protected String asyncId = null;
+
+    public final T setAsyncId(String asyncId) {
+      this.asyncId = asyncId;
+      return getThis();
+    }
+
+    public String getAsyncId() {
+      return asyncId;
+    }
+
+    @Override
+    public SolrParams getParams() {
+      ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
+      if (asyncId != null) {
+        params.set(CommonAdminParams.ASYNC, asyncId);
+      }
+      return params;
     }
   }
 
@@ -112,11 +134,31 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
     @Override
     public SolrParams getParams() {
       ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
-      params.set( CoreAdminParams.NAME, collection );
+      params.set(CoreAdminParams.NAME, collection);
       return params;
     }
+  }
 
+  protected abstract static class CollectionSpecificAsyncAdminRequest<T extends CollectionAdminRequest<T>> extends CollectionSpecificAdminRequest<T> {
+    protected String asyncId = null;
 
+    public final T setAsyncId(String asyncId) {
+      this.asyncId = asyncId;
+      return getThis();
+    }
+
+    public String getAsyncId() {
+      return asyncId;
+    }
+
+    @Override
+    public SolrParams getParams() {
+      ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
+      if (asyncId != null) {
+        params.set(CommonAdminParams.ASYNC, asyncId);
+      }
+      return params;
+    }
   }
 
   protected abstract static class CollectionShardAdminRequest <T extends CollectionAdminRequest<T>> extends CollectionAdminRequest<T> {
@@ -136,11 +178,12 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       this.shardName = shard;
       return getThis();
     }
-    
+
     public String getShardName() {
       return this.shardName;
     }
 
+    @Deprecated
     public ModifiableSolrParams getCommonParams() {
       ModifiableSolrParams params = (ModifiableSolrParams) super.getParams();
       params.set(CoreAdminParams.COLLECTION, collection);
@@ -150,14 +193,38 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
 
     @Override
     public SolrParams getParams() {
-      return getCommonParams();
+      ModifiableSolrParams params = (ModifiableSolrParams) super.getParams();
+      params.set(CoreAdminParams.COLLECTION, collection);
+      params.set(CoreAdminParams.SHARD, shardName);
+      return params;
     }
   }
-  
-  protected abstract static class CollectionAdminRoleRequest <T extends CollectionAdminRequest<T>> extends CollectionAdminRequest<T> {
+
+  protected abstract static class CollectionShardAsyncAdminRequest<T extends CollectionAdminRequest<T>> extends CollectionShardAdminRequest<T> {
+    protected String asyncId = null;
+
+    public final T setAsyncId(String asyncId) {
+      this.asyncId = asyncId;
+      return getThis();
+    }
+
+    public String getAsyncId() {
+      return asyncId;
+    }
+
+    @Override
+    public SolrParams getParams() {
+      ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
+      if (asyncId != null) {
+        params.set(CommonAdminParams.ASYNC, asyncId);
+      }
+      return params;
+    }
+  }
+
+  protected abstract static class CollectionAdminRoleRequest <T extends CollectionAdminRequest<T>> extends AsyncCollectionAdminRequest<T> {
     protected String node;
     protected String role;
-
     public T setNode(String node) {
       this.node = node;
       return getThis();
@@ -186,10 +253,10 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
 
   }
 
-  /** Specific Collection API call implementations **/ 
-  
+  /** Specific Collection API call implementations **/
+
   // CREATE request
-  public static class Create extends CollectionSpecificAdminRequest<Create> {
+  public static class Create extends CollectionSpecificAsyncAdminRequest<Create> {
     protected String configName = null;
     protected String createNodeSet = null;
     protected String routerName;
@@ -202,7 +269,6 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
     private Properties properties;
     protected Boolean autoAddReplicas;
     protected Integer stateFormat;
-    protected String asyncId;
     private String[] rule , snitch;
     public Create() {
       action = CollectionAction.CREATE;
@@ -218,10 +284,6 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
     public Create setAutoAddReplicas(boolean autoAddReplicas) { this.autoAddReplicas = autoAddReplicas; return this; }
     public Create setReplicationFactor(Integer repl) { this.replicationFactor = repl; return this; }
     public Create setStateFormat(Integer stateFormat) { this.stateFormat = stateFormat; return this; }
-    public Create setAsyncId(String asyncId) {
-      this.asyncId = asyncId;
-      return this;
-    }
     public Create setRule(String... s){ this.rule = s; return this; }
     public Create setSnitch(String... s){ this.snitch = s; return this; }
 
@@ -234,9 +296,6 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
     public Integer getReplicationFactor() { return replicationFactor; }
     public Boolean getAutoAddReplicas() { return autoAddReplicas; }
     public Integer getStateFormat() { return stateFormat; }
-    public String getAsyncId() {
-      return asyncId;
-    }
 
     public Properties getProperties() {
       return properties;
@@ -267,7 +326,6 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       if (replicationFactor != null) {
         params.set( "replicationFactor", replicationFactor);
       }
-      params.set(CommonAdminParams.ASYNC, asyncId);
       if (autoAddReplicas != null) {
         params.set(ZkStateReader.AUTO_ADD_REPLICAS, autoAddReplicas);
       }
@@ -289,9 +347,15 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
   }
 
   // RELOAD request
-  public static class Reload extends CollectionSpecificAdminRequest<Reload> {
+  public static class Reload extends CollectionSpecificAsyncAdminRequest<Reload> {
     public Reload() {
       action = CollectionAction.RELOAD;
+    }
+
+    @Override
+    public SolrParams getParams() {
+      ModifiableSolrParams params = (ModifiableSolrParams) super.getParams();
+      return params;
     }
 
     @Override
@@ -301,11 +365,16 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
   }
 
   // DELETE request
-  public static class Delete extends CollectionSpecificAdminRequest<Delete> {
-    protected String collection = null;
+  public static class Delete extends CollectionSpecificAsyncAdminRequest<Delete> {
 
     public Delete() {
       action = CollectionAction.DELETE;
+    }
+
+    @Override
+    public SolrParams getParams() {
+      ModifiableSolrParams params = (ModifiableSolrParams) super.getParams();
+      return params;
     }
 
     @Override
@@ -315,9 +384,9 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
   }
 
   // CREATESHARD request
-  public static class CreateShard extends CollectionShardAdminRequest<CreateShard> {
+  public static class CreateShard extends CollectionShardAsyncAdminRequest<CreateShard> {
     protected String nodeSet;
-    private Properties properties;
+    protected Properties properties;
 
     public CreateShard setNodeSet(String nodeSet) {
       this.nodeSet = nodeSet;
@@ -343,7 +412,7 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
 
     @Override
     public SolrParams getParams() {
-      ModifiableSolrParams params = getCommonParams();
+      ModifiableSolrParams params = (ModifiableSolrParams) super.getParams();
       if (nodeSet != null) {
         params.set("createNodeSet", nodeSet);
       }
@@ -360,11 +429,10 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
   }
 
   // SPLITSHARD request
-  public static class SplitShard extends CollectionShardAdminRequest<SplitShard> {
+  public static class SplitShard extends CollectionShardAsyncAdminRequest<SplitShard> {
     protected String ranges;
     protected String splitKey;
-    protected String asyncId;
-    
+
     private Properties properties;
 
     public SplitShard() {
@@ -378,11 +446,11 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       this.splitKey = splitKey;
       return this;
     }
-    
+
     public String getSplitKey() {
       return this.splitKey;
     }
-    
+
     public Properties getProperties() {
       return properties;
     }
@@ -392,28 +460,17 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       return this;
     }
 
-    public SplitShard setAsyncId(String asyncId) {
-      this.asyncId = asyncId;
-      return this;
-    }
-
-    public String getAsyncId() {
-      return asyncId;
-    }
-    
     @Override
     public SolrParams getParams() {
-      ModifiableSolrParams params = getCommonParams();
+      ModifiableSolrParams params = (ModifiableSolrParams) super.getParams();
       params.set( "ranges", ranges);
 
       if(splitKey != null)
         params.set("split.key", this.splitKey);
-      
+
       if(properties != null) {
         addProperties(params, properties);
       }
-      
-      params.set(CommonAdminParams.ASYNC, asyncId);
       return params;
     }
 
@@ -424,7 +481,7 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
   }
 
   // DELETESHARD request
-  public static class DeleteShard extends CollectionShardAdminRequest<DeleteShard> {
+  public static class DeleteShard extends CollectionShardAsyncAdminRequest<DeleteShard> {
     public DeleteShard() {
       action = CollectionAction.DELETESHARD;
     }
@@ -434,10 +491,9 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       return this;
     }
   }
-  
+
   // FORCELEADER request
   public static class ForceLeader extends CollectionShardAdminRequest<ForceLeader> {
-    protected String asyncId;
 
     public ForceLeader() {
       action = CollectionAction.FORCELEADER;
@@ -446,15 +502,6 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
     @Override
     protected ForceLeader getThis() {
       return this;
-    }
-
-    @Override
-    public SolrParams getParams() {
-      ModifiableSolrParams params = getCommonParams();
-      if (asyncId != null) {
-        params.set(CommonAdminParams.ASYNC, asyncId);
-      }
-      return params;
     }
   }
 
@@ -488,8 +535,52 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
     }
   }
 
+  // DELETESTATUS request
+  public static class DeleteStatus extends CollectionAdminRequest<DeleteStatus> {
+    protected String requestId = null;
+    protected Boolean flush = null;
+
+    public DeleteStatus() {
+      action = CollectionAction.DELETESTATUS;
+    }
+
+    public DeleteStatus setRequestId(String requestId) {
+      this.requestId = requestId;
+      return this;
+    }
+
+    public DeleteStatus setFlush(Boolean flush) {
+      this.flush = flush;
+      return this;
+    }
+
+    public String getRequestId() {
+      return this.requestId;
+    }
+
+    public Boolean getFlush() {
+      return this.flush;
+    }
+
+    @Override
+    public SolrParams getParams() {
+      ModifiableSolrParams params = (ModifiableSolrParams) super.getParams();
+      if (requestId != null)
+        params.set(CoreAdminParams.REQUESTID, requestId);
+
+      if (flush != null)
+        params.set(CollectionAdminParams.FLUSH, flush);
+      return params;
+    }
+
+    @Override
+    protected DeleteStatus getThis() {
+      return this;
+    }
+  }
+
   // CREATEALIAS request
-  public static class CreateAlias extends CollectionAdminRequest<CreateAlias> {
+  public static class CreateAlias extends AsyncCollectionAdminRequest<CreateAlias> {
     protected String aliasName;
     protected String aliasedCollections;
 
@@ -505,12 +596,12 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
     public String getAliasName() {
       return aliasName;
     }
-    
+
     public CreateAlias setAliasedCollections(String alias) {
       this.aliasedCollections = alias;
       return this;
     }
-    
+
     public String getAliasedCollections() {
       return this.aliasedCollections;
     }
@@ -523,7 +614,7 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
     public void setCollectionName(String aliasName) {
       this.aliasName = aliasName;
     }
-    
+
     @Override
     public SolrParams getParams() {
       ModifiableSolrParams params = (ModifiableSolrParams) super.getParams();
@@ -539,18 +630,18 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
   }
 
   // DELETEALIAS request
-  public static class DeleteAlias extends CollectionAdminRequest<DeleteAlias> {
+  public static class DeleteAlias extends AsyncCollectionAdminRequest<DeleteAlias> {
     protected String aliasName;
-    
+
     public DeleteAlias() {
       action = CollectionAction.DELETEALIAS;
     }
-    
+
     public DeleteAlias setAliasName(String aliasName) {
       this.aliasName = aliasName;
       return this;
     }
-    
+
     @Override
     public SolrParams getParams() {
       ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
@@ -565,13 +656,12 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
   }
 
   // ADDREPLICA request
-  public static class AddReplica extends CollectionShardAdminRequest<AddReplica> {
-    private String node;
-    private String routeKey;
-    private String instanceDir;
-    private String dataDir;
-    private Properties properties;
-    private String asyncId;
+  public static class AddReplica extends CollectionShardAsyncAdminRequest<AddReplica> {
+    protected String node;
+    protected String routeKey;
+    protected String instanceDir;
+    protected String dataDir;
+    protected Properties properties;
 
     public AddReplica() {
       action = CollectionAction.ADDREPLICA;
@@ -632,9 +722,6 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
         }
         params.add(ShardParams._ROUTE_, routeKey);
       }
-      if (asyncId != null) {
-        params.set(CommonAdminParams.ASYNC, asyncId);
-      }
       if (node != null) {
         params.add("node", node);
       }
@@ -650,15 +737,6 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       return params;
     }
 
-    public AddReplica setAsyncId(String asyncId) {
-      this.asyncId = asyncId;
-      return this;
-    }
-    
-    public String getAsyncId() {
-      return asyncId;
-    }
-
     @Override
     protected AddReplica getThis() {
       return this;
@@ -666,10 +744,10 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
   }
 
   // DELETEREPLICA request
-  public static class DeleteReplica extends CollectionShardAdminRequest<DeleteReplica> {
-    private String replica;
-    private Boolean onlyIfDown;
-    
+  public static class DeleteReplica extends CollectionShardAsyncAdminRequest<DeleteReplica> {
+    protected String replica;
+    protected Boolean onlyIfDown;
+
     public DeleteReplica() {
       action = CollectionAction.DELETEREPLICA;
     }
@@ -682,23 +760,23 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
     public String getReplica() {
       return this.replica;
     }
-    
+
     public DeleteReplica setOnlyIfDown(boolean onlyIfDown) {
       this.onlyIfDown = onlyIfDown;
       return this;
     }
-    
+
     public Boolean getOnlyIfDown() {
       return this.onlyIfDown;
     }
-    
+
     @Override
     public SolrParams getParams() {
       ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
       params.set(ZkStateReader.REPLICA_PROP, this.replica);
-      
-      if(onlyIfDown != null) {
-        params.set("onlyIfDown", this.onlyIfDown);
+
+      if (onlyIfDown != null) {
+        params.set("onlyIfDown", onlyIfDown);
       }
       return params;
     }
@@ -708,16 +786,16 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       return this;
     }
   }
-  
+
   // CLUSTERPROP request
   public static class ClusterProp extends CollectionAdminRequest<ClusterProp> {
     private String propertyName;
     private String propertyValue;
-    
+
     public ClusterProp() {
       this.action = CollectionAction.CLUSTERPROP;
     }
-    
+
     public ClusterProp setPropertyName(String propertyName) {
       this.propertyName = propertyName;
       return this;
@@ -731,17 +809,17 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       this.propertyValue = propertyValue;
       return this;
     }
-    
+
     public String getPropertyValue() {
       return this.propertyValue;
     }
-    
+
     @Override
     public SolrParams getParams() {
       ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
       params.add(CoreAdminParams.NAME, propertyName);
       params.add("val", propertyValue);
-      
+
       return params;
     }
 
@@ -750,20 +828,19 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       return this;
     }
   }
-  
+
   // MIGRATE request
-  public static class Migrate extends CollectionAdminRequest<Migrate> {
+  public static class Migrate extends AsyncCollectionAdminRequest<Migrate> {
     private String collection;
     private String targetCollection;
     private String splitKey;
     private Integer forwardTimeout;
     private Properties properties;
-    private String asyncId;
-    
+
     public Migrate() {
       action = CollectionAction.MIGRATE;
     }
-    
+
     public Migrate setCollectionName(String collection) {
       this.collection = collection;
       return this;
@@ -772,43 +849,43 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
     public String getCollectionName() {
       return collection;
     }
-    
+
     public Migrate setTargetCollection(String targetCollection) {
       this.targetCollection = targetCollection;
       return this;
     }
-    
+
     public String getTargetCollection() {
       return this.targetCollection;
     }
-    
+
     public Migrate setSplitKey(String splitKey) {
       this.splitKey = splitKey;
       return this;
     }
-    
+
     public String getSplitKey() {
       return this.splitKey;
     }
-    
+
     public Migrate setForwardTimeout(int forwardTimeout) {
       this.forwardTimeout = forwardTimeout;
       return this;
     }
-    
+
     public Integer getForwardTimeout() {
       return this.forwardTimeout;
     }
-    
+
     public Migrate setProperties(Properties properties) {
       this.properties = properties;
       return this;
     }
-    
+
     public Properties getProperties() {
       return this.properties;
     }
-    
+
     @Override
     public SolrParams getParams() {
       ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
@@ -818,22 +895,11 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       if (forwardTimeout != null) {
         params.set("forward.timeout", forwardTimeout);
       }
-      params.set(CommonAdminParams.ASYNC, asyncId);
-      
       if (properties != null) {
         addProperties(params, properties);
       }
-      
-      return params;
-    }
 
-    public Migrate setAsyncId(String asyncId) {
-      this.asyncId = asyncId;
-      return this;
-    }
-    
-    public String getAsyncId() {
-      return asyncId;
+      return params;
     }
 
     @Override
@@ -841,7 +907,7 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       return this;
     }
   }
-  
+
   // ADDROLE request
   public static class AddRole extends CollectionAdminRoleRequest<AddRole> {
     public AddRole() {
@@ -865,9 +931,10 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       return this;
     }
   }
-  
+
   // OVERSEERSTATUS request
-  public static class OverseerStatus extends CollectionAdminRequest<OverseerStatus> {
+  public static class OverseerStatus extends AsyncCollectionAdminRequest<OverseerStatus> {
+
     public OverseerStatus () {
       action = CollectionAction.OVERSEERSTATUS;
     }
@@ -880,29 +947,29 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
 
   // CLUSTERSTATUS request
   public static class ClusterStatus extends CollectionAdminRequest<ClusterStatus> {
-    
+
     protected String shardName = null;
     protected String collection = null;
     protected String routeKey = null;
-    
+
     public ClusterStatus () {
       action = CollectionAction.CLUSTERSTATUS;
     }
-    
+
     public ClusterStatus setCollectionName(String collectionName) {
       this.collection = collectionName;
       return this;
     }
-    
+
     public String getCollectionName() {
       return collection;
     }
-    
+
     public ClusterStatus setShardName(String shard) {
       this.shardName = shard;
       return this;
     }
-    
+
     public String getShardName() {
       return this.shardName;
     }
@@ -948,14 +1015,14 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       return this;
     }
   }
-  
+
   // ADDREPLICAPROP request
-  public static class AddReplicaProp extends CollectionShardAdminRequest<AddReplicaProp> {
+  public static class AddReplicaProp extends CollectionShardAsyncAdminRequest<AddReplicaProp> {
     private String replica;
     private String propertyName;
     private String propertyValue;
     private Boolean shardUnique;
-    
+
     public AddReplicaProp() {
       action = CollectionAction.ADDREPLICAPROP;
     }
@@ -995,18 +1062,18 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       this.shardUnique = shardUnique;
       return this;
     }
-    
+
     @Override
     public SolrParams getParams() {
       ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
       params.set(CoreAdminParams.REPLICA, replica);
       params.set("property", propertyName);
       params.set("property.value", propertyValue);
-      
+
       if (shardUnique != null) {
         params.set("shardUnique", shardUnique);
       }
-      
+
       return params;
     }
 
@@ -1015,16 +1082,16 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       return this;
     }
   }
-  
+
   // DELETEREPLICAPROP request
-  public static class DeleteReplicaProp extends CollectionShardAdminRequest<DeleteReplicaProp> {
+  public static class DeleteReplicaProp extends CollectionShardAsyncAdminRequest<DeleteReplicaProp> {
     private String replica;
     private String propertyName;
 
     public DeleteReplicaProp() {
       this.action = CollectionAction.DELETEREPLICAPROP;
     }
-    
+
     public String getReplica() {
       return replica;
     }
@@ -1042,7 +1109,7 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       this.propertyName = propertyName;
       return this;
     }
-    
+
     @Override
     public SolrParams getParams() {
       ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());
@@ -1058,7 +1125,7 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
   }
 
   // MIGRATECLUSTERSTATE request
-  public static class MigrateClusterState extends CollectionShardAdminRequest<MigrateClusterState> {
+  public static class MigrateClusterState extends CollectionShardAsyncAdminRequest<MigrateClusterState> {
 
     public MigrateClusterState() {
       this.action = CollectionAction.MIGRATESTATEFORMAT;
@@ -1079,18 +1146,18 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       return this;
     }
   }
-  
+
   // BALANCESHARDUNIQUE request
-  public static class BalanceShardUnique extends CollectionAdminRequest<BalanceShardUnique> {
-    private String collection;
-    private String propertyName;
-    private Boolean onlyActiveNodes;
-    private Boolean shardUnique;
-    
+  public static class BalanceShardUnique extends AsyncCollectionAdminRequest<BalanceShardUnique> {
+    protected String collection;
+    protected String propertyName;
+    protected Boolean onlyActiveNodes;
+    protected Boolean shardUnique;
+
     public BalanceShardUnique() {
       this.action = CollectionAction.BALANCESHARDUNIQUE;
     }
-    
+
     public String getPropertyName() {
       return propertyName;
     }
@@ -1122,11 +1189,11 @@ public abstract class CollectionAdminRequest <Q extends CollectionAdminRequest<Q
       this.collection = collection;
       return this;
     }
-    
+
     public String getCollection() {
       return collection;
     }
-    
+
     @Override
     public SolrParams getParams() {
       ModifiableSolrParams params = new ModifiableSolrParams(super.getParams());

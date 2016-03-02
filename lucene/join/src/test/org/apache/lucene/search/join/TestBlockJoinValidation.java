@@ -1,5 +1,3 @@
-package org.apache.lucene.search.join;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.join;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.join;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -66,7 +65,7 @@ public class TestBlockJoinValidation extends LuceneTestCase {
       indexWriter.addDocuments(segmentDocs);
       indexWriter.commit();
     }
-    indexReader = DirectoryReader.open(indexWriter, random().nextBoolean());
+    indexReader = DirectoryReader.open(indexWriter);
     indexWriter.close();
     indexSearcher = new IndexSearcher(indexReader);
     parentsFilter = new QueryBitSetProducer(new WildcardQuery(new Term("parent", "*")));
@@ -140,7 +139,7 @@ public class TestBlockJoinValidation extends LuceneTestCase {
     } while (parentDocs.get(target + 1));
 
     try {
-      scorer.advance(target);
+      scorer.iterator().advance(target);
       fail();
     } catch (IllegalStateException expected) {
       assertTrue(expected.getMessage() != null && expected.getMessage().contains(ToChildBlockJoinQuery.INVALID_QUERY_MESSAGE));

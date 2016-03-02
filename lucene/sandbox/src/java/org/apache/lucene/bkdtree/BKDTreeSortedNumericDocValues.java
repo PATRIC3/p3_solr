@@ -1,5 +1,3 @@
-package org.apache.lucene.bkdtree;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,12 @@ package org.apache.lucene.bkdtree;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.bkdtree;
 
 import org.apache.lucene.index.SortedNumericDocValues;
 
+/* @deprecated Use dimensional values in Lucene 6.0 instead */
+@Deprecated
 class BKDTreeSortedNumericDocValues extends SortedNumericDocValues {
   final BKDTreeReader bkdTreeReader;
   final SortedNumericDocValues delegate;

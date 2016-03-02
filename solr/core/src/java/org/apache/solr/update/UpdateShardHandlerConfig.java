@@ -1,5 +1,3 @@
-package org.apache.solr.update;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,14 @@ package org.apache.solr.update;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.update;
 
 public class UpdateShardHandlerConfig {
 
   public static final int DEFAULT_DISTRIBUPDATECONNTIMEOUT = 60000;
   public static final int DEFAULT_DISTRIBUPDATESOTIMEOUT = 600000;
-  public static final int DEFAULT_MAXUPDATECONNECTIONS = 10000;
-  public static final int DEFAULT_MAXUPDATECONNECTIONSPERHOST = 100;
+  public static final int DEFAULT_MAXUPDATECONNECTIONS = 100000;
+  public static final int DEFAULT_MAXUPDATECONNECTIONSPERHOST = 100000;
 
   public static final UpdateShardHandlerConfig DEFAULT
       = new UpdateShardHandlerConfig(DEFAULT_MAXUPDATECONNECTIONS, DEFAULT_MAXUPDATECONNECTIONSPERHOST,

@@ -1,5 +1,3 @@
-package org.apache.solr.handler.admin;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,11 @@ package org.apache.solr.handler.admin;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.admin;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.SolrTestCaseJ4;
@@ -44,16 +45,15 @@ public class CoreAdminRequestStatusTest extends SolrTestCaseJ4{
 
     final CoreAdminHandler admin = new CoreAdminHandler(cores);
 
-    String instDir;
+    Path instDir;
     try (SolrCore template = cores.getCore("collection1")) {
       assertNotNull(template);
       instDir = template.getCoreDescriptor().getInstanceDir();
     }
 
-    final File instDirFile = new File(instDir);
-    assertTrue("instDir doesn't exist: " + instDir, instDirFile.exists());
+    assertTrue("instDir doesn't exist: " + instDir, Files.exists(instDir));
     final File instPropFile = new File(workDir, "instProp");
-    FileUtils.copyDirectory(instDirFile, instPropFile);
+    FileUtils.copyDirectory(instDir.toFile(), instPropFile);
 
     // create a new core (using CoreAdminHandler) w/ properties
 

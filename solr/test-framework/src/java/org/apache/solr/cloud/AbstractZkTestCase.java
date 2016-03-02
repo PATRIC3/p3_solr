@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.cloud.SolrZkClient;
@@ -38,7 +37,7 @@ import java.util.Map;
 public abstract class AbstractZkTestCase extends SolrTestCaseJ4 {
   private static final String ZOOKEEPER_FORCE_SYNC = "zookeeper.forceSync";
   
-  public static final int TIMEOUT = 10000;
+  public static final int TIMEOUT = 45000;
 
   private static final boolean DEBUG = false;
 
@@ -86,7 +85,7 @@ public abstract class AbstractZkTestCase extends SolrTestCaseJ4 {
   // static to share with distrib test
   public static void buildZooKeeper(String zkHost, String zkAddress, File solrhome, String config,
       String schema) throws Exception {
-    SolrZkClient zkClient = new SolrZkClient(zkHost, AbstractZkTestCase.TIMEOUT, 45000, null);
+    SolrZkClient zkClient = new SolrZkClient(zkHost, AbstractZkTestCase.TIMEOUT, AbstractZkTestCase.TIMEOUT, null);
     zkClient.makePath("/solr", false, true);
     zkClient.close();
 

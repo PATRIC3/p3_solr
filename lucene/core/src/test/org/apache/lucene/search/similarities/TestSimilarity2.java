@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -69,6 +69,9 @@ public class TestSimilarity2 extends LuceneTestCase {
     sims.add(new LMDirichletSimilarity());
     sims.add(new LMJelinekMercerSimilarity(0.1f));
     sims.add(new LMJelinekMercerSimilarity(0.7f));
+    for (Independence independence : TestSimilarityBase.INDEPENDENCE_MEASURES) {
+      sims.add(new DFISimilarity(independence));
+    }
   }
   
   /** because of stupid things like querynorm, it's possible we computeStats on a field that doesnt exist at all
@@ -237,8 +240,9 @@ public class TestSimilarity2 extends LuceneTestCase {
       TopDocs td = is.search(query, 10);
       assertEquals(1, td.totalHits);
       float score = td.scoreDocs[0].score;
-      assertTrue(score >= 0.0f);
+      assertFalse("negative score for " + sim, score < 0.0f);
       assertFalse("inf score for " + sim, Float.isInfinite(score));
+      assertFalse("nan score for " + sim, Float.isNaN(score));
     }
     ir.close();
     dir.close();

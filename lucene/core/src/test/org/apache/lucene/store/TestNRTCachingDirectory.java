@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -71,7 +71,7 @@ public class TestNRTCachingDirectory extends BaseDirectoryTestCase {
       w.addDocument(doc);
       if (random().nextInt(20) == 17) {
         if (r == null) {
-          r = DirectoryReader.open(w.w, false);
+          r = DirectoryReader.open(w.w);
         } else {
           final DirectoryReader r2 = DirectoryReader.openIfChanged(r);
           if (r2 != null) {

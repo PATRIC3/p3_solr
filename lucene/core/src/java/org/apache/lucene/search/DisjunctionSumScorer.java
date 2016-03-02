@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,13 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.List;
 
 /** A Scorer for OR like queries, counterpart of <code>ConjunctionScorer</code>.
- * This Scorer implements {@link Scorer#advance(int)} and uses advance() on the given Scorers. 
  */
 final class DisjunctionSumScorer extends DisjunctionScorer { 
   private final float[] coord;
@@ -37,11 +36,11 @@ final class DisjunctionSumScorer extends DisjunctionScorer {
   }
 
   @Override
-  protected float score(DisiWrapper<Scorer> topList) throws IOException {
+  protected float score(DisiWrapper topList) throws IOException {
     double score = 0;
     int freq = 0;
-    for (DisiWrapper<Scorer> w = topList; w != null; w = w.next) {
-      score += w.iterator.score();
+    for (DisiWrapper w = topList; w != null; w = w.next) {
+      score += w.scorer.score();
       freq += 1;
     }
     return (float)score * coord[freq];

@@ -1,5 +1,3 @@
-package org.apache.lucene.search.join;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.join;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.join;
 
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.IndexReader;
@@ -161,9 +160,9 @@ final class GlobalOrdinalsWithScoreQuery extends Query {
       if (approximationScorer == null) {
         return null;
       } else if (globalOrds != null) {
-        return new OrdinalMapScorer(this, collector, values, approximationScorer, globalOrds.getGlobalOrds(context.ord));
+        return new OrdinalMapScorer(this, collector, values, approximationScorer.iterator(), globalOrds.getGlobalOrds(context.ord));
       } else {
-        return new SegmentOrdinalScorer(this, collector, values, approximationScorer);
+        return new SegmentOrdinalScorer(this, collector, values, approximationScorer.iterator());
       }
     }
 
@@ -174,25 +173,10 @@ final class GlobalOrdinalsWithScoreQuery extends Query {
     final LongValues segmentOrdToGlobalOrdLookup;
     final GlobalOrdinalsWithScoreCollector collector;
 
-    public OrdinalMapScorer(Weight weight, GlobalOrdinalsWithScoreCollector collector, SortedDocValues values, Scorer approximationScorer, LongValues segmentOrdToGlobalOrdLookup) {
-      super(weight, values, approximationScorer);
+    public OrdinalMapScorer(Weight weight, GlobalOrdinalsWithScoreCollector collector, SortedDocValues values, DocIdSetIterator approximation, LongValues segmentOrdToGlobalOrdLookup) {
+      super(weight, values, approximation);
       this.segmentOrdToGlobalOrdLookup = segmentOrdToGlobalOrdLookup;
       this.collector = collector;
-    }
-
-    @Override
-    public int advance(int target) throws IOException {
-      for (int docID = approximationScorer.advance(target); docID < NO_MORE_DOCS; docID = approximationScorer.nextDoc()) {
-        final long segmentOrd = values.getOrd(docID);
-        if (segmentOrd != -1) {
-          final int globalOrd = (int) segmentOrdToGlobalOrdLookup.get(segmentOrd);
-          if (collector.match(globalOrd)) {
-            score = collector.score(globalOrd);
-            return docID;
-          }
-        }
-      }
-      return NO_MORE_DOCS;
     }
 
     @Override
@@ -201,7 +185,7 @@ final class GlobalOrdinalsWithScoreQuery extends Query {
 
         @Override
         public boolean matches() throws IOException {
-          final long segmentOrd = values.getOrd(approximationScorer.docID());
+          final long segmentOrd = values.getOrd(approximation.docID());
           if (segmentOrd != -1) {
             final int globalOrd = (int) segmentOrdToGlobalOrdLookup.get(segmentOrd);
             if (collector.match(globalOrd)) {
@@ -224,23 +208,9 @@ final class GlobalOrdinalsWithScoreQuery extends Query {
 
     final GlobalOrdinalsWithScoreCollector collector;
 
-    public SegmentOrdinalScorer(Weight weight, GlobalOrdinalsWithScoreCollector collector, SortedDocValues values, Scorer approximationScorer) {
-      super(weight, values, approximationScorer);
+    public SegmentOrdinalScorer(Weight weight, GlobalOrdinalsWithScoreCollector collector, SortedDocValues values, DocIdSetIterator approximation) {
+      super(weight, values, approximation);
       this.collector = collector;
-    }
-
-    @Override
-    public int advance(int target) throws IOException {
-      for (int docID = approximationScorer.advance(target); docID < NO_MORE_DOCS; docID = approximationScorer.nextDoc()) {
-        final int segmentOrd = values.getOrd(docID);
-        if (segmentOrd != -1) {
-          if (collector.match(segmentOrd)) {
-            score = collector.score(segmentOrd);
-            return docID;
-          }
-        }
-      }
-      return NO_MORE_DOCS;
     }
 
     @Override
@@ -249,7 +219,7 @@ final class GlobalOrdinalsWithScoreQuery extends Query {
 
         @Override
         public boolean matches() throws IOException {
-          final int segmentOrd = values.getOrd(approximationScorer.docID());
+          final int segmentOrd = values.getOrd(approximation.docID());
           if (segmentOrd != -1) {
             if (collector.match(segmentOrd)) {
               score = collector.score(segmentOrd);

@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
 
 import java.io.Closeable;
 import java.io.FileNotFoundException;
@@ -41,6 +40,7 @@ import java.security.Permissions;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.security.ProtectionDomain;
+import java.security.SecurityPermission;
 import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1500,14 +1500,23 @@ public abstract class LuceneTestCase extends Assert {
       throw new IllegalArgumentException("value must be String or BytesRef");
     }
   }
+  
+  private static final String[] availableLanguageTags;
+  static {
+    // rewrite of Java 8 code from Lucene 6:
+    final Set<String> tags = new TreeSet<>();
+    for (final Locale l : Locale.getAvailableLocales()) {
+      tags.add(l.toLanguageTag());
+    }
+    availableLanguageTags = tags.toArray(new String[tags.size()]);
+  }
 
   /** 
    * Return a random Locale from the available locales on the system.
    * @see <a href="http://issues.apache.org/jira/browse/LUCENE-4020">LUCENE-4020</a>
    */
   public static Locale randomLocale(Random random) {
-    Locale locales[] = Locale.getAvailableLocales();
-    return locales[random.nextInt(locales.length)];
+    return localeForLanguageTag(availableLanguageTags[random.nextInt(availableLanguageTags.length)]);
   }
 
   /** 
@@ -1520,15 +1529,8 @@ public abstract class LuceneTestCase extends Assert {
   }
 
   /** return a Locale object equivalent to its programmatic name */
-  public static Locale localeForName(String localeName) {
-    String elements[] = localeName.split("\\_");
-    switch(elements.length) {
-      case 4: /* fallthrough for special cases */
-      case 3: return new Locale(elements[0], elements[1], elements[2]);
-      case 2: return new Locale(elements[0], elements[1]);
-      case 1: return new Locale(elements[0]);
-      default: throw new IllegalArgumentException("Invalid Locale: " + localeName);
-    }
+  public static Locale localeForLanguageTag(String languageTag) {
+    return new Locale.Builder().setLanguageTag(languageTag).build();
   }
 
   private static Directory newFSDirectoryImpl(Class<? extends FSDirectory> clazz, Path path, LockFactory lf) throws IOException {
@@ -2602,10 +2604,13 @@ public abstract class LuceneTestCase extends Assert {
    * because it would start with empty permissions). You cannot grant more permissions than
    * our policy file allows, but you may restrict writing to several dirs...
    * <p><em>Note:</em> This assumes a {@link SecurityManager} enabled, otherwise it
-   * stops test execution.
+   * stops test execution. If enabled, it needs the following {@link SecurityPermission}:
+   * {@code "createAccessControlContext"}
    */
   public static <T> T runWithRestrictedPermissions(PrivilegedExceptionAction<T> action, Permission... permissions) throws Exception {
     assumeTrue("runWithRestrictedPermissions requires a SecurityManager enabled", System.getSecurityManager() != null);
+    // be sure to have required permission, otherwise doPrivileged runs with *no* permissions:
+    AccessController.checkPermission(new SecurityPermission("createAccessControlContext"));
     final PermissionCollection perms = new Permissions();
     for (Permission p : permissions) {
       perms.add(p);

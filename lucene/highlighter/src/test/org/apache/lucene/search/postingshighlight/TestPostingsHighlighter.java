@@ -1,5 +1,3 @@
-package org.apache.lucene.search.postingshighlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.postingshighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.postingshighlight;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
@@ -1137,7 +1136,7 @@ public class TestPostingsHighlighter extends LuceneTestCase {
     doc.add(new StoredField("body", "foo"));
     iw.addDocument(doc);
     
-    IndexReader ir = DirectoryReader.open(iw.w, true);
+    IndexReader ir = DirectoryReader.open(iw.w);
     iw.close();
     
     IndexSearcher searcher = new IndexSearcher(ir);

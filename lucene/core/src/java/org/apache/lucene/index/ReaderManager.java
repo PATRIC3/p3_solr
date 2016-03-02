@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 
@@ -38,6 +38,19 @@ public final class ReaderManager extends ReferenceManager<DirectoryReader> {
   /**
    * Creates and returns a new ReaderManager from the given
    * {@link IndexWriter}.
+   * 
+   * @param writer
+   *          the IndexWriter to open the IndexReader from.
+   * 
+   * @throws IOException If there is a low-level I/O error
+   */
+  public ReaderManager(IndexWriter writer) throws IOException {
+    this(writer, true);
+  }
+
+  /**
+   * Expert: creates and returns a new ReaderManager from the given
+   * {@link IndexWriter}, controlling whether past deletions should be applied.
    * 
    * @param writer
    *          the IndexWriter to open the IndexReader from.

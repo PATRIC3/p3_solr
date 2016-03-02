@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import java.io.File;
 import java.io.IOException;
@@ -40,6 +39,7 @@ import org.apache.solr.client.solrj.embedded.JettyConfig.Builder;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.impl.CloudSolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
+import org.apache.solr.client.solrj.response.RequestStatusState;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.Replica;
@@ -90,19 +90,35 @@ public class TestMiniSolrCloudCluster extends LuceneTestCase {
     return new MiniSolrCloudCluster(NUM_SERVERS, createTempDir(), jettyConfig.build());
   }
     
-  private void createCollection(MiniSolrCloudCluster miniCluster, String collectionName, String createNodeSet, String asyncId, boolean persistIndex) throws Exception {
+  private void createCollection(MiniSolrCloudCluster miniCluster, String collectionName, String createNodeSet, String asyncId,
+      Boolean indexToPersist, Map<String,String> collectionProperties) throws Exception {
     String configName = "solrCloudCollectionConfig";
     File configDir = new File(SolrTestCaseJ4.TEST_HOME() + File.separator + "collection1" + File.separator + "conf");
     miniCluster.uploadConfigDir(configDir, configName);
 
-    Map<String, String> collectionProperties = new HashMap<>();
-    collectionProperties.put(CoreDescriptor.CORE_CONFIG, "solrconfig-tlog.xml");
-    collectionProperties.put("solr.tests.maxBufferedDocs", "100000");
-    collectionProperties.put("solr.tests.ramBufferSizeMB", "100");
+    final boolean persistIndex = (indexToPersist != null ? indexToPersist.booleanValue() : random().nextBoolean());
+    if (collectionProperties == null) {
+      collectionProperties = new HashMap<>();
+    }
+    if (!collectionProperties.containsKey(CoreDescriptor.CORE_CONFIG))  {
+      collectionProperties.put(CoreDescriptor.CORE_CONFIG, "solrconfig-tlog.xml");
+    }
+    if (!collectionProperties.containsKey("solr.tests.maxBufferedDocs"))  {
+      collectionProperties.put("solr.tests.maxBufferedDocs", "100000");
+    }
+    if (!collectionProperties.containsKey("solr.tests.ramBufferSizeMB"))  {
+      collectionProperties.put("solr.tests.ramBufferSizeMB", "100");
+    }
     // use non-test classes so RandomizedRunner isn't necessary
-    collectionProperties.put("solr.tests.mergePolicy", "org.apache.lucene.index.TieredMergePolicy");
-    collectionProperties.put("solr.tests.mergeScheduler", "org.apache.lucene.index.ConcurrentMergeScheduler");
-    collectionProperties.put("solr.directoryFactory", (persistIndex ? "solr.StandardDirectoryFactory" : "solr.RAMDirectoryFactory"));
+    if (!collectionProperties.containsKey("solr.tests.mergePolicy"))  {
+      collectionProperties.put("solr.tests.mergePolicy", "org.apache.lucene.index.TieredMergePolicy");
+    }
+    if (!collectionProperties.containsKey("solr.tests.mergeScheduler")) {
+      collectionProperties.put("solr.tests.mergeScheduler", "org.apache.lucene.index.ConcurrentMergeScheduler");
+    }
+    if (!collectionProperties.containsKey("solr.directoryFactory")) {
+      collectionProperties.put("solr.directoryFactory", (persistIndex ? "solr.StandardDirectoryFactory" : "solr.RAMDirectoryFactory"));
+    }
     
     miniCluster.createCollection(collectionName, NUM_SHARDS, REPLICATION_FACTOR, configName, createNodeSet, asyncId, collectionProperties);
   }
@@ -138,9 +154,11 @@ public class TestMiniSolrCloudCluster extends LuceneTestCase {
       // create collection
       log.info("#### Creating a collection");
       final String asyncId = (random().nextBoolean() ? null : "asyncId("+collectionName+".create)="+random().nextInt());
-      createCollection(miniCluster, collectionName, null, asyncId, random().nextBoolean());
+      createCollection(miniCluster, collectionName, null, asyncId, null, null);
       if (asyncId != null) {
-        assertEquals("did not see async createCollection completion", "completed", AbstractFullDistribZkTestBase.getRequestStateAfterCompletion(asyncId, 330, cloudSolrClient));
+        final RequestStatusState state = AbstractFullDistribZkTestBase.getRequestStateAfterCompletion(asyncId, 330,
+            cloudSolrClient);
+        assertSame("did not see async createCollection completion", RequestStatusState.COMPLETED, state);
       }
 
       ZkStateReader zkStateReader = miniCluster.getSolrClient().getZkStateReader();
@@ -198,9 +216,11 @@ public class TestMiniSolrCloudCluster extends LuceneTestCase {
 
       // create it again
       String asyncId2 = (random().nextBoolean() ? null : "asyncId("+collectionName+".create)="+random().nextInt());
-      createCollection(miniCluster, collectionName, null, asyncId2, random().nextBoolean());
+      createCollection(miniCluster, collectionName, null, asyncId2, null, null);
       if (asyncId2 != null) {
-        assertEquals("did not see async createCollection completion", "completed", AbstractFullDistribZkTestBase.getRequestStateAfterCompletion(asyncId2, 330, cloudSolrClient));
+        final RequestStatusState state = AbstractFullDistribZkTestBase.getRequestStateAfterCompletion(asyncId2, 330,
+            cloudSolrClient);
+        assertSame("did not see async createCollection completion", RequestStatusState.COMPLETED, state);
       }
       AbstractDistribZkTestBase.waitForRecoveriesToFinish(collectionName, zkStateReader, true, true, 330);
 
@@ -293,13 +313,14 @@ public class TestMiniSolrCloudCluster extends LuceneTestCase {
 
       // create collection
       final String asyncId = (random().nextBoolean() ? null : "asyncId("+collectionName+".create)="+random().nextInt());
-      createCollection(miniCluster, collectionName, OverseerCollectionMessageHandler.CREATE_NODE_SET_EMPTY, asyncId, random().nextBoolean());
+      createCollection(miniCluster, collectionName, OverseerCollectionMessageHandler.CREATE_NODE_SET_EMPTY, asyncId, null, null);
       if (asyncId != null) {
-        assertEquals("did not see async createCollection completion", "completed", AbstractFullDistribZkTestBase.getRequestStateAfterCompletion(asyncId, 330, cloudSolrClient));
+        final RequestStatusState state = AbstractFullDistribZkTestBase.getRequestStateAfterCompletion(asyncId, 330, cloudSolrClient);
+        assertSame("did not see async createCollection completion", RequestStatusState.COMPLETED, state);
       }
 
       try (SolrZkClient zkClient = new SolrZkClient
-          (miniCluster.getZkServer().getZkAddress(), AbstractZkTestCase.TIMEOUT, 45000, null);
+          (miniCluster.getZkServer().getZkAddress(), AbstractZkTestCase.TIMEOUT, AbstractZkTestCase.TIMEOUT, null);
           ZkStateReader zkStateReader = new ZkStateReader(zkClient)) {
         
         // wait for collection to appear
@@ -339,14 +360,14 @@ public class TestMiniSolrCloudCluster extends LuceneTestCase {
         assertTrue(jetty.isRunning());
       }
 
-      createCollection(miniCluster, collectionName, null, null, true);
+      createCollection(miniCluster, collectionName, null, null, Boolean.TRUE, null);
       final CloudSolrClient cloudSolrClient = miniCluster.getSolrClient();
       cloudSolrClient.setDefaultCollection(collectionName);
       final SolrQuery query = new SolrQuery("*:*");
       final SolrInputDocument doc = new SolrInputDocument();
 
       try (SolrZkClient zkClient = new SolrZkClient
-          (miniCluster.getZkServer().getZkAddress(), AbstractZkTestCase.TIMEOUT, 45000, null);
+          (miniCluster.getZkServer().getZkAddress(), AbstractZkTestCase.TIMEOUT, AbstractZkTestCase.TIMEOUT, null);
           ZkStateReader zkStateReader = new ZkStateReader(zkClient)) {
         AbstractDistribZkTestBase.waitForRecoveriesToFinish(collectionName, zkStateReader, true, true, 330);
 

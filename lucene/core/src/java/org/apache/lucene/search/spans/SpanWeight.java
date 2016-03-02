@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spans;
+
 
 import java.io.IOException;
 import java.util.Map;
@@ -27,7 +27,6 @@ import org.apache.lucene.index.TermContext;
 import org.apache.lucene.search.CollectionStatistics;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.TermStatistics;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.similarities.Similarity;
@@ -131,8 +130,13 @@ public abstract class SpanWeight extends Weight {
   }
 
   @Override
-  public Scorer scorer(LeafReaderContext context) throws IOException {
-    return getSpans(context, Postings.POSITIONS);
+  public SpanScorer scorer(LeafReaderContext context) throws IOException {
+    final Spans spans = getSpans(context, Postings.POSITIONS);
+    if (spans == null) {
+      return null;
+    }
+    final Similarity.SimScorer docScorer = getSimScorer(context);
+    return new SpanScorer(this, spans, docScorer);
   }
 
   /**
@@ -147,9 +151,9 @@ public abstract class SpanWeight extends Weight {
 
   @Override
   public Explanation explain(LeafReaderContext context, int doc) throws IOException {
-    Spans scorer = (Spans) scorer(context);
+    SpanScorer scorer = scorer(context);
     if (scorer != null) {
-      int newDoc = scorer.advance(doc);
+      int newDoc = scorer.iterator().advance(doc);
       if (newDoc == doc) {
         float freq = scorer.sloppyFreq();
         SimScorer docScorer = similarity.simScorer(simWeight, context);

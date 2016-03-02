@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -780,7 +779,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
         iw.addDocument(doc);
       }
       
-      DirectoryReader reader = DirectoryReader.open(iw, true);
+      DirectoryReader reader = DirectoryReader.open(iw);
       // mix up fields explicitly
       if (random().nextBoolean()) {
         reader = new MismatchedDirectoryReader(reader, random());
@@ -799,7 +798,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
     iw.addIndexes(dirs);
     iw.forceMerge(1);
     
-    LeafReader ir = getOnlySegmentReader(DirectoryReader.open(iw, true));
+    LeafReader ir = getOnlySegmentReader(DirectoryReader.open(iw));
     for (int i = 0; i < ir.maxDoc(); i++) {
       Document doc = ir.document(i);
       assertEquals(10, doc.getFields().size());

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -150,10 +150,6 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
           }
           assertSame(c, instance.create().getClass());
         } catch (IllegalArgumentException e) {
-          if (e.getCause() instanceof NoSuchMethodException) {
-            // there is no corresponding ctor available
-            throw e;
-          }
           // TODO: For now pass because some factories have not yet a default config that always works
         }
       } else if (TokenFilter.class.isAssignableFrom(c)) {
@@ -174,10 +170,6 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
             assertSame(c, createdClazz);
           }
         } catch (IllegalArgumentException e) {
-          if (e.getCause() instanceof NoSuchMethodException) {
-            // there is no corresponding ctor available
-            throw e;
-          }
           // TODO: For now pass because some factories have not yet a default config that always works
         }
       } else if (CharFilter.class.isAssignableFrom(c)) {
@@ -198,10 +190,6 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
             assertSame(c, createdClazz);
           }
         } catch (IllegalArgumentException e) {
-          if (e.getCause() instanceof NoSuchMethodException) {
-            // there is no corresponding ctor available
-            throw e;
-          }
           // TODO: For now pass because some factories have not yet a default config that always works
         }
       }

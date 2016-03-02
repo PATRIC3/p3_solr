@@ -14,8 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
+
+import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.CodecReader;
@@ -31,6 +42,7 @@ import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.util.BytesRefHash;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
@@ -42,7 +54,6 @@ import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.FunctionRangeQuery;
 import org.apache.solr.search.QParser;
@@ -51,20 +62,9 @@ import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.SyntaxError;
 import org.apache.solr.search.function.ValueSourceRangeFilter;
 import org.apache.solr.util.RefCounted;
+import org.apache.solr.util.TestInjection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.lang.invoke.MethodHandles;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * <code>DirectUpdateHandler2</code> implements an UpdateHandler where documents are added
@@ -169,6 +169,13 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
       return addDoc0(cmd);
     } catch (SolrException e) {
       throw e;
+    } catch (IllegalArgumentException iae) {
+      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+          String.format(Locale.ROOT, "Exception writing document id %s to the index; possible analysis error: "
+              + iae.getMessage()
+              + (iae.getCause() instanceof BytesRefHash.MaxBytesLengthExceededException ?
+              ". Perhaps the document has an indexed string field (solr.StrField) which is too large" : ""),
+              cmd.getPrintableId()), iae);
     } catch (RuntimeException t) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
           String.format(Locale.ROOT, "Exception writing document id %s to the index; possible analysis error.",
@@ -177,7 +184,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
   }
 
   /**
-   * This is the implementation of {@link #addDoc0(AddUpdateCommand)}. It is factored out to allow an exception
+   * This is the implementation of {@link #addDoc(AddUpdateCommand)}. It is factored out to allow an exception
    * handler to decorate RuntimeExceptions with information about the document being handled.
    * @param cmd the command.
    * @return the count.
@@ -587,8 +594,14 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
       try {
         IndexWriter writer = iw.get();
         if (cmd.optimize) {
+          if (cmd.maxOptimizeSegments == 1) {
+            log.warn("Starting optimize... Reading and rewriting the entire index! Use with care.");
+          } else {
+            log.warn("Starting optimize... Reading and rewriting a potentially large percent of the entire index, reducing to " + cmd.maxOptimizeSegments + " segments");
+          }
           writer.forceMerge(cmd.maxOptimizeSegments);
         } else if (cmd.expungeDeletes) {
+          log.warn("Starting expungeDeletes... Reading and rewriting segments with enough deletes, potentially the entire index");
           writer.forceMergeDeletes();
         }
         
@@ -740,11 +753,14 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
   }
 
 
-  public static boolean commitOnClose = true;  // TODO: make this a real config option?
+  public static boolean commitOnClose = true;  // TODO: make this a real config option or move it to TestInjection
 
   // IndexWriterCloser interface method - called from solrCoreState.decref(this)
   @Override
   public void closeWriter(IndexWriter writer) throws IOException {
+
+    assert TestInjection.injectNonGracefullClose(core.getCoreDescriptor().getCoreContainer());
+    
     boolean clearRequestInfo = false;
     solrCoreState.getCommitLock().lock();
     try {

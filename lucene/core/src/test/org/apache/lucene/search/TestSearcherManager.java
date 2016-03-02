@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -89,7 +89,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
       // TODO: can we randomize the applyAllDeletes?  But
       // somehow for final searcher we must apply
       // deletes...
-      mgr = new SearcherManager(writer, true, factory);
+      mgr = new SearcherManager(writer, factory);
       isNRT = true;
     } else {
       // SearcherManager needs to see empty commit:

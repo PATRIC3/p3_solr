@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.component;
 
 import org.apache.lucene.search.Query;
@@ -251,12 +250,20 @@ public class ResponseBuilder
     return this.mergeStrategies;
   }
 
+  public RankQuery getRankQuery() {
+    return rankQuery;
+  }
+
   public void setRankQuery(RankQuery rankQuery) {
     this.rankQuery = rankQuery;
   }
 
   public void setResponseDocs(SolrDocumentList _responseDocs) {
     this._responseDocs = _responseDocs;
+  }
+  
+  public SolrDocumentList getResponseDocs() {
+    return this._responseDocs;
   }
 
   public boolean isDebugTrack() {
@@ -428,7 +435,8 @@ public class ResponseBuilder
     return cmd;
   }
 
-  Query wrap(Query q) {
+  /** Calls {@link RankQuery#wrap(Query)} if there's a rank query, otherwise just returns the query. */
+  public Query wrap(Query q) {
     if(this.rankQuery != null) {
       return this.rankQuery.wrap(q);
     } else {
@@ -442,7 +450,7 @@ public class ResponseBuilder
   public void setResult(SolrIndexSearcher.QueryResult result) {
     setResults(result.getDocListAndSet());
     if (result.isPartialResults()) {
-      rsp.getResponseHeader().add("partialResults", Boolean.TRUE);
+      rsp.getResponseHeader().add(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY, Boolean.TRUE);
     }
     if (null != cursorMark) {
       assert null != result.getNextCursorMark() : "using cursor but no next cursor set";

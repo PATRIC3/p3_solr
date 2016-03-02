@@ -1,4 +1,3 @@
-package org.apache.lucene.expressions.js;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,6 +14,7 @@ package org.apache.lucene.expressions.js;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.expressions.js;
 
 import java.text.ParseException;
 
@@ -181,15 +181,32 @@ public class TestJavascriptCompiler extends LuceneTestCase {
     try {
       JavascriptCompiler.compile("tan()");
       fail();
-    } catch (IllegalArgumentException expected) {
-      assertTrue(expected.getMessage().contains("arguments for function call"));
+    } catch (ParseException expected) {
+      assertEquals("Invalid expression 'tan()': Expected (1) arguments for function call (tan), but found (0).", expected.getMessage());
+      assertEquals(expected.getErrorOffset(), 0);
     }
     
     try {
       JavascriptCompiler.compile("tan(1, 1)");
       fail();
-    } catch (IllegalArgumentException expected) {
+    } catch (ParseException expected) {
       assertTrue(expected.getMessage().contains("arguments for function call"));
+    }
+    
+    try {
+      JavascriptCompiler.compile(" tan()");
+      fail();
+    } catch (ParseException expected) {
+      assertEquals("Invalid expression ' tan()': Expected (1) arguments for function call (tan), but found (0).", expected.getMessage());
+      assertEquals(expected.getErrorOffset(), 1);
+    }
+    
+    try {
+      JavascriptCompiler.compile("1 + tan()");
+      fail();
+    } catch (ParseException expected) {
+      assertEquals("Invalid expression '1 + tan()': Expected (1) arguments for function call (tan), but found (0).", expected.getMessage());
+      assertEquals(expected.getErrorOffset(), 4);
     }
   }
 

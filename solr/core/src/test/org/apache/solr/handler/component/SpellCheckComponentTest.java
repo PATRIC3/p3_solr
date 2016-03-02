@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.component;
 
 import java.io.File;
@@ -61,12 +60,12 @@ public class SpellCheckComponentTest extends SolrTestCaseJ4 {
     assertU((adoc("id", "2", "lowerfilt", "This is a document")));
     assertU((adoc("id", "3", "lowerfilt", "another document")));
     //bunch of docs that are variants on blue
-    assertU((adoc("id", "4", "lowerfilt", "blue")));
-    assertU((adoc("id", "5", "lowerfilt", "blud")));
-    assertU((adoc("id", "6", "lowerfilt", "boue")));
-    assertU((adoc("id", "7", "lowerfilt", "glue")));
-    assertU((adoc("id", "8", "lowerfilt", "blee")));
-    assertU((adoc("id", "9", "lowerfilt", "pixmaa")));
+    assertU((adoc("id", "4", "lowerfilt", "this blue")));
+    assertU((adoc("id", "5", "lowerfilt", "this blud")));
+    assertU((adoc("id", "6", "lowerfilt", "this boue")));
+    assertU((adoc("id", "7", "lowerfilt", "this glue")));
+    assertU((adoc("id", "8", "lowerfilt", "this blee")));
+    assertU((adoc("id", "9", "lowerfilt", "pixmaa 12345")));
     assertU((commit()));
   }
   
@@ -78,6 +77,58 @@ public class SpellCheckComponentTest extends SolrTestCaseJ4 {
     assertU((commit()));
 
   }
+  
+  @Test
+  public void testMaximumResultsForSuggest() throws Exception {
+   assertJQ(req("qt",rh, SpellCheckComponent.COMPONENT_NAME, "true", SpellingParams.SPELLCHECK_BUILD, "true", "q","lowerfilt:(this OR brwn)",
+        SpellingParams.SPELLCHECK_COUNT,"5", SpellingParams.SPELLCHECK_EXTENDED_RESULTS,"false", SpellingParams.SPELLCHECK_MAX_RESULTS_FOR_SUGGEST, "7")
+        ,"/spellcheck/suggestions/[0]=='brwn'"
+        ,"/spellcheck/suggestions/[1]/numFound==1"
+     );
+    try {
+      assertJQ(req("qt",rh, SpellCheckComponent.COMPONENT_NAME, "true", SpellingParams.SPELLCHECK_BUILD, "true", "q","lowerfilt:(this OR brwn)",
+          SpellingParams.SPELLCHECK_COUNT,"5", SpellingParams.SPELLCHECK_EXTENDED_RESULTS,"false", SpellingParams.SPELLCHECK_MAX_RESULTS_FOR_SUGGEST, "6")
+          ,"/spellcheck/suggestions/[1]/numFound==1"
+       );
+      fail("there should have been no suggestions (6<7)");
+    } catch(Exception e) {
+      //correctly threw exception
+    }
+    assertJQ(req("qt",rh, SpellCheckComponent.COMPONENT_NAME, "true", SpellingParams.SPELLCHECK_BUILD, "true", "q","lowerfilt:(this OR brwn)",
+        "fq", "id:[0 TO 9]", /*returns 10, less selective */ "fq", "lowerfilt:th*", /* returns 8, most selective */
+        SpellingParams.SPELLCHECK_COUNT,"5", SpellingParams.SPELLCHECK_EXTENDED_RESULTS,"false", SpellingParams.SPELLCHECK_MAX_RESULTS_FOR_SUGGEST, ".90")
+        ,"/spellcheck/suggestions/[0]=='brwn'"
+        ,"/spellcheck/suggestions/[1]/numFound==1"
+     );
+    try {
+      assertJQ(req("qt",rh, SpellCheckComponent.COMPONENT_NAME, "true", SpellingParams.SPELLCHECK_BUILD, "true", "q","lowerfilt:(this OR brwn)",
+          "fq", "id:[0 TO 9]", /*returns 10, less selective */ "fq", "lowerfilt:th*", /* returns 8, most selective */
+          SpellingParams.SPELLCHECK_COUNT,"5", SpellingParams.SPELLCHECK_EXTENDED_RESULTS,"false", SpellingParams.SPELLCHECK_MAX_RESULTS_FOR_SUGGEST, ".80")
+          ,"/spellcheck/suggestions/[1]/numFound==1"
+       );
+      fail("there should have been no suggestions ((.8 * 8)<7)");
+    } catch(Exception e) {
+      //correctly threw exception
+    }
+    
+    
+    assertJQ(req("qt",rh, SpellCheckComponent.COMPONENT_NAME, "true", SpellingParams.SPELLCHECK_BUILD, "true", "q","lowerfilt:(this OR brwn)",
+        "fq", "id:[0 TO 9]", SpellingParams.SPELLCHECK_MAX_RESULTS_FOR_SUGGEST_FQ, "id:[0 TO 9]", 
+        SpellingParams.SPELLCHECK_COUNT,"5", SpellingParams.SPELLCHECK_EXTENDED_RESULTS,"false", SpellingParams.SPELLCHECK_MAX_RESULTS_FOR_SUGGEST, ".70")
+        ,"/spellcheck/suggestions/[0]=='brwn'"
+        ,"/spellcheck/suggestions/[1]/numFound==1"
+     );
+    try {
+      assertJQ(req("qt",rh, SpellCheckComponent.COMPONENT_NAME, "true", SpellingParams.SPELLCHECK_BUILD, "true", "q","lowerfilt:(this OR brwn)",
+          "fq", "id:[0 TO 9]", SpellingParams.SPELLCHECK_MAX_RESULTS_FOR_SUGGEST_FQ, "lowerfilt:th*", 
+          SpellingParams.SPELLCHECK_COUNT,"5", SpellingParams.SPELLCHECK_EXTENDED_RESULTS,"false", SpellingParams.SPELLCHECK_MAX_RESULTS_FOR_SUGGEST, ".64")
+          ,"/spellcheck/suggestions/[1]/numFound==1"
+       );
+      fail("there should have been no suggestions ((.64 * 10)<7)");
+    } catch(Exception e) {
+      //correctly threw exception
+    }
+  } 
   
   @Test
   public void testExtendedResultsCount() throws Exception {
@@ -95,6 +146,13 @@ public class SpellCheckComponentTest extends SolrTestCaseJ4 {
   public void test() throws Exception {
     assertJQ(req("qt",rh, SpellCheckComponent.COMPONENT_NAME, "true", "q","documemt")
        ,"/spellcheck=={'suggestions':['documemt',{'numFound':1,'startOffset':0,'endOffset':8,'suggestion':['document']}]}"
+    );
+  }
+  
+  @Test
+  public void testNumericQuery() throws Exception {
+    assertJQ(req("qt",rh, SpellCheckComponent.COMPONENT_NAME, "true", "q","12346")
+       ,"/spellcheck=={'suggestions':['12346',{'numFound':1,'startOffset':0,'endOffset':5,'suggestion':['12345']}]}"
     );
   }
 
@@ -238,7 +296,7 @@ public class SpellCheckComponentTest extends SolrTestCaseJ4 {
 
         SolrRequestHandler handler = core.getRequestHandler("spellCheckCompRH");
         SolrQueryResponse rsp = new SolrQueryResponse();
-        rsp.add("responseHeader", new SimpleOrderedMap());
+        rsp.addResponseHeader(new SimpleOrderedMap());
         SolrQueryRequest req = new LocalSolrQueryRequest(core, params);
         handler.handleRequest(req, rsp);
         req.close();
@@ -251,7 +309,7 @@ public class SpellCheckComponentTest extends SolrTestCaseJ4 {
         params.remove(SpellingParams.SPELLCHECK_DICT);
         params.add(SpellingParams.SPELLCHECK_DICT, "threshold_direct");
         rsp = new SolrQueryResponse();
-        rsp.add("responseHeader", new SimpleOrderedMap());
+        rsp.addResponseHeader(new SimpleOrderedMap());
         req = new LocalSolrQueryRequest(core, params);
         handler.handleRequest(req, rsp);
         req.close();

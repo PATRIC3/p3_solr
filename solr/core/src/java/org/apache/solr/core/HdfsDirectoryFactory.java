@@ -1,5 +1,3 @@
-package org.apache.solr.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.core;
 
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION;
 
@@ -156,16 +155,16 @@ public class HdfsDirectoryFactory extends CachingDirectoryFactory implements Sol
   @Override
   protected LockFactory createLockFactory(String rawLockType) throws IOException {
     if (null == rawLockType) {
-      LOG.warn("No lockType configured, assuming 'hdfs'.");
-      rawLockType = "hdfs";
+      rawLockType = DirectoryFactory.LOCK_TYPE_HDFS;
+      LOG.warn("No lockType configured, assuming '"+rawLockType+"'.");
     }
     final String lockType = rawLockType.toLowerCase(Locale.ROOT).trim();
     switch (lockType) {
-      case "hdfs":
+      case DirectoryFactory.LOCK_TYPE_HDFS:
         return HdfsLockFactory.INSTANCE;
-      case "single":
+      case DirectoryFactory.LOCK_TYPE_SINGLE:
         return new SingleInstanceLockFactory();
-      case "none":
+      case DirectoryFactory.LOCK_TYPE_NONE:
         return NoLockFactory.INSTANCE;
       default:
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,

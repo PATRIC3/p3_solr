@@ -1,5 +1,3 @@
-package org.apache.solr.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.core;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,6 +42,7 @@ import org.apache.lucene.util.IOUtils;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.ObjectReleaseTracker;
 import org.apache.solr.store.blockcache.BlockDirectory;
 import org.apache.solr.store.hdfs.HdfsDirectory;
 import org.apache.solr.store.hdfs.HdfsLockFactory;
@@ -305,6 +305,7 @@ public abstract class CachingDirectoryFactory extends DirectoryFactory {
     try {
       log.info("Closing directory: " + val.path);
       val.directory.close();
+      assert ObjectReleaseTracker.release(val.directory);
     } catch (Exception e) {
       SolrException.log(log, "Error closing directory", e);
     }
@@ -347,6 +348,7 @@ public abstract class CachingDirectoryFactory extends DirectoryFactory {
       
       if (directory == null) {
         directory = create(fullPath, createLockFactory(rawLockType), dirContext);
+        assert ObjectReleaseTracker.track(directory);
         boolean success = false;
         try {
           CacheValue newCacheValue = new CacheValue(fullPath, directory);

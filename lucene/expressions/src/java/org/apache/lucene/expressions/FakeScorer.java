@@ -1,5 +1,3 @@
-package org.apache.lucene.expressions;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,12 @@ package org.apache.lucene.expressions;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.expressions;
+
 
 import java.io.IOException;
 
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Scorer;
 
 class FakeScorer extends Scorer {
@@ -37,17 +38,7 @@ class FakeScorer extends Scorer {
   }
 
   @Override
-  public int nextDoc() throws IOException {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public int advance(int target) throws IOException {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public long cost() {
+  public DocIdSetIterator iterator() {
     throw new UnsupportedOperationException();
   }
 

@@ -14,15 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.client.solrj.impl;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
+import org.apache.http.NameValuePair;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentProducer;
 import org.apache.http.entity.EntityTemplate;
+import org.apache.http.util.EntityUtils;
 import org.apache.solr.client.solrj.ResponseParser;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrRequest;
@@ -45,6 +46,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
@@ -55,11 +57,8 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * ConcurrentUpdateSolrClient buffers all added documents and writes
@@ -86,6 +85,7 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
   boolean shutdownExecutor = false;
   int pollQueueTime = 250;
   private final boolean streamDeletes;
+  private boolean internalHttpClient;
 
   /**
    * Uses an internally managed HttpClient instance.
@@ -101,6 +101,7 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
                                     int threadCount) {
     this(solrServerUrl, null, queueSize, threadCount);
     shutdownExecutor = true;
+    internalHttpClient = true;
   }
   
   public ConcurrentUpdateSolrClient(String solrServerUrl,
@@ -195,6 +196,7 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
         HttpPost method = null;
         HttpResponse response = null;
 
+        InputStream rspBody = null;
         try {
           final UpdateRequest updateRequest =
               queue.poll(pollQueueTime, TimeUnit.MILLISECONDS);
@@ -277,6 +279,7 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
           method.addHeader("Content-Type", contentType);
 
           response = client.getHttpClient().execute(method);
+          rspBody = response.getEntity().getContent();
           int statusCode = response.getStatusLine().getStatusCode();
           if (statusCode != HttpStatus.SC_OK) {
             StringBuilder msg = new StringBuilder();
@@ -287,12 +290,18 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
             SolrException solrExc = new SolrException(ErrorCode.getErrorCode(statusCode), msg.toString());
             // parse out the metadata from the SolrException
             try {
-              NamedList<Object> resp =
-                  client.parser.processResponse(response.getEntity().getContent(),
-                      response.getEntity().getContentType().getValue());
+              String encoding = "UTF-8"; // default
+              if (response.getEntity().getContentType().getElements().length > 0) {
+                NameValuePair param = response.getEntity().getContentType().getElements()[0].getParameterByName("charset");
+                if (param != null)  {
+                  encoding = param.getValue();
+                }
+              }
+              NamedList<Object> resp = client.parser.processResponse(rspBody, encoding);
               NamedList<Object> error = (NamedList<Object>) resp.get("error");
-              if (error != null)
+              if (error != null) {
                 solrExc.setMetadata((NamedList<String>) error.get("metadata"));
+              }
             } catch (Exception exc) {
               // don't want to fail to report error if parsing the response fails
               log.warn("Failed to parse error response from " + client.getBaseURL() + " due to: " + exc);
@@ -305,10 +314,10 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
         } finally {
           try {
             if (response != null) {
-              response.getEntity().getContent().close();
+              EntityUtils.consume(response.getEntity());
             }
-          } catch (Exception ex) {
-            log.warn("", ex);
+          } catch (Exception e) {
+            log.error("Error consuming and closing http response stream.", e);
           }
         }
       }
@@ -469,7 +478,7 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
   @Override
   @Deprecated
   public void shutdown() {
-    client.shutdown();
+    if (internalHttpClient) IOUtils.closeQuietly(client);
     if (shutdownExecutor) {
       scheduler.shutdown();
       try {
@@ -498,7 +507,7 @@ public class ConcurrentUpdateSolrClient extends SolrClient {
   }
 
   public void shutdownNow() {
-    client.shutdown();
+    if (internalHttpClient) IOUtils.closeQuietly(client);
     if (shutdownExecutor) {
       scheduler.shutdownNow(); // Cancel currently executing tasks
       try {

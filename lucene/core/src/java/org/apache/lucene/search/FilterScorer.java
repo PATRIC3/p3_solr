@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
@@ -70,22 +70,12 @@ public abstract class FilterScorer extends Scorer {
   }
 
   @Override
-  public final int nextDoc() throws IOException {
-    return in.nextDoc();
-  }
-
-  @Override
-  public final int advance(int target) throws IOException {
-    return in.advance(target);
-  }
-
-  @Override
-  public long cost() {
-    return in.cost();
+  public final DocIdSetIterator iterator() {
+    return in.iterator();
   }
   
   @Override
-  public final TwoPhaseIterator asTwoPhaseIterator() {
-    return in.asTwoPhaseIterator();
+  public final TwoPhaseIterator twoPhaseIterator() {
+    return in.twoPhaseIterator();
   }
 }

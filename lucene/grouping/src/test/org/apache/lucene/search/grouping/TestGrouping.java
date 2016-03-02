@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.search.grouping;
 
 import java.io.IOException;
@@ -150,7 +149,7 @@ public class TestGrouping extends LuceneTestCase {
     final AbstractFirstPassGroupingCollector<?> c1 = createRandomFirstPassCollector(groupField, groupSort, 10);
     indexSearcher.search(new TermQuery(new Term("content", "random")), c1);
 
-    final AbstractSecondPassGroupingCollector<?> c2 = createSecondPassCollector(c1, groupField, groupSort, null, 0, 5, true, true, true);
+    final AbstractSecondPassGroupingCollector<?> c2 = createSecondPassCollector(c1, groupField, groupSort, Sort.RELEVANCE, 0, 5, true, true, true);
     indexSearcher.search(new TermQuery(new Term("content", "random")), c2);
 
     final TopGroups<?> groups = c2.getTopGroups(0);
@@ -177,8 +176,8 @@ public class TestGrouping extends LuceneTestCase {
     assertEquals(0, group.scoreDocs[0].doc);
     assertEquals(1, group.scoreDocs[1].doc);
     assertEquals(2, group.scoreDocs[2].doc);
-    assertTrue(group.scoreDocs[0].score > group.scoreDocs[1].score);
-    assertTrue(group.scoreDocs[1].score > group.scoreDocs[2].score);
+    assertTrue(group.scoreDocs[0].score >= group.scoreDocs[1].score);
+    assertTrue(group.scoreDocs[1].score >= group.scoreDocs[2].score);
 
     group = groups.groups[2];
     compareGroupValue("author2", group);
@@ -775,18 +774,27 @@ public class TestGrouping extends LuceneTestCase {
       
       final ShardState shards = new ShardState(s);
       
+      Set<Integer> seenIDs = new HashSet<>();
       for(int contentID=0;contentID<3;contentID++) {
         final ScoreDoc[] hits = s.search(new TermQuery(new Term("content", "real"+contentID)), numDocs).scoreDocs;
         for(ScoreDoc hit : hits) {
-          final GroupDoc gd = groupDocs[(int) docIDToID.get(hit.doc)];
+          int idValue = (int) docIDToID.get(hit.doc);
+
+          final GroupDoc gd = groupDocs[idValue];
+          seenIDs.add(idValue);
           assertTrue(gd.score == 0.0);
           gd.score = hit.score;
-          assertEquals(gd.id, docIDToID.get(hit.doc));
+          assertEquals(gd.id, idValue);
         }
       }
       
+      // make sure all groups were seen across the hits
+      assertEquals(groupDocs.length, seenIDs.size());
+
       for(GroupDoc gd : groupDocs) {
-        assertTrue(gd.score != 0.0);
+        assertFalse(Float.isNaN(gd.score));
+        assertFalse(Float.isInfinite(gd.score));
+        assertTrue(gd.score >= 0.0);
       }
       
       // Build 2nd index, where docs are added in blocks by
@@ -837,22 +845,9 @@ public class TestGrouping extends LuceneTestCase {
         final boolean getMaxScores = random().nextBoolean();
         final Sort groupSort = getRandomSort();
         //final Sort groupSort = new Sort(new SortField[] {new SortField("sort1", SortField.STRING), new SortField("id", SortField.INT)});
-        // TODO: also test null (= sort by relevance)
         final Sort docSort = getRandomSort();
         
-        for(SortField sf : docSort.getSort()) {
-          if (sf.getType() == SortField.Type.SCORE) {
-            getScores = true;
-            break;
-          }
-        }
-        
-        for(SortField sf : groupSort.getSort()) {
-          if (sf.getType() == SortField.Type.SCORE) {
-            getScores = true;
-            break;
-          }
-        }
+        getScores |= (groupSort.needsScores() || docSort.needsScores());
         
         final int topNGroups = TestUtil.nextInt(random(), 1, 30);
         //final int topNGroups = 10;
@@ -863,7 +858,7 @@ public class TestGrouping extends LuceneTestCase {
         
         final int docOffset = TestUtil.nextInt(random(), 0, docsPerGroup - 1);
         //final int docOffset = 0;
-        
+
         final boolean doCache = random().nextBoolean();
         final boolean doAllGroups = random().nextBoolean();
         if (VERBOSE) {
@@ -1170,7 +1165,7 @@ public class TestGrouping extends LuceneTestCase {
       System.out.println("TEST: " + subSearchers.length + " shards: " + Arrays.toString(subSearchers) + " canUseIDV=" + canUseIDV);
     }
     // Run 1st pass collector to get top groups per shard
-    final Weight w = topSearcher.createNormalizedWeight(query, true);
+    final Weight w = topSearcher.createNormalizedWeight(query, getScores);
     final List<Collection<SearchGroup<BytesRef>>> shardGroups = new ArrayList<>();
     List<AbstractFirstPassGroupingCollector<?>> firstPassGroupingCollectors = new ArrayList<>();
     AbstractFirstPassGroupingCollector<?> firstPassCollector = null;

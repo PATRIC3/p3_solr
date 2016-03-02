@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -300,7 +300,13 @@ public class LRUQueryCache implements QueryCache, Accountable {
     final LeafCache leafCache = cache.remove(coreKey);
     if (leafCache != null) {
       ramBytesUsed -= HASHTABLE_RAM_BYTES_PER_ENTRY;
-      onDocIdSetEviction(coreKey, leafCache.cache.size(), leafCache.ramBytesUsed);
+      final int numEntries = leafCache.cache.size();
+      if (numEntries > 0) {
+        onDocIdSetEviction(coreKey, numEntries, leafCache.ramBytesUsed);
+      } else {
+        assert numEntries == 0;
+        assert leafCache.ramBytesUsed == 0;
+      }
     }
   }
 

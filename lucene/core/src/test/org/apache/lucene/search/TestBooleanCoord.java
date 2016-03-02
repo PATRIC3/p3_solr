@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -824,7 +824,7 @@ public class TestBooleanCoord extends LuceneTestCase {
     Weight weight = searcher.createNormalizedWeight(query, true);
     Scorer scorer = weight.scorer(reader.leaves().get(0));
     assertTrue(scorer.docID() == -1 || scorer.docID() == DocIdSetIterator.NO_MORE_DOCS);
-    assertEquals(0, scorer.nextDoc());
+    assertEquals(0, scorer.iterator().nextDoc());
     assertEquals(expected, scorer.score(), 0.0001f);
 
     // test bulk scorer

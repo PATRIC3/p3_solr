@@ -1,5 +1,3 @@
-package org.apache.solr.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,15 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.simple.SimpleQueryParser;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.BoostQuery;
+import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.Query;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.SimpleParams;
@@ -87,11 +88,6 @@ public class SimpleQParserPlugin extends QParserPlugin {
     OPERATORS.put(SimpleParams.WHITESPACE_OPERATOR,  SimpleQueryParser.WHITESPACE_OPERATOR);
     OPERATORS.put(SimpleParams.FUZZY_OPERATOR,       SimpleQueryParser.FUZZY_OPERATOR);
     OPERATORS.put(SimpleParams.NEAR_OPERATOR,        SimpleQueryParser.NEAR_OPERATOR);
-  }
-
-  /** No initialization is necessary so this method is empty. */
-  @Override
-  public void init(NamedList args) {
   }
 
   /** Returns a QParser that will create a query by using Lucene's SimpleQueryParser. */
@@ -211,6 +207,36 @@ public class SimpleQParserPlugin extends QParserPlugin {
           prefix = new BoostQuery(prefix, boost);
         }
         bq.add(prefix, BooleanClause.Occur.SHOULD);
+      }
+
+      return simplify(bq.build());
+    }
+
+    @Override
+    protected Query newFuzzyQuery(String text, int fuzziness) {
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
+      bq.setDisableCoord(true);
+
+      for (Map.Entry<String, Float> entry : weights.entrySet()) {
+        String field = entry.getKey();
+        FieldType type = schema.getFieldType(field);
+        Query fuzzy;
+
+        if (type instanceof TextField) {
+          // If the field type is a TextField then use the multi term analyzer.
+          Analyzer analyzer = ((TextField)type).getMultiTermAnalyzer();
+          String term = TextField.analyzeMultiTerm(field, text, analyzer).utf8ToString();
+          fuzzy = new FuzzyQuery(new Term(entry.getKey(), term), fuzziness);
+        } else {
+          // If the type is *not* a TextField don't do any analysis.
+          fuzzy = new FuzzyQuery(new Term(entry.getKey(), text), fuzziness);
+        }
+
+        float boost = entry.getValue();
+        if (boost != 1f) {
+          fuzzy = new BoostQuery(fuzzy, boost);
+        }
+        bq.add(fuzzy, BooleanClause.Occur.SHOULD);
       }
 
       return simplify(bq.build());

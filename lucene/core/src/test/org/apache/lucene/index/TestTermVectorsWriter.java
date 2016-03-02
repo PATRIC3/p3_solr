@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 
@@ -671,7 +671,7 @@ public class TestTermVectorsWriter extends LuceneTestCase {
     } catch (IllegalArgumentException iae) {
       // expected
     }
-    IndexReader r = DirectoryReader.open(iw, true);
+    IndexReader r = DirectoryReader.open(iw);
 
     // Make sure the exc didn't lose our first document:
     assertEquals(1, r.numDocs());

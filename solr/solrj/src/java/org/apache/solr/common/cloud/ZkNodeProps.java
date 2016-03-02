@@ -1,5 +1,3 @@
-package org.apache.solr.common.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.common.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.common.cloud;
 
 import org.apache.solr.common.util.Utils;
 import org.noggit.JSONUtil;
@@ -139,5 +138,10 @@ public class ZkNodeProps implements JSONWriter.Writable {
     Object o = propMap.get(key);
     if(o==null) return b;
     return Boolean.parseBoolean(o.toString());
+  }
+
+  @Override
+  public boolean equals(Object that) {
+    return that instanceof ZkNodeProps && ((ZkNodeProps)that).propMap.equals(this.propMap);
   }
 }

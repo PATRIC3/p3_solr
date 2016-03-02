@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial.composite;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.spatial.composite;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.spatial.composite;
 
 import java.io.IOException;
 import java.util.Map;
@@ -106,7 +105,7 @@ public class CompositeVerifyQuery extends Query {
 
         final FunctionValues predFuncValues = predicateValueSource.getValues(valueSourceContext, context);
 
-        final TwoPhaseIterator twoPhaseIterator = new TwoPhaseIterator(indexQueryScorer) {
+        final TwoPhaseIterator twoPhaseIterator = new TwoPhaseIterator(indexQueryScorer.iterator()) {
           @Override
           public boolean matches() throws IOException {
             return predFuncValues.boolVal(indexQueryScorer.docID());

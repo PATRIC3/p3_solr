@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
 
 import java.io.PrintStream;
 import java.util.Arrays;
@@ -37,8 +36,8 @@ import org.apache.lucene.codecs.lucene54.Lucene54Codec;
 import org.apache.lucene.codecs.mockrandom.MockRandomPostingsFormat;
 import org.apache.lucene.codecs.simpletext.SimpleTextCodec;
 import org.apache.lucene.index.RandomCodec;
-import org.apache.lucene.search.RandomSimilarityProvider;
-import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.ClassicSimilarity;
+import org.apache.lucene.search.similarities.RandomSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.junit.internal.AssumptionViolatedException;
@@ -53,7 +52,7 @@ import static org.apache.lucene.util.LuceneTestCase.TEST_DOCVALUESFORMAT;
 import static org.apache.lucene.util.LuceneTestCase.TEST_POSTINGSFORMAT;
 import static org.apache.lucene.util.LuceneTestCase.VERBOSE;
 import static org.apache.lucene.util.LuceneTestCase.assumeFalse;
-import static org.apache.lucene.util.LuceneTestCase.localeForName;
+import static org.apache.lucene.util.LuceneTestCase.localeForLanguageTag;
 import static org.apache.lucene.util.LuceneTestCase.random;
 import static org.apache.lucene.util.LuceneTestCase.randomLocale;
 import static org.apache.lucene.util.LuceneTestCase.randomTimeZone;
@@ -200,14 +199,14 @@ final class TestRuleSetupAndRestoreClassEnv extends AbstractBeforeAfterRule {
     // Always pick a random one for consistency (whether tests.locale was specified or not).
     savedLocale = Locale.getDefault();
     Locale randomLocale = randomLocale(random);
-    locale = testLocale.equals("random") ? randomLocale : localeForName(testLocale);
+    locale = testLocale.equals("random") ? randomLocale : localeForLanguageTag(testLocale);
     Locale.setDefault(locale);
 
     savedTimeZone = TimeZone.getDefault();
     TimeZone randomTimeZone = randomTimeZone(random());
     timeZone = testTimeZone.equals("random") ? randomTimeZone : TimeZone.getTimeZone(testTimeZone);
     TimeZone.setDefault(timeZone);
-    similarity = random().nextBoolean() ? new DefaultSimilarity() : new RandomSimilarityProvider(random());
+    similarity = random().nextBoolean() ? new ClassicSimilarity() : new RandomSimilarity(random());
 
     // Check codec restrictions once at class level.
     try {

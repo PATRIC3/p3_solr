@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
 import static org.apache.lucene.index.PostingsEnum.ALL;
 import static org.apache.lucene.index.PostingsEnum.FREQS;
@@ -767,7 +766,7 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
     ft.setStoreTermVectors(true);
     doc.add(new Field("foo", "bar bar", ft));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     Terms terms = getOnlySegmentReader(reader).getTermVector(0, "foo");
     TermsEnum termsEnum = terms.iterator();
@@ -848,7 +847,7 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
     ft.setStoreTermVectorPositions(true);
     doc.add(new Field("foo", "bar bar", ft));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     Terms terms = getOnlySegmentReader(reader).getTermVector(0, "foo");
     TermsEnum termsEnum = terms.iterator();
@@ -1027,7 +1026,7 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
     ft.setStoreTermVectorOffsets(true);
     doc.add(new Field("foo", "bar bar", ft));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     Terms terms = getOnlySegmentReader(reader).getTermVector(0, "foo");
     TermsEnum termsEnum = terms.iterator();
@@ -1213,7 +1212,7 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
     ft.setStoreTermVectorOffsets(true);
     doc.add(new Field("foo", "bar bar", ft));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     Terms terms = getOnlySegmentReader(reader).getTermVector(0, "foo");
     TermsEnum termsEnum = terms.iterator();
@@ -1399,7 +1398,7 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
     ft.setStoreTermVectorPayloads(true);
     doc.add(new Field("foo", new CannedTokenStream(token1, token2), ft));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     Terms terms = getOnlySegmentReader(reader).getTermVector(0, "foo");
     TermsEnum termsEnum = terms.iterator();
@@ -1585,7 +1584,7 @@ public abstract class BaseTermVectorsFormatTestCase extends BaseIndexFileFormatT
     ft.setStoreTermVectorOffsets(true);
     doc.add(new Field("foo", new CannedTokenStream(token1, token2), ft));
     iw.addDocument(doc);
-    DirectoryReader reader = DirectoryReader.open(iw, false);
+    DirectoryReader reader = DirectoryReader.open(iw);
     
     Terms terms = getOnlySegmentReader(reader).getTermVector(0, "foo");
     TermsEnum termsEnum = terms.iterator();

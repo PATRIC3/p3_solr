@@ -1,5 +1,3 @@
-package org.apache.lucene.bkdtree3d;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.bkdtree3d;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.bkdtree3d;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -43,6 +42,8 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.RamUsageEstimator;
 
+/* @deprecated Use dimensional values in Lucene 6.0 instead */
+@Deprecated
 class Geo3DDocValuesProducer extends DocValuesProducer {
 
   private final Map<String,BKD3DTreeReader> treeReaders = new HashMap<>();

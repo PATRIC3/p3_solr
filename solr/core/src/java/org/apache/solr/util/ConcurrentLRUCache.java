@@ -1,4 +1,3 @@
-package org.apache.solr.util;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.util;
 import org.apache.lucene.util.PriorityQueue;
 import org.apache.solr.common.util.Cache;
 import org.slf4j.Logger;
@@ -482,7 +481,7 @@ public class ConcurrentLRUCache<K,V> implements Cache<K,V> {
     return map;
   }
 
-  private static class CacheEntry<K,V> implements Comparable<CacheEntry<K,V>> {
+  public static class CacheEntry<K,V> implements Comparable<CacheEntry<K,V>> {
     K key;
     V value;
     volatile long lastAccessed = 0;

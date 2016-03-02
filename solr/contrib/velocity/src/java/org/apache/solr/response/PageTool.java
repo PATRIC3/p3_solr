@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.response;
 
 import org.apache.solr.request.SolrQueryRequest;
@@ -43,7 +42,7 @@ public class PageTool {
       results_per_page = new Integer(rows);
     }
     //TODO: Handle group by results
-    Object docs = response.getValues().get("response");
+    Object docs = response.getResponse();
     if (docs != null) {
       if (docs instanceof DocSlice) {
         DocSlice doc_slice = (DocSlice) docs;

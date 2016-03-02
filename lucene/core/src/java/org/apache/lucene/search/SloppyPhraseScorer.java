@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -69,7 +69,7 @@ final class SloppyPhraseScorer extends Scorer {
       iterators[i] = postings[i].postings;
       phrasePositions[i] = new PhrasePositions(postings[i].postings, postings[i].position, i, postings[i].terms);
     }
-    conjunction = ConjunctionDISI.intersect(Arrays.asList(iterators));
+    conjunction = ConjunctionDISI.intersectIterators(Arrays.asList(iterators));
     this.matchCost = matchCost;
   }
 
@@ -550,19 +550,6 @@ final class SloppyPhraseScorer extends Scorer {
   public int docID() {
     return conjunction.docID(); 
   }
-
-  @Override
-  public int nextDoc() throws IOException {
-    int doc;
-    for (doc = conjunction.nextDoc(); doc != NO_MORE_DOCS; doc = conjunction.nextDoc()) {
-      sloppyFreq = phraseFreq(); // check for phrase
-      if (sloppyFreq != 0f) {
-        break;
-      }
-    }
-
-    return doc;
-  }
   
   @Override
   public float score() {
@@ -570,29 +557,10 @@ final class SloppyPhraseScorer extends Scorer {
   }
 
   @Override
-  public int advance(int target) throws IOException {
-    assert target > docID();
-    int doc;
-    for (doc = conjunction.advance(target); doc != NO_MORE_DOCS; doc = conjunction.nextDoc()) {
-      sloppyFreq = phraseFreq(); // check for phrase
-      if (sloppyFreq != 0f) {
-        break;
-      }
-    }
-
-    return doc;
-  }
-
-  @Override
-  public long cost() {
-    return conjunction.cost();
-  }
-
-  @Override
   public String toString() { return "scorer(" + weight + ")"; }
 
   @Override
-  public TwoPhaseIterator asTwoPhaseIterator() {
+  public TwoPhaseIterator twoPhaseIterator() {
     return new TwoPhaseIterator(conjunction) {
       @Override
       public boolean matches() throws IOException {
@@ -610,5 +578,10 @@ final class SloppyPhraseScorer extends Scorer {
         return "SloppyPhraseScorer@asTwoPhaseIterator(" + SloppyPhraseScorer.this + ")";
       }
     };
+  }
+
+  @Override
+  public DocIdSetIterator iterator() {
+    return TwoPhaseIterator.asDocIdSetIterator(twoPhaseIterator());
   }
 }

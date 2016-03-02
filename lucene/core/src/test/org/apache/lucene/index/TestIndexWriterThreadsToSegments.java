@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -82,7 +82,7 @@ public class TestIndexWriterThreadsToSegments extends LuceneTestCase {
     startingGun.countDown();
     startDone.await();
 
-    IndexReader r = DirectoryReader.open(w, true);
+    IndexReader r = DirectoryReader.open(w);
     assertEquals(2, r.numDocs());
     int numSegments = r.leaves().size();
     // 1 segment if the threads ran sequentially, else 2:
@@ -95,7 +95,7 @@ public class TestIndexWriterThreadsToSegments extends LuceneTestCase {
     finalGun.countDown();
     threads[1].join();
 
-    r = DirectoryReader.open(w, true);
+    r = DirectoryReader.open(w);
     assertEquals(4, r.numDocs());
     // Both threads should have shared a single thread state since they did not try to index concurrently:
     assertEquals(1+numSegments, r.leaves().size());
@@ -118,7 +118,7 @@ public class TestIndexWriterThreadsToSegments extends LuceneTestCase {
       this.w = w;
       this.maxThreadCountPerIter = maxThreadCountPerIter;
       this.indexingCount = indexingCount;
-      r = DirectoryReader.open(w, true);
+      r = DirectoryReader.open(w);
       assertEquals(0, r.leaves().size());
       setNextIterThreadCount();
     }

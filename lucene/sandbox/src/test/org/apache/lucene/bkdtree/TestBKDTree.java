@@ -1,5 +1,3 @@
-package org.apache.lucene.bkdtree;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.bkdtree;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.bkdtree;
 
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.DocValuesFormat;
@@ -31,15 +30,17 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.Accountables;
-import org.apache.lucene.util.BaseGeoPointTestCase;
-import org.apache.lucene.util.GeoRect;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.SloppyMath;
 import org.apache.lucene.util.TestUtil;
+import org.apache.lucene.spatial.util.BaseGeoPointTestCase;
+import org.apache.lucene.spatial.util.GeoRect;
 
 // TODO: can test framework assert we don't leak temp files?
 
 public class TestBKDTree extends BaseGeoPointTestCase {
+  // todo deconflict GeoPoint and BKD encoding methods and error tolerance
+  public static final double BKD_TOLERANCE = 1e-7;
 
   @Override
   protected void addPointToDoc(String field, Document doc, double lat, double lon) {
@@ -88,6 +89,14 @@ public class TestBKDTree extends BaseGeoPointTestCase {
 
     assert Double.isNaN(pointLat) == false;
 
+    // false positive/negatives due to quantization error exist for both rectangles and polygons
+    if (compare(pointLat, rect.minLat) == 0
+        || compare(pointLat, rect.maxLat) == 0
+        || compare(pointLon, rect.minLon) == 0
+        || compare(pointLon, rect.maxLon) == 0) {
+      return null;
+    }
+
     int rectLatMinEnc = BKDTreeWriter.encodeLat(rect.minLat);
     int rectLatMaxEnc = BKDTreeWriter.encodeLat(rect.maxLat);
     int rectLonMinEnc = BKDTreeWriter.encodeLon(rect.minLon);
@@ -110,19 +119,16 @@ public class TestBKDTree extends BaseGeoPointTestCase {
     }
   }
 
-  private static final double POLY_TOLERANCE = 1e-7;
+  // todo reconcile with GeoUtils (see LUCENE-6996)
+  public static double compare(final double v1, final double v2) {
+    final double delta = v1-v2;
+    return Math.abs(delta) <= BKD_TOLERANCE ? 0 : delta;
+  }
 
   @Override
   protected Boolean polyRectContainsPoint(GeoRect rect, double pointLat, double pointLon) {
-    if (Math.abs(rect.minLat-pointLat) < POLY_TOLERANCE ||
-        Math.abs(rect.maxLat-pointLat) < POLY_TOLERANCE ||
-        Math.abs(rect.minLon-pointLon) < POLY_TOLERANCE ||
-        Math.abs(rect.maxLon-pointLon) < POLY_TOLERANCE) {
-      // The poly check quantizes slightly differently, so we allow for boundary cases to disagree
-      return null;
-    } else {
-      return rectContainsPoint(rect, pointLat, pointLon);
-    }
+    // TODO write better random polygon tests
+    return rectContainsPoint(rect, pointLat, pointLon);
   }
 
   @Override

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
 import java.io.FileNotFoundException;
@@ -52,6 +51,7 @@ public class HdfsUpdateLog extends UpdateLog {
   private Integer tlogDfsReplication;
 
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  private static boolean debug = log.isDebugEnabled();
   
   // used internally by tests to track total count of failed tran log loads in init
   public static AtomicLong INIT_FAILED_LOGS_COUNT = new AtomicLong();
@@ -240,18 +240,17 @@ public class HdfsUpdateLog extends UpdateLog {
     
     // TODO: these startingVersions assume that we successfully recover from all
     // non-complete tlogs.
-    HdfsUpdateLog.RecentUpdates startingUpdates = getRecentUpdates();
-    try {
+    try (RecentUpdates startingUpdates = getRecentUpdates()) {
       startingVersions = startingUpdates.getVersions(getNumRecordsToKeep());
       startingOperation = startingUpdates.getLatestOperation();
-      
+
       // populate recent deletes list (since we can't get that info from the
       // index)
       for (int i = startingUpdates.deleteList.size() - 1; i >= 0; i--) {
         DeleteUpdate du = startingUpdates.deleteList.get(i);
         oldDeletes.put(new BytesRef(du.id), new LogPtr(-1, du.version));
       }
-      
+
       // populate recent deleteByQuery commands
       for (int i = startingUpdates.deleteByQueryList.size() - 1; i >= 0; i--) {
         Update update = startingUpdates.deleteByQueryList.get(i);
@@ -260,9 +259,7 @@ public class HdfsUpdateLog extends UpdateLog {
         String q = (String) dbq.get(2);
         trackDeleteByQuery(q, version);
       }
-      
-    } finally {
-      startingUpdates.close();
+
     }
     
   }
@@ -351,6 +348,12 @@ public class HdfsUpdateLog extends UpdateLog {
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
+  }
+  
+  @Override
+  public void preSoftCommit(CommitUpdateCommand cmd) {
+    debug = log.isDebugEnabled();
+    super.preSoftCommit(cmd);
   }
   
   public String[] getLogList(Path tlogDir) throws FileNotFoundException, IOException {

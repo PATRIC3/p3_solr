@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -1311,8 +1311,8 @@ public class TestIndexWriterDelete extends LuceneTestCase {
     }
 
     // First one triggers, but does not reflect, the merge:
-    DirectoryReader.open(w, true).close();
-    IndexReader r =DirectoryReader.open(w, true);
+    DirectoryReader.open(w).close();
+    IndexReader r = DirectoryReader.open(w);
     assertEquals(1, r.leaves().size());
     r.close();
 
@@ -1371,7 +1371,7 @@ public class TestIndexWriterDelete extends LuceneTestCase {
       w.deleteDocuments(new Term("id", ""+i));
     }
 
-    DirectoryReader r = DirectoryReader.open(w, true);
+    DirectoryReader r = DirectoryReader.open(w);
     assertEquals(0, r.leaves().size());
     assertEquals(0, r.maxDoc());
     r.close();
@@ -1406,7 +1406,7 @@ public class TestIndexWriterDelete extends LuceneTestCase {
 
     w.forceMerge(1);
 
-    DirectoryReader r = DirectoryReader.open(w, true);
+    DirectoryReader r = DirectoryReader.open(w);
     assertEquals(1, r.leaves().size());
     r.close();
 

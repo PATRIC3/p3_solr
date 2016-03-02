@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -446,23 +446,34 @@ public class TestQueryRescorer extends LuceneTestCase {
             }
 
             @Override
-            public long cost() {
-              return 1;
-            }
+            public DocIdSetIterator iterator() {
+              return new DocIdSetIterator() {
 
-            @Override
-            public int nextDoc() {
-              docID++;
-              if (docID >= context.reader().maxDoc()) {
-                return NO_MORE_DOCS;
-              }
-              return docID;
-            }
+                @Override
+                public int docID() {
+                  return docID;
+                }
 
-            @Override
-            public int advance(int target) {
-              docID = target;
-              return docID;
+                @Override
+                public long cost() {
+                  return 1;
+                }
+
+                @Override
+                public int nextDoc() {
+                  docID++;
+                  if (docID >= context.reader().maxDoc()) {
+                    return NO_MORE_DOCS;
+                  }
+                  return docID;
+                }
+
+                @Override
+                public int advance(int target) {
+                  docID = target;
+                  return docID;
+                }
+              };
             }
 
             @Override

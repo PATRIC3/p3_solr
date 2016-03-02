@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler;
 
 import org.apache.lucene.index.ExitableDirectoryReader;
@@ -37,11 +36,7 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
-import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.component.FacetComponent;
-import org.apache.solr.handler.component.SpatialHeatmapFacets;
-import org.apache.solr.handler.component.DateFacetProcessor;
-import org.apache.solr.handler.component.RangeFacetProcessor;
 import org.apache.solr.request.SimpleFacets;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
@@ -170,8 +165,8 @@ public class MoreLikeThisHandler extends RequestHandlerBase
             }
           }
 
-          int start = params.getInt(CommonParams.START, 0);
-          int rows = params.getInt(CommonParams.ROWS, 10);
+          int start = params.getInt(CommonParams.START, CommonParams.START_DEFAULT);
+          int rows = params.getInt(CommonParams.ROWS, CommonParams.ROWS_DEFAULT);
 
           // Find documents MoreLikeThis - either with a reader or a query
           // --------------------------------------------------------------------------------
@@ -212,7 +207,7 @@ public class MoreLikeThisHandler extends RequestHandlerBase
         if (mltDocs == null) {
           mltDocs = new DocListAndSet(); // avoid NPE
         }
-        rsp.add("response", mltDocs.docList);
+        rsp.addResponse(mltDocs.docList);
 
 
         if (interesting != null) {
@@ -246,10 +241,10 @@ public class MoreLikeThisHandler extends RequestHandlerBase
         if (dbg == false) {//if it's true, we are doing everything anyway.
           String[] dbgParams = req.getParams().getParams(CommonParams.DEBUG);
           if (dbgParams != null) {
-            for (int i = 0; i < dbgParams.length; i++) {
-              if (dbgParams[i].equals(CommonParams.QUERY)) {
+            for (String dbgParam : dbgParams) {
+              if (dbgParam.equals(CommonParams.QUERY)) {
                 dbgQuery = true;
-              } else if (dbgParams[i].equals(CommonParams.RESULTS)) {
+              } else if (dbgParam.equals(CommonParams.RESULTS)) {
                 dbgResults = true;
               }
             }
@@ -381,10 +376,14 @@ public class MoreLikeThisHandler extends RequestHandlerBase
         newQ.setMinimumNumberShouldMatch(boostedQuery.getMinimumNumberShouldMatch());
         for (BooleanClause clause : boostedQuery) {
           Query q = clause.getQuery();
-          Float b = this.boostFields.get(((TermQuery) q).getTerm().field());
-          if (b != null) {
-            q = new BoostQuery(q, b);
+          float originalBoost = 1f;
+          if (q instanceof BoostQuery) {
+            BoostQuery bq = (BoostQuery) q;
+            q = bq.getQuery();
+            originalBoost = bq.getBoost();
           }
+          Float fieldBoost = boostFields.get(((TermQuery) q).getTerm().field());
+          q = ((fieldBoost != null) ? new BoostQuery(q, fieldBoost * originalBoost) : clause.getQuery());
           newQ.add(q, clause.getOccur());
         }
         boostedQuery = newQ.build();
@@ -485,7 +484,7 @@ public class MoreLikeThisHandler extends RequestHandlerBase
       for( BooleanClause o : clauses ) {
         Query q = o.getQuery();
         float boost = 1f;
-        if (query instanceof BoostQuery) {
+        if (q instanceof BoostQuery) {
           BoostQuery bq = (BoostQuery) q;
           q = bq.getQuery();
           boost = bq.getBoost();

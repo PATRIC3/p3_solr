@@ -1,33 +1,3 @@
-package org.apache.solr.handler.component;
-
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.solr.SolrJettyTestBase;
-import org.apache.solr.client.solrj.SolrClient;
-import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrClient;
-import org.apache.solr.client.solrj.request.CoreAdminRequest;
-import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.params.ShardParams;
-import org.apache.solr.common.util.NamedList;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -44,6 +14,36 @@ import java.util.Set;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.component;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.solr.SolrJettyTestBase;
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.SolrQuery;
+import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
+import org.apache.solr.client.solrj.request.CoreAdminRequest;
+import org.apache.solr.client.solrj.response.QueryResponse;
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrInputDocument;
+import org.apache.solr.common.params.ShardParams;
+import org.apache.solr.common.util.NamedList;
+import org.apache.solr.response.SolrQueryResponse;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.Test;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 
 public class DistributedDebugComponentTest extends SolrJettyTestBase {
   
@@ -346,11 +346,17 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
   
   public void testCompareWithNonDistributedRequest() throws SolrServerException, IOException {
     SolrQuery query = new SolrQuery();
-    query.setQuery("id:1");
-    query.setFilterQueries("id:[0 TO 10]");
+    query.setQuery("id:1 OR id:2");
+    query.setFilterQueries("id:[0 TO 10]", "id:[0 TO 5]");
+    query.setRows(1);
+    query.setSort("id", SolrQuery.ORDER.asc); // thus only return id:1 since rows 1
     query.set("debug",  "true");
     query.set("distrib", "true");
-    query.setFields("id", "text");
+    query.setFields("id");
+    if (random().nextBoolean()) { // can affect rb.onePassDistributedQuery
+      query.addField("text");
+    }
+    query.set(ShardParams.DISTRIB_SINGLE_PASS, random().nextBoolean());
     query.set("shards", shard1 + "," + shard2);
     QueryResponse distribResponse = collection1.query(query);
     
@@ -394,7 +400,7 @@ public class DistributedDebugComponentTest extends SolrJettyTestBase {
     }
     query.set(ShardParams.SHARDS_TOLERANT, "true");
     QueryResponse response = collection1.query(query);
-    assertTrue((Boolean)response.getResponseHeader().get("partialResults"));
+    assertTrue((Boolean)response.getResponseHeader().get(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY));
     @SuppressWarnings("unchecked")
     NamedList<String> badShardTrack = (NamedList<String>) ((NamedList<NamedList<String>>)
         ((NamedList<NamedList<NamedList<String>>>)response.getDebugMap().get("track")).get("EXECUTE_QUERY")).get(badShard);

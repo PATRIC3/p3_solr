@@ -1,5 +1,3 @@
-package org.apache.solr.search.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.facet;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -28,8 +27,8 @@ import java.util.Map;
 import java.util.Random;
 
 import com.tdunning.math.stats.AVLTreeDigest;
+import org.apache.solr.common.SolrException;
 import org.apache.solr.util.hll.HLL;
-import org.apache.lucene.queryparser.flexible.standard.processors.NumericQueryNodeProcessor;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.packed.GrowableWriter;
 import org.apache.lucene.util.packed.PackedInts;
@@ -297,14 +296,14 @@ public class TestJsonFacets extends SolrTestCaseHS {
 
   @Test
   public void testStats() throws Exception {
-    doStats(Client.localClient, params());
+    doStats(Client.localClient, params("debugQuery", Boolean.toString(random().nextBoolean()) ));
   }
 
   @Test
   public void testDistrib() throws Exception {
     initServers();
     Client client = servers.getClient(random().nextInt());
-    client.queryDefaults().set( "shards", servers.getShards() );
+    client.queryDefaults().set( "shards", servers.getShards(), "debugQuery", Boolean.toString(random().nextBoolean()) );
     doStats( client, params() );
   }
 
@@ -382,7 +381,11 @@ public class TestJsonFacets extends SolrTestCaseHS {
 
     client.deleteByQuery("*:*", null);
 
-    client.add(sdoc("id", "1", cat_s, "A", where_s, "NY", num_d, "4", num_i, "2",   super_s, "zodiac",  date,"2001-01-01T01:01:01Z", val_b, "true", sparse_s, "one"), null);
+    SolrInputDocument doc =
+               sdoc("id", "1", cat_s, "A", where_s, "NY", num_d, "4", num_i, "2", super_s, "zodiac", date, "2001-01-01T01:01:01Z", val_b, "true", sparse_s, "one");
+    client.add(doc, null);
+    client.add(doc, null);
+    client.add(doc, null);  // a couple of deleted docs
     client.add(sdoc("id", "2", cat_s, "B", where_s, "NJ", num_d, "-9", num_i, "-5", super_s,"superman", date,"2002-02-02T02:02:02Z", val_b, "false"         , multi_ss,"a", multi_ss,"b" , Z_num_i, "0"), null);
     client.add(sdoc("id", "3"), null);
     client.commit();
@@ -391,6 +394,16 @@ public class TestJsonFacets extends SolrTestCaseHS {
     client.commit();
     client.add(sdoc("id", "6", cat_s, "B", where_s, "NY", num_d, "-5", num_i, "-5", super_s,"hulk"     , date,"2002-03-01T03:02:01Z"                         , multi_ss, "b", multi_ss, "a", Z_num_i, ""+Integer.MAX_VALUE), null);
     client.commit();
+
+    // test for presence of debugging info
+    ModifiableSolrParams debugP = params(p);
+    debugP.set("debugQuery","true");
+    client.testJQ(params(debugP, "q", "*:*"
+          , "json.facet", "{catA:{query:{q:'${cat_s}:A'}},  catA2:{query:{query:'${cat_s}:A'}},  catA3:{query:'${cat_s}:A'}    }"
+      )
+        , "facets=={ 'count':6, 'catA':{ 'count':2}, 'catA2':{ 'count':2}, 'catA3':{ 'count':2}}"
+        , "debug/facet-trace=="  // just test for presence, not exact structure / values
+    );
 
 
     // straight query facets
@@ -917,6 +930,18 @@ public class TestJsonFacets extends SolrTestCaseHS {
     // multi-select / exclude tagged filters via excludeTags
     ////////////////////////////////////////////////////////////////////////////////////////////
 
+    // test uncached multi-select (see SOLR-8496)
+    client.testJQ(params(p, "q", "{!cache=false}*:*", "fq","{!tag=doc3,allfilt}-id:3"
+
+            , "json.facet", "{" +
+                "f1:{${terms} type:terms, field:${cat_s}, domain:{excludeTags:doc3} }  " +
+                "}"
+        )
+        , "facets=={ count:5, " +
+            " f1:{ buckets:[ {val:B, count:3}, {val:A, count:2} ]  }" +
+            "}"
+    );
+
     // nested query facets on subset (with excludeTags)
     client.testJQ(params(p, "q", "*:*", "fq","{!tag=abc}id:(2 3)"
             , "json.facet", "{ processEmpty:true," +
@@ -941,7 +966,7 @@ public class TestJsonFacets extends SolrTestCaseHS {
     );
 
     // terms facet with nested query facet (with excludeTags, using new format inside domain:{})
-    client.testJQ(params(p, "q", "*:*", "fq", "{!tag=doc6,allfilt}-id:6", "fq","{!tag=doc3,allfilt}-id:3"
+    client.testJQ(params(p, "q", "{!cache=false}*:*", "fq", "{!tag=doc6,allfilt}-id:6", "fq","{!tag=doc3,allfilt}-id:3"
 
             , "json.facet", "{processEmpty:true, " +
                 " f0:{${terms} type:terms, field:${cat_s},                                    facet:{nj:{query:'${where_s}:NJ'}} }  " +
@@ -1231,6 +1256,26 @@ public class TestJsonFacets extends SolrTestCaseHS {
 
   }
 
+
+  @Test
+  public void testErrors() throws Exception {
+    doTestErrors(Client.localClient());
+  }
+
+  public void doTestErrors(Client client) throws Exception {
+    ModifiableSolrParams p = params("rows", "0");
+    client.deleteByQuery("*:*", null);
+
+    try {
+      client.testJQ(params("ignore_exception", "true", "q", "*:*"
+          , "json.facet", "{f:{type:ignore_exception_aaa, field:bbbbbb}}"
+          )
+      );
+    } catch (SolrException e) {
+      assertTrue( e.getMessage().contains("ignore_exception_aaa") );
+    }
+
+  }
 
 
 

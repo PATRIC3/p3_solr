@@ -1,5 +1,3 @@
-package org.apache.lucene;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene;
+
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.PostingsFormat;
@@ -96,7 +96,7 @@ public class TestExternalCodecs extends LuceneTestCase {
     }
     w.deleteDocuments(new Term("id", "77"));
 
-    IndexReader r = DirectoryReader.open(w, true);
+    IndexReader r = DirectoryReader.open(w);
     
     assertEquals(NUM_DOCS-1, r.numDocs());
     IndexSearcher s = newSearcher(r);
@@ -116,7 +116,7 @@ public class TestExternalCodecs extends LuceneTestCase {
     if (VERBOSE) {
       System.out.println("\nTEST: now open reader");
     }
-    r = DirectoryReader.open(w, true);
+    r = DirectoryReader.open(w);
     assertEquals(NUM_DOCS-2, r.maxDoc());
     assertEquals(NUM_DOCS-2, r.numDocs());
     s = newSearcher(r);

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.response;
 
 import org.apache.solr.internal.csv.CSVPrinter;
@@ -236,7 +235,7 @@ class CSVWriter extends TextResponseWriter {
     }
 
     Collection<String> fields = returnFields.getRequestedFieldNames();
-    Object responseObj = rsp.getValues().get("response");
+    Object responseObj = rsp.getResponse();
     boolean returnOnlyStored = false;
     if (fields==null||returnFields.hasPatternMatching()) {
       if (responseObj instanceof SolrDocumentList) {

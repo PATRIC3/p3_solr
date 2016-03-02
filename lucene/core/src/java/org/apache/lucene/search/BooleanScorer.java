@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -36,35 +36,6 @@ final class BooleanScorer extends BulkScorer {
   static final int MASK = SIZE - 1;
   static final int SET_SIZE = 1 << (SHIFT - 6);
   static final int SET_MASK = SET_SIZE - 1;
-
-  private static BulkScorer disableScoring(final BulkScorer scorer) {
-    return new BulkScorer() {
-
-      @Override
-      public int score(final LeafCollector collector, Bits acceptDocs, int min, int max) throws IOException {
-        final LeafCollector noScoreCollector = new LeafCollector() {
-          FakeScorer fake = new FakeScorer();
-
-          @Override
-          public void setScorer(Scorer scorer) throws IOException {
-            collector.setScorer(fake);
-          }
-
-          @Override
-          public void collect(int doc) throws IOException {
-            fake.doc = doc;
-            collector.collect(doc);
-          }
-        };
-        return scorer.score(noScoreCollector, acceptDocs, min, max);
-      }
-
-      @Override
-      public long cost() {
-        return scorer.cost();
-      }
-    };
-  }
 
   static class Bucket {
     double score;
@@ -193,7 +164,7 @@ final class BooleanScorer extends BulkScorer {
       if (needsScores == false) {
         // OrCollector calls score() all the time so we have to explicitly
         // disable scoring in order to avoid decoding useless norms
-        scorer = disableScoring(scorer);
+        scorer = BooleanWeight.disableScoring(scorer);
       }
       final BulkScorerAndDoc evicted = tail.insertWithOverflow(new BulkScorerAndDoc(scorer));
       if (evicted != null) {

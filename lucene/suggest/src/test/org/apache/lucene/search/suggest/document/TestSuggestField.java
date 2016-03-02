@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest.document;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.suggest.document;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest.document;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -222,7 +221,7 @@ public class TestSuggestField extends LuceneTestCase {
 
     iw.deleteDocuments(new Term("str_field", "delete"));
 
-    DirectoryReader reader = DirectoryReader.open(iw, true);
+    DirectoryReader reader = DirectoryReader.open(iw);
     SuggestIndexSearcher indexSearcher = new SuggestIndexSearcher(reader);
     PrefixCompletionQuery query = new PrefixCompletionQuery(analyzer, new Term("suggest_field", "abc_"));
     TopSuggestDocs suggest = indexSearcher.suggest(query, numLive);
@@ -284,7 +283,7 @@ public class TestSuggestField extends LuceneTestCase {
 
     iw.deleteDocuments(new Term("delete", "delete"));
 
-    DirectoryReader reader = DirectoryReader.open(iw, true);
+    DirectoryReader reader = DirectoryReader.open(iw);
     SuggestIndexSearcher indexSearcher = new SuggestIndexSearcher(reader);
     PrefixCompletionQuery query = new PrefixCompletionQuery(analyzer, new Term("suggest_field", "abc_"));
     TopSuggestDocs suggest = indexSearcher.suggest(query, num);
@@ -313,7 +312,7 @@ public class TestSuggestField extends LuceneTestCase {
 
     iw.deleteDocuments(NumericRangeQuery.newIntRange("weight_fld", 2, null, true, false));
 
-    DirectoryReader reader = DirectoryReader.open(iw, true);
+    DirectoryReader reader = DirectoryReader.open(iw);
     SuggestIndexSearcher indexSearcher = new SuggestIndexSearcher(reader);
     PrefixCompletionQuery query = new PrefixCompletionQuery(analyzer, new Term("suggest_field", "abc_"));
     TopSuggestDocs suggest = indexSearcher.suggest(query, 1);

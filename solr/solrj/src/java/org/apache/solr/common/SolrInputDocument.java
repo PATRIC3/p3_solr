@@ -14,13 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.common;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,7 +32,7 @@ import java.util.Set;
  *
  * @since solr 1.3
  */
-public class SolrInputDocument implements Map<String,SolrInputField>, Iterable<SolrInputField>, Serializable
+public class SolrInputDocument extends SolrDocumentBase<SolrInputField, SolrInputDocument> implements Iterable<SolrInputField>
 {
   private final Map<String,SolrInputField> _fields;
   private float _documentBoost = 1.0f;
@@ -85,6 +82,7 @@ public class SolrInputDocument implements Map<String,SolrInputField>, Iterable<S
    * @param name name of the field to fetch
    * @return first value of the field or null if not present
    */
+  @Override
   public Object getFieldValue(String name) 
   {
     SolrInputField field = getField(name);
@@ -98,6 +96,7 @@ public class SolrInputDocument implements Map<String,SolrInputField>, Iterable<S
    * @param name name of the field to fetch
    * @return value of the field or null if not set
    */
+  @Override
   public Collection<Object> getFieldValues(String name) 
   {
     SolrInputField field = getField(name);
@@ -111,6 +110,7 @@ public class SolrInputDocument implements Map<String,SolrInputField>, Iterable<S
    * 
    * @return Set of all field names.
    */
+  @Override
   public Collection<String> getFieldNames() 
   {
     return _fields.keySet();
@@ -276,6 +276,7 @@ public class SolrInputDocument implements Map<String,SolrInputField>, Iterable<S
     return _fields.values();
   }
 
+  @Override
   public void addChildDocument(SolrInputDocument child) {
    if (_childDocuments == null) {
      _childDocuments = new ArrayList<>();
@@ -283,8 +284,8 @@ public class SolrInputDocument implements Map<String,SolrInputField>, Iterable<S
     _childDocuments.add(child);
   }
   
-  public void addChildDocuments(Collection<SolrInputDocument> childs) {
-    for (SolrInputDocument child : childs) {
+  public void addChildDocuments(Collection<SolrInputDocument> children) {
+    for (SolrInputDocument child : children) {
       addChildDocument(child);
     }
   }
@@ -297,5 +298,10 @@ public class SolrInputDocument implements Map<String,SolrInputField>, Iterable<S
   public boolean hasChildDocuments() {
     boolean isEmpty = (_childDocuments == null || _childDocuments.isEmpty());
     return !isEmpty;
+  }
+
+  @Override
+  public int getChildDocumentCount() {
+    return hasChildDocuments() ? _childDocuments.size(): 0;
   }
 }

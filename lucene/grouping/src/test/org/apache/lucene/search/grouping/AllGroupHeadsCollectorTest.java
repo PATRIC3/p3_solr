@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -23,9 +22,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.BinaryDocValuesField;
@@ -295,20 +296,28 @@ public class AllGroupHeadsCollectorTest extends LuceneTestCase {
       }
 
       final IndexSearcher s = newSearcher(r);
-      
+
+      Set<Integer> seenIDs = new HashSet<>();
       for (int contentID = 0; contentID < 3; contentID++) {
         final ScoreDoc[] hits = s.search(new TermQuery(new Term("content", "real" + contentID)), numDocs).scoreDocs;
         for (ScoreDoc hit : hits) {
-          final GroupDoc gd = groupDocs[(int) docIdToFieldId.get(hit.doc)];
+          int idValue = (int) docIdToFieldId.get(hit.doc);
+          final GroupDoc gd = groupDocs[idValue];
+          assertEquals(gd.id, idValue);
+          seenIDs.add(idValue);
           assertTrue(gd.score == 0.0);
           gd.score = hit.score;
-          int docId = gd.id;
-          assertEquals(docId, docIdToFieldId.get(hit.doc));
         }
       }
-      
+
+      // make sure all groups were seen across the hits
+      assertEquals(groupDocs.length, seenIDs.size());
+
+      // make sure scores are sane
       for (GroupDoc gd : groupDocs) {
-        assertTrue(gd.score != 0.0);
+        assertFalse(Float.isNaN(gd.score));
+        assertFalse(Float.isInfinite(gd.score));
+        assertTrue(gd.score >= 0.0);
       }
       
       for (int searchIter = 0; searchIter < 100; searchIter++) {

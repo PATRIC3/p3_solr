@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.common.params;
 
 import java.util.Locale;
@@ -62,9 +61,11 @@ public interface CommonParams {
   
   /** zero based offset of matching documents to retrieve */
   public static final String START ="start";
+  public static final int START_DEFAULT = 0;
   
   /** number of documents to return starting at "start" */
   public static final String ROWS ="rows";
+  public static final int ROWS_DEFAULT = 10;
 
   // SOLR-4228 start
   /** handler value for SolrPing */

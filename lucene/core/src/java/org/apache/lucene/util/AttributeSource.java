@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 import java.util.Collections;
 import java.util.Iterator;
@@ -270,7 +270,15 @@ public class AttributeSource {
       state.attribute.clear();
     }
   }
-  
+
+  /**
+   * Removes all attributes and their implementations from this AttributeSource.
+   */
+  public final void removeAllAttributes() {
+    attributes.clear();
+    attributeImpls.clear();
+  }
+
   /**
    * Captures the state of all Attributes. The return value can be passed to
    * {@link #restoreState} to restore the state of this or another AttributeSource.

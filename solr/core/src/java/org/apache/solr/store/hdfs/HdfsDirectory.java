@@ -1,5 +1,3 @@
-package org.apache.solr.store.hdfs;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.store.hdfs;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.store.hdfs;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
@@ -261,5 +260,10 @@ public class HdfsDirectory extends BaseDirectory {
       return false;
     }
     return this.hdfsDirPath.equals(((HdfsDirectory) obj).hdfsDirPath);
+  }
+
+  @Override
+  public String toString() {
+    return this.getClass().getSimpleName() + "@" + hdfsDirPath + " lockFactory=" + lockFactory;
   }
 }

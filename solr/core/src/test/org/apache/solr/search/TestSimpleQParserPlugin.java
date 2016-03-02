@@ -1,5 +1,3 @@
-package org.apache.solr.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
 
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.PrefixQuery;
@@ -218,6 +217,14 @@ public class TestSimpleQParserPlugin extends SolrTestCaseJ4 {
     assertJQ(req("defType", "simple", "qf", "text0", "q", "Fóóbar*"), "/response/numFound==1");
     assertJQ(req("defType", "simple", "qf", "text0", "q", "FOO*"), "/response/numFound==1");
     assertJQ(req("defType", "simple", "qf", "text0", "q", "BAR*"), "/response/numFound==0");
+  }
+
+  /** Test that multiterm analysis chain is used for fuzzy. */
+  public void testFuzzyChain() throws Exception {
+    assertJQ(req("defType", "simple", "qf", "text0", "q", "FOOBAT~1"), "/response/numFound==1");
+    assertJQ(req("defType", "simple", "qf", "text0", "q", "Fóóba~1"), "/response/numFound==1");
+    assertJQ(req("defType", "simple", "qf", "text0", "q", "FOOB~2"), "/response/numFound==1");
+    assertJQ(req("defType", "simple", "qf", "text0", "q", "BAR~1"), "/response/numFound==0");
   }
 
   public void testQueryAnalyzerIsUsed() throws Exception {
