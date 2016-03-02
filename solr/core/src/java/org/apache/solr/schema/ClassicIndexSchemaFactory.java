@@ -17,8 +17,6 @@
 package org.apache.solr.schema;
 import java.lang.invoke.MethodHandles;
 
-import java.lang.invoke.MethodHandles;
-
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.util.NamedList;
