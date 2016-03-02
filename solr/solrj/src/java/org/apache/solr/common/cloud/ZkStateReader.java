@@ -378,20 +378,6 @@ public class ZkStateReader implements Closeable {
       });
       securityData = getSecurityProps(true);
     }
-    if (securityNodeListener != null) {
-      addSecuritynodeWatcher(SOLR_SECURITY_CONF_PATH, new Callable<Pair<byte[], Stat>>() {
-        @Override
-        public void call(Pair<byte[], Stat> pair) {
-          ConfigData cd = new ConfigData();
-          cd.data = pair.getKey() == null || pair.getKey().length == 0 ? EMPTY_MAP : Utils.getDeepCopy((Map) fromJSON(pair.getKey()), 4, false);
-          cd.version = pair.getValue() == null ? -1 : pair.getValue().getVersion();
-          securityData = cd;
-          securityNodeListener.run();
-
-        }
-      });
-      securityData = getSecurityProps(true);
-    }
   }
 
   private void addSecuritynodeWatcher(final String path, final Callable<Pair<byte[], Stat>> callback)

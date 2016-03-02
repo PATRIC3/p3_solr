@@ -2031,10 +2031,6 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
         return;
       }
 
-      if (nodeList.isEmpty()) {
-        log.info("Finished create command for collection: {}", collectionName);
-        return;
-      }
       // For tracking async calls.
       HashMap<String, String> requestMap = new HashMap<String, String>();
 

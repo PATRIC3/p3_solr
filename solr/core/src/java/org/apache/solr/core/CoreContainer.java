@@ -278,7 +278,7 @@ public class CoreContainer {
     SecurityPluginHolder<AuthenticationPlugin> old = authenticationPlugin;
     SecurityPluginHolder<AuthenticationPlugin> authenticationPlugin = null;
 
-    // Initialize the plugin
+    // Initialize the filter
     if (pluginClassName != null) {
       authenticationPlugin = new SecurityPluginHolder<>(readVersion(authenticationConfig),
           getResourceLoader().newInstance(pluginClassName, AuthenticationPlugin.class));

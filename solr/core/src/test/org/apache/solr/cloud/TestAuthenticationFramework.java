@@ -97,7 +97,7 @@ public class TestAuthenticationFramework extends TestMiniSolrCloudCluster {
     
     // Should fail with 401
     try {
-      testCollectionCreateSearchDelete(collectionName);
+      testCollectionCreateSearchDelete();
       fail("Should've returned a 401 error");
     } catch (Exception ex) {
       if (!ex.getMessage().contains("Error 401")) {

@@ -917,18 +917,6 @@ public class TestJsonFacets extends SolrTestCaseHS {
     // multi-select / exclude tagged filters via excludeTags
     ////////////////////////////////////////////////////////////////////////////////////////////
 
-    // test uncached multi-select (see SOLR-8496)
-    client.testJQ(params(p, "q", "{!cache=false}*:*", "fq","{!tag=doc3,allfilt}-id:3"
-
-            , "json.facet", "{" +
-                "f1:{type:terms, field:${cat_s}, excludeTags:doc3 }  " +
-                "}"
-        )
-        , "facets=={ count:5, " +
-            " f1:{ buckets:[ {val:B, count:3}, {val:A, count:2} ]  }" +
-            "}"
-    );
-
     // nested query facets on subset (with excludeTags)
     client.testJQ(params(p, "q", "*:*", "fq","{!tag=abc}id:(2 3)"
             , "json.facet", "{ processEmpty:true," +
