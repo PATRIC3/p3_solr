@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexReader;
@@ -44,12 +43,7 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.StringHelper;
-import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
-import org.apache.solr.common.cloud.Aliases;
-import org.apache.solr.common.cloud.Replica;
-import org.apache.solr.common.cloud.Slice;
-import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
@@ -61,6 +55,7 @@ import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.schema.TrieField;
 import org.apache.solr.search.join.ScoreJoinQParserPlugin;
+import org.apache.solr.util.RTimer;
 import org.apache.solr.util.RefCounted;
 
 public class JoinQParserPlugin extends QParserPlugin {
@@ -84,10 +79,12 @@ public class JoinQParserPlugin extends QParserPlugin {
       }
       
       Query parseJoin() throws SyntaxError {
-        String fromField = getParam("from");
-        String fromIndex = getParam("fromIndex");
-        String toField = getParam("to");
-        String v = localParams.get("v");
+        final String fromField = getParam("from");
+        final String fromIndex = getParam("fromIndex");
+        final String toField = getParam("to");
+        final String v = localParams.get("v");
+        final String coreName;
+
         Query fromQuery;
         long fromCoreOpenTime = 0;
 
@@ -95,42 +92,13 @@ public class JoinQParserPlugin extends QParserPlugin {
           CoreContainer container = req.getCore().getCoreDescriptor().getCoreContainer();
 
           // if in SolrCloud mode, fromIndex should be the name of a single-sharded collection
-          if (container.isZooKeeperAware()) {
-            ZkController zkController = container.getZkController();
-            if (!zkController.getClusterState().hasCollection(fromIndex)) {
-              // collection not found ... but it might be an alias?
-              String resolved = null;
-              Aliases aliases = zkController.getZkStateReader().getAliases();
-              if (aliases != null) {
-                Map<String, String> collectionAliases = aliases.getCollectionAliasMap();
-                resolved = (collectionAliases != null) ? collectionAliases.get(fromIndex) : null;
-                if (resolved != null) {
-                  // ok, was an alias, but if the alias points to multiple collections, then we don't support that yet
-                  if (resolved.split(",").length > 1)
-                    throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-                        "SolrCloud join: Collection alias '" + fromIndex +
-                            "' maps to multiple collections ("+resolved+
-                            "), which is not currently supported for joins.");
-                }
-              }
+          coreName = ScoreJoinQParserPlugin.getCoreName(fromIndex, container);
 
-              if (resolved == null)
-                throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-                  "SolrCloud join: Collection '" + fromIndex + "' not found!");
-
-              // ok, resolved to an alias
-              fromIndex = resolved;
-            }
-
-            // the fromIndex is a local replica for a single-sharded collection with replicas
-            // across all nodes that have replicas for the collection we're joining with
-            fromIndex = findLocalReplicaForFromIndex(zkController, fromIndex);
-          }
-
-          final SolrCore fromCore = container.getCore(fromIndex);
-          if (fromCore == null)
+          final SolrCore fromCore = container.getCore(coreName);
+          if (fromCore == null) {
             throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-                "Cross-core join: no such core " + fromIndex);
+                "Cross-core join: no such core " + coreName);
+          }
 
           RefCounted<SolrIndexSearcher> fromHolder = null;
           LocalSolrQueryRequest otherReq = new LocalSolrQueryRequest(fromCore, params);
@@ -138,55 +106,25 @@ public class JoinQParserPlugin extends QParserPlugin {
             QParser parser = QParser.getParser(v, "lucene", otherReq);
             fromQuery = parser.getQuery();
             fromHolder = fromCore.getRegisteredSearcher();
-            if (fromHolder != null) fromCoreOpenTime = fromHolder.get().getOpenTime();
+            if (fromHolder != null) fromCoreOpenTime = fromHolder.get().getOpenNanoTime();
           } finally {
             otherReq.close();
             fromCore.close();
             if (fromHolder != null) fromHolder.decref();
           }
         } else {
+          coreName = null;
           QParser fromQueryParser = subQuery(v, null);
           fromQuery = fromQueryParser.getQuery();
         }
 
-        JoinQuery jq = new JoinQuery(fromField, toField, fromIndex, fromQuery);
+        JoinQuery jq = new JoinQuery(fromField, toField, coreName == null ? fromIndex : coreName, fromQuery);
         jq.fromCoreOpenTime = fromCoreOpenTime;
         return jq;
       }
     };
   }
 
-  protected String findLocalReplicaForFromIndex(ZkController zkController, String fromIndex) {
-    String fromReplica = null;
-
-    String nodeName = zkController.getNodeName();
-    for (Slice slice : zkController.getClusterState().getActiveSlices(fromIndex)) {
-      if (fromReplica != null)
-        throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-            "SolrCloud join: multiple shards not yet supported " + fromIndex);
-
-      for (Replica replica : slice.getReplicas()) {
-        if (replica.getNodeName().equals(nodeName)) {
-          fromReplica = replica.getStr(ZkStateReader.CORE_NAME_PROP);
-
-          // found local replica, but is it Active?
-          if (replica.getState() != Replica.State.ACTIVE)
-            throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-                "SolrCloud join: "+fromIndex+" has a local replica ("+fromReplica+
-                    ") on "+nodeName+", but it is "+replica.getState());
-
-          break;
-        }
-      }
-    }
-
-    if (fromReplica == null)
-      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-          "SolrCloud join: No active replicas for "+fromIndex+
-              " found in node " + nodeName);
-
-    return fromReplica;
-  }
 }
 
 
@@ -209,7 +147,7 @@ class JoinQuery extends Query {
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
     // don't rewrite the subQuery
-    return this;
+    return super.rewrite(reader);
   }
 
   @Override
@@ -290,13 +228,13 @@ class JoinQuery extends Query {
     public Scorer scorer(LeafReaderContext context) throws IOException {
       if (filter == null) {
         boolean debug = rb != null && rb.isDebug();
-        long start = debug ? System.currentTimeMillis() : 0;
+        RTimer timer = (debug ? new RTimer() : null);
         resultSet = getDocSet();
-        long end = debug ? System.currentTimeMillis() : 0;
+        if (timer != null) timer.stop();
 
         if (debug) {
           SimpleOrderedMap<Object> dbg = new SimpleOrderedMap<>();
-          dbg.add("time", (end-start));
+          dbg.add("time", (long) timer.getTime());
           dbg.add("fromSetSize", fromSetSize);  // the input
           dbg.add("toSetSize", resultSet.size());    // the output
 
@@ -577,7 +515,6 @@ class JoinQuery extends Query {
     JoinQuery other = (JoinQuery)o;
     return this.fromField.equals(other.fromField)
            && this.toField.equals(other.toField)
-           && this.getBoost() == other.getBoost()
            && this.q.equals(other.q)
            && (this.fromIndex == other.fromIndex || this.fromIndex != null && this.fromIndex.equals(other.fromIndex))
            && this.fromCoreOpenTime == other.fromCoreOpenTime

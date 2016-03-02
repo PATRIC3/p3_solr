@@ -17,14 +17,15 @@ package org.apache.lucene.rangetree;
  * limitations under the License.
  */
 
+import org.apache.lucene.store.ByteArrayDataOutput;
+import org.apache.lucene.store.OutputStreamDataOutput;
+import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.OfflineSorter;
+
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-
-import org.apache.lucene.store.ByteArrayDataOutput;
-import org.apache.lucene.store.OutputStreamDataOutput;
-import org.apache.lucene.util.IOUtils;
 
 final class OfflineSliceWriter implements SliceWriter {
 
@@ -33,10 +34,11 @@ final class OfflineSliceWriter implements SliceWriter {
   final ByteArrayDataOutput scratchBytesOutput = new ByteArrayDataOutput(scratchBytes);      
   final OutputStreamDataOutput out;
   final long count;
+  private boolean closed;
   private long countWritten;
 
-  public OfflineSliceWriter(Path tempDir, long count) throws IOException {
-    tempFile = Files.createTempFile(tempDir, "size" + count + ".", "");
+  public OfflineSliceWriter(long count) throws IOException {
+    tempFile = Files.createTempFile(OfflineSorter.getDefaultTempDir(), "size" + count + ".", "");
     out = new OutputStreamDataOutput(new BufferedOutputStream(Files.newOutputStream(tempFile)));
     this.count = count;
   }
@@ -51,11 +53,13 @@ final class OfflineSliceWriter implements SliceWriter {
 
   @Override
   public SliceReader getReader(long start) throws IOException {
+    assert closed;
     return new OfflineSliceReader(tempFile, start, count-start);
   }
 
   @Override
   public void close() throws IOException {
+    closed = true;
     out.close();
     if (count != countWritten) {
       throw new IllegalStateException("wrote " + countWritten + " values, but expected " + count);

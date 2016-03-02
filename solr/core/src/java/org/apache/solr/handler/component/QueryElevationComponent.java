@@ -17,8 +17,6 @@
 
 package org.apache.solr.handler.component;
 
-import com.carrotsearch.hppc.IntIntOpenHashMap;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -32,6 +30,7 @@ import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.FieldComparator;
 import org.apache.lucene.search.FieldComparatorSource;
@@ -73,6 +72,8 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 
+import com.carrotsearch.hppc.IntIntHashMap;
+
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
@@ -81,6 +82,7 @@ import javax.xml.xpath.XPathFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
@@ -99,7 +101,7 @@ import java.util.WeakHashMap;
  * @since solr 1.3
  */
 public class QueryElevationComponent extends SearchComponent implements SolrCoreAware {
-  private static Logger log = LoggerFactory.getLogger(QueryElevationComponent.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   // Constants used in solrconfig.xml
   static final String FIELD_TYPE = "queryFieldType";
@@ -153,7 +155,6 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         this.priority.put(new BytesRef(id), max--);
       }
       this.include = include.build();
-      this.include.setBoost(0);
 
       if (exclude == null || exclude.isEmpty()) {
         this.exclude = null;
@@ -420,12 +421,12 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       // Change the query to insert forced documents
       if (exclusive == true) {
         //we only want these results
-        rb.setQuery(booster.include);
+        rb.setQuery(new BoostQuery(booster.include, 0f));
       } else {
         BooleanQuery.Builder newq = new BooleanQuery.Builder();
         newq.setDisableCoord(true);
         newq.add(query, BooleanClause.Occur.SHOULD);
-        newq.add(booster.include, BooleanClause.Occur.SHOULD);
+        newq.add(new BoostQuery(booster.include, 0f), BooleanClause.Occur.SHOULD);
         if (booster.exclude != null) {
           if (markExcludes == false) {
             for (TermQuery tq : booster.exclude) {
@@ -536,16 +537,16 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
   }
 
 
-  public static IntIntOpenHashMap getBoostDocs(SolrIndexSearcher indexSearcher, Map<BytesRef, Integer>boosted, Map context) throws IOException {
+  public static IntIntHashMap getBoostDocs(SolrIndexSearcher indexSearcher, Map<BytesRef, Integer>boosted, Map context) throws IOException {
 
-    IntIntOpenHashMap boostDocs = null;
+    IntIntHashMap boostDocs = null;
 
     if(boosted != null) {
 
       //First see if it's already in the request context. Could have been put there
       //by another caller.
       if(context != null) {
-        boostDocs = (IntIntOpenHashMap)context.get(BOOSTED_DOCIDS);
+        boostDocs = (IntIntHashMap) context.get(BOOSTED_DOCIDS);
       }
 
       if(boostDocs != null) {
@@ -555,13 +556,13 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
 
       SchemaField idField = indexSearcher.getSchema().getUniqueKeyField();
       String fieldName = idField.getName();
-      HashSet<BytesRef> localBoosts = new HashSet(boosted.size()*2);
+      HashSet<BytesRef> localBoosts = new HashSet<>(boosted.size()*2);
       Iterator<BytesRef> boostedIt = boosted.keySet().iterator();
       while(boostedIt.hasNext()) {
         localBoosts.add(boostedIt.next());
       }
 
-      boostDocs = new IntIntOpenHashMap(boosted.size()*2);
+      boostDocs = new IntIntHashMap(boosted.size());
 
       List<LeafReaderContext>leaves = indexSearcher.getTopReaderContext().leaves();
       PostingsEnum postingsEnum = null;

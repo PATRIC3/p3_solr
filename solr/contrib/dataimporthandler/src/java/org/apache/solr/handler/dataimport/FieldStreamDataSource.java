@@ -16,23 +16,23 @@
  */
 package org.apache.solr.handler.dataimport;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
+import java.lang.invoke.MethodHandles;
 import java.sql.Blob;
+import java.sql.SQLException;
 import java.util.Properties;
 
-import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
  * This can be useful for users who have a DB field containing BLOBs which may be Rich documents
  * <p>
- * The datasouce may be configured as follows
+ * The datasource may be configured as follows
  * <p>
  * &lt;dataSource name="f1" type="FieldStreamDataSource" /&gt;
  * <p>
@@ -45,7 +45,7 @@ import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVE
  * @since 3.1
  */
 public class FieldStreamDataSource extends DataSource<InputStream> {
-  private static final Logger LOG = LoggerFactory.getLogger(FieldReaderDataSource.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   protected VariableResolver vr;
   protected String dataField;
   private EntityProcessorWrapper wrapper;
@@ -62,24 +62,13 @@ public class FieldStreamDataSource extends DataSource<InputStream> {
     Object o = wrapper.getVariableResolver().resolve(dataField);
     if (o == null) {
       throw new DataImportHandlerException(SEVERE, "No field available for name : " + dataField);
-    }
-    if (o instanceof Blob) {
+    } else if (o instanceof Blob) {
       Blob blob = (Blob) o;
       try {
-        //Most of the JDBC drivers have getBinaryStream defined as public
-        // so let us just check it
-        Method m = blob.getClass().getDeclaredMethod("getBinaryStream");
-        if (Modifier.isPublic(m.getModifiers())) {
-          return (InputStream) m.invoke(blob);
-        } else {
-          // force invoke
-          m.setAccessible(true);
-          return (InputStream) m.invoke(blob);
-        }
-      } catch (Exception e) {
+        return blob.getBinaryStream();
+      } catch (SQLException sqle) {
         LOG.info("Unable to get data from BLOB");
         return null;
-
       }
     } else if (o instanceof byte[]) {
       byte[] bytes = (byte[]) o;

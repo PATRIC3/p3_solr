@@ -8,12 +8,18 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
+import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CoreAdminParams.CoreAdminAction;
+import org.apache.solr.common.util.Utils;
 import org.apache.solr.core.CoreContainer;
+import org.apache.solr.core.CoreDescriptor;
+import org.apache.zookeeper.KeeperException;
+import org.apache.solr.util.RTimer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.net.ConnectException;
 import java.net.SocketException;
 import java.util.List;
@@ -42,7 +48,7 @@ import java.util.List;
  */
 public class LeaderInitiatedRecoveryThread extends Thread {
 
-  public final static Logger log = LoggerFactory.getLogger(LeaderInitiatedRecoveryThread.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   protected ZkController zkController;
   protected CoreContainer coreContainer;
@@ -50,7 +56,7 @@ public class LeaderInitiatedRecoveryThread extends Thread {
   protected String shardId;
   protected ZkCoreNodeProps nodeProps;
   protected int maxTries;
-  protected String leaderCoreNodeName;
+  private CoreDescriptor leaderCd;
   
   public LeaderInitiatedRecoveryThread(ZkController zkController, 
                                        CoreContainer cc, 
@@ -58,7 +64,7 @@ public class LeaderInitiatedRecoveryThread extends Thread {
                                        String shardId, 
                                        ZkCoreNodeProps nodeProps,
                                        int maxTries,
-                                       String leaderCoreNodeName)
+                                       CoreDescriptor leaderCd)
   {
     super("LeaderInitiatedRecoveryThread-"+nodeProps.getCoreName());
     this.zkController = zkController;
@@ -67,32 +73,114 @@ public class LeaderInitiatedRecoveryThread extends Thread {
     this.shardId = shardId;    
     this.nodeProps = nodeProps;
     this.maxTries = maxTries;
-    this.leaderCoreNodeName = leaderCoreNodeName;
-    
+    this.leaderCd = leaderCd;
     setDaemon(true);
   }
   
   public void run() {
-    long startMs = System.currentTimeMillis();
-    try {
-      sendRecoveryCommandWithRetry();
-    } catch (Exception exc) {
-      log.error(getName()+" failed due to: "+exc, exc);
-      if (exc instanceof SolrException) {
-        throw (SolrException)exc;
-      } else {
-        throw new SolrException(ErrorCode.SERVER_ERROR, exc);
-      }
+    RTimer timer = new RTimer();
+
+    String replicaCoreName = nodeProps.getCoreName();
+    String replicaCoreNodeName = ((Replica) nodeProps.getNodeProps()).getName();
+    String replicaNodeName = nodeProps.getNodeName();
+    final String replicaUrl = nodeProps.getCoreUrl();
+
+    if (!zkController.isReplicaInRecoveryHandling(replicaUrl)) {
+      throw new SolrException(ErrorCode.INVALID_STATE, "Replica: " + replicaUrl + " should have been marked under leader initiated recovery in ZkController but wasn't.");
     }
-    long diffMs = (System.currentTimeMillis() - startMs);
-    log.info(getName()+" completed successfully after running for "+Math.round(diffMs/1000L)+" secs");    
+
+    boolean sendRecoveryCommand = publishDownState(replicaCoreName, replicaCoreNodeName, replicaNodeName, replicaUrl, false);
+
+    if (sendRecoveryCommand)  {
+      try {
+        sendRecoveryCommandWithRetry();
+      } catch (Exception exc) {
+        log.error(getName()+" failed due to: "+exc, exc);
+        if (exc instanceof SolrException) {
+          throw (SolrException)exc;
+        } else {
+          throw new SolrException(ErrorCode.SERVER_ERROR, exc);
+        }
+      } finally {
+        zkController.removeReplicaFromLeaderInitiatedRecoveryHandling(replicaUrl);
+      }
+    } else  {
+      // replica is no longer in recovery on this node (may be handled on another node)
+      zkController.removeReplicaFromLeaderInitiatedRecoveryHandling(replicaUrl);
+    }
+    log.info("{} completed successfully after running for {}ms", getName(), timer.getTime());
   }
-  
+
+  public boolean publishDownState(String replicaCoreName, String replicaCoreNodeName, String replicaNodeName, String replicaUrl, boolean forcePublishState) {
+    boolean sendRecoveryCommand = true;
+    boolean publishDownState = false;
+
+    if (zkController.getZkStateReader().getClusterState().liveNodesContain(replicaNodeName)) {
+      try {
+        // create a znode that requires the replica needs to "ack" to verify it knows it was out-of-sync
+        updateLIRState(replicaCoreNodeName);
+
+        log.info("Put replica core={} coreNodeName={} on " +
+            replicaNodeName + " into leader-initiated recovery.", replicaCoreName, replicaCoreNodeName);
+        publishDownState = true;
+      } catch (Exception e) {
+        Throwable setLirZnodeFailedCause = SolrException.getRootCause(e);
+        log.error("Leader failed to set replica " +
+            nodeProps.getCoreUrl() + " state to DOWN due to: " + setLirZnodeFailedCause, setLirZnodeFailedCause);
+        if (setLirZnodeFailedCause instanceof KeeperException.SessionExpiredException
+            || setLirZnodeFailedCause instanceof KeeperException.ConnectionLossException
+            || setLirZnodeFailedCause instanceof ZkController.NotLeaderException) {
+          // our session is expired, which means our state is suspect, so don't go
+          // putting other replicas in recovery (see SOLR-6511)
+          sendRecoveryCommand = false;
+          forcePublishState = false; // no need to force publish any state in this case
+        } // else will go ahead and try to send the recovery command once after this error
+      }
+    } else  {
+      log.info("Node " + replicaNodeName +
+              " is not live, so skipping leader-initiated recovery for replica: core={} coreNodeName={}",
+          replicaCoreName, replicaCoreNodeName);
+      // publishDownState will be false to avoid publishing the "down" state too many times
+      // as many errors can occur together and will each call into this method (SOLR-6189)
+      forcePublishState = false; // no need to force publish the state because replica is not live
+      sendRecoveryCommand = false; // no need to send recovery messages as well
+    }
+
+    try {
+      if (publishDownState || forcePublishState) {
+        ZkNodeProps m = new ZkNodeProps(Overseer.QUEUE_OPERATION, "state",
+            ZkStateReader.STATE_PROP, Replica.State.DOWN.toString(),
+            ZkStateReader.BASE_URL_PROP, nodeProps.getBaseUrl(),
+            ZkStateReader.CORE_NAME_PROP, nodeProps.getCoreName(),
+            ZkStateReader.NODE_NAME_PROP, nodeProps.getNodeName(),
+            ZkStateReader.SHARD_ID_PROP, shardId,
+            ZkStateReader.COLLECTION_PROP, collection);
+        log.warn("Leader is publishing core={} coreNodeName ={} state={} on behalf of un-reachable replica {}",
+            replicaCoreName, replicaCoreNodeName, Replica.State.DOWN.toString(), replicaUrl);
+        zkController.getOverseerJobQueue().offer(Utils.toJSON(m));
+      }
+    } catch (Exception e) {
+      log.error("Could not publish 'down' state for replicaUrl: {}", replicaUrl, e);
+    }
+
+    return sendRecoveryCommand;
+  }
+
+  /*
+  protected scope for testing purposes
+   */
+  protected void updateLIRState(String replicaCoreNodeName) {
+    zkController.updateLeaderInitiatedRecoveryState(collection,
+        shardId,
+        replicaCoreNodeName, Replica.State.DOWN, leaderCd, true);
+  }
+
   protected void sendRecoveryCommandWithRetry() throws Exception {    
     int tries = 0;
     long waitBetweenTriesMs = 5000L;
     boolean continueTrying = true;
-        
+
+    String replicaCoreName = nodeProps.getCoreName();
     String recoveryUrl = nodeProps.getBaseUrl();
     String replicaNodeName = nodeProps.getNodeName();
     String coreNeedingRecovery = nodeProps.getCoreName();
@@ -124,7 +212,7 @@ public class LeaderInitiatedRecoveryThread extends Thread {
               " command to core={} coreNodeName={} on " + recoveryUrl, coreNeedingRecovery, replicaCoreNodeName);
           
           continueTrying = false; // succeeded, so stop looping
-        } catch (Throwable t) {
+        } catch (Exception t) {
           Throwable rootCause = SolrException.getRootCause(t);
           boolean wasCommError =
               (rootCause instanceof ConnectException ||
@@ -170,6 +258,7 @@ public class LeaderInitiatedRecoveryThread extends Thread {
           break;
         }
 
+        String leaderCoreNodeName = leaderCd.getCloudDescriptor().getCoreNodeName();
         // stop trying if I'm no longer the leader
         if (leaderCoreNodeName != null && collection != null) {
           String leaderCoreNodeNameFromZk = null;
@@ -183,6 +272,13 @@ public class LeaderInitiatedRecoveryThread extends Thread {
             log.warn("Stop trying to send recovery command to downed replica core=" + coreNeedingRecovery +
                 ",coreNodeName=" + replicaCoreNodeName + " on " + replicaNodeName + " because " +
                 leaderCoreNodeName + " is no longer the leader! New leader is " + leaderCoreNodeNameFromZk);
+            continueTrying = false;
+            break;
+          }
+          if (!leaderCd.getCloudDescriptor().isLeader()) {
+            log.warn("Stop trying to send recovery command to downed replica core=" + coreNeedingRecovery +
+                ",coreNodeName=" + replicaCoreNodeName + " on " + replicaNodeName + " because " +
+                leaderCoreNodeName + " is no longer the leader!");
             continueTrying = false;
             break;
           }
@@ -210,9 +306,9 @@ public class LeaderInitiatedRecoveryThread extends Thread {
                   " on node "+replicaNodeName+" ack'd the leader initiated recovery state, "
                       + "no need to keep trying to send recovery command");
             } else {
-              String leaderCoreNodeName = zkStateReader.getLeaderRetry(collection, shardId, 5000).getName();
+              String lcnn = zkStateReader.getLeaderRetry(collection, shardId, 5000).getName();
               List<ZkCoreNodeProps> replicaProps = 
-                  zkStateReader.getReplicaProps(collection, shardId, leaderCoreNodeName);
+                  zkStateReader.getReplicaProps(collection, shardId, lcnn);
               if (replicaProps != null && replicaProps.size() > 0) {
                 for (ZkCoreNodeProps prop : replicaProps) {
                   final Replica replica = (Replica) prop.getNodeProps();
@@ -224,11 +320,8 @@ public class LeaderInitiatedRecoveryThread extends Thread {
                         // OK, so the replica thinks it is active, but it never ack'd the leader initiated recovery
                         // so its state cannot be trusted and it needs to be told to recover again ... and we keep looping here
                         log.warn("Replica core={} coreNodeName={} set to active but the leader thinks it should be in recovery;"
-                            + " forcing it back to down state to re-run the leader-initiated recovery process; props: "+replicaProps.get(0), coreNeedingRecovery, replicaCoreNodeName);
-                        zkController.ensureReplicaInLeaderInitiatedRecovery(
-                            collection, shardId, nodeProps, leaderCoreNodeName,
-                            true /* forcePublishState */, true /* retryOnConnLoss */
-                        );
+                            + " forcing it back to down state to re-run the leader-initiated recovery process; props: " + replicaProps.get(0), coreNeedingRecovery, replicaCoreNodeName);
+                        publishDownState(replicaCoreName, replicaCoreNodeName, replicaNodeName, replicaUrl, true);
                       }
                     }
                     break;

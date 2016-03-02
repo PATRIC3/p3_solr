@@ -18,6 +18,7 @@ package org.apache.solr.handler.clustering.carrot2;
  */
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -82,7 +83,7 @@ import com.google.common.collect.Sets;
  * @lucene.experimental
  */
 public class CarrotClusteringEngine extends SearchClusteringEngine {
-  transient static Logger log = LoggerFactory.getLogger(CarrotClusteringEngine.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   /**
    * The subdirectory in Solr config dir to read customized Carrot2 resources from.
@@ -115,6 +116,11 @@ public class CarrotClusteringEngine extends SearchClusteringEngine {
   private SolrCore core;
 
   @Override
+  public boolean isAvailable() {
+    return clusteringAlgorithmClass != null;
+  }
+  
+  @Override
   @SuppressWarnings("rawtypes")
   public String init(NamedList config, final SolrCore core) {
     this.core = core;
@@ -135,6 +141,17 @@ public class CarrotClusteringEngine extends SearchClusteringEngine {
 
     DefaultLexicalDataFactoryDescriptor.attributeBuilder(initAttributes)
       .resourceLookup(resourceLookup);
+
+    // Make sure the requested Carrot2 clustering algorithm class is available
+    String carrotAlgorithmClassName = initParams.get(CarrotParams.ALGORITHM);
+    try {
+      this.clusteringAlgorithmClass = core.getResourceLoader().findClass(
+          carrotAlgorithmClassName, IClusteringAlgorithm.class);
+    } catch (SolrException s) {
+      if (!(s.getCause() instanceof ClassNotFoundException)) {
+        throw s;
+      } 
+    }
 
     // Load Carrot2-Workbench exported attribute XMLs based on the 'name' attribute
     // of this component. This by-name convention lookup is used to simplify configuring algorithms.
@@ -207,11 +224,6 @@ public class CarrotClusteringEngine extends SearchClusteringEngine {
           CarrotClusteringEngine.class.getSimpleName() + " requires the schema to have a uniqueKeyField");
     }
     this.idFieldName = uniqueField.getName();
-
-    // Make sure the requested Carrot2 clustering algorithm class is available
-    String carrotAlgorithmClassName = initParams.get(CarrotParams.ALGORITHM);
-    this.clusteringAlgorithmClass = core.getResourceLoader().findClass(
-        carrotAlgorithmClassName, IClusteringAlgorithm.class);
 
     return result;
   }

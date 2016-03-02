@@ -17,14 +17,16 @@ package org.apache.lucene.spatial;
  * limitations under the License.
  */
 
-import com.carrotsearch.randomizedtesting.annotations.Name;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
 import com.carrotsearch.randomizedtesting.annotations.ParametersFactory;
 import com.spatial4j.core.context.SpatialContext;
 import com.spatial4j.core.distance.DistanceUtils;
 import com.spatial4j.core.shape.Point;
 import com.spatial4j.core.shape.Shape;
-import org.apache.lucene.search.FilteredQuery;
-import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.spatial.prefix.RecursivePrefixTreeStrategy;
 import org.apache.lucene.spatial.prefix.TermQueryPrefixTreeStrategy;
@@ -36,17 +38,12 @@ import org.apache.lucene.spatial.query.SpatialOperation;
 import org.apache.lucene.spatial.vector.PointVectorStrategy;
 import org.junit.Test;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
 /**
  * Based off of Solr 3's SpatialFilterTest.
  */
 public class PortedSolr3Test extends StrategyTestCase {
 
-  @ParametersFactory
+  @ParametersFactory(argumentFormatting = "strategy=%s")
   public static Iterable<Object[]> parameters() {
     List<Object[]> ctorArgs = new ArrayList<>();
 
@@ -56,36 +53,23 @@ public class PortedSolr3Test extends StrategyTestCase {
 
     grid = new GeohashPrefixTree(ctx,12);
     strategy = new RecursivePrefixTreeStrategy(grid, "recursive_geohash");
-    ctorArgs.add(new Object[]{new Param(strategy)});
+    ctorArgs.add(new Object[]{strategy.getFieldName(), strategy});
 
     grid = new QuadPrefixTree(ctx,25);
     strategy = new RecursivePrefixTreeStrategy(grid, "recursive_quad");
-    ctorArgs.add(new Object[]{new Param(strategy)});
+    ctorArgs.add(new Object[]{strategy.getFieldName(), strategy});
 
     grid = new GeohashPrefixTree(ctx,12);
     strategy = new TermQueryPrefixTreeStrategy(grid, "termquery_geohash");
-    ctorArgs.add(new Object[]{new Param(strategy)});
+    ctorArgs.add(new Object[]{strategy.getFieldName(), strategy});
 
     strategy = new PointVectorStrategy(ctx, "pointvector");
-    ctorArgs.add(new Object[]{new Param(strategy)});
+    ctorArgs.add(new Object[]{strategy.getFieldName(), strategy});
 
     return ctorArgs;
   }
-  
-  // this is a hack for clover! (otherwise strategy.toString() used as file name)
-  static class Param {
-    SpatialStrategy strategy;
 
-    Param(SpatialStrategy strategy) { this.strategy = strategy; }
-    
-    @Override
-    public String toString() { return strategy.getFieldName(); }
-  }
-
-//  private String fieldName;
-
-  public PortedSolr3Test(@Name("strategy") Param param) {
-    SpatialStrategy strategy = param.strategy;
+  public PortedSolr3Test(String suiteName, SpatialStrategy strategy) {
     this.ctx = strategy.getSpatialContext();
     this.strategy = strategy;
   }
@@ -167,12 +151,7 @@ public class PortedSolr3Test extends StrategyTestCase {
 
     SpatialArgs args = new SpatialArgs(op,shape);
     //args.setDistPrecision(0.025);
-    Query query;
-    if (random().nextBoolean()) {
-      query = strategy.makeQuery(args);
-    } else {
-      query = new FilteredQuery(new MatchAllDocsQuery(),strategy.makeFilter(args));
-    }
+    Query query = strategy.makeQuery(args);
     SearchResults results = executeQuery(query, 100);
     assertEquals(""+shape,assertNumFound,results.numFound);
     if (assertIds != null) {

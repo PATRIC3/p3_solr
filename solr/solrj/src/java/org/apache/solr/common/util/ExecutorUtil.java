@@ -1,5 +1,6 @@
 package org.apache.solr.common.util;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
 
@@ -44,7 +45,7 @@ import org.slf4j.MDC;
 
 
 public class ExecutorUtil {
-  public static Logger log = LoggerFactory.getLogger(ExecutorUtil.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static volatile List<InheritableThreadLocalProvider> providers = new ArrayList<>();
 
@@ -78,22 +79,43 @@ public class ExecutorUtil {
     public void clean(AtomicReference<?> ctx);
   }
 
-  // this will interrupt the threads! Lucene and Solr do not like this because it can close channels, so only use
-  // this if you know what you are doing - you probably want shutdownAndAwaitTermination
-  public static void shutdownNowAndAwaitTermination(ExecutorService pool) {
-    pool.shutdown(); // Disable new tasks from being submitted
-    pool.shutdownNow(); // Cancel currently executing tasks  - NOTE: this interrupts!
+  // ** This will interrupt the threads! ** Lucene and Solr do not like this because it can close channels, so only use
+  // this if you know what you are doing - you probably want shutdownAndAwaitTermination.
+  // Marked as Deprecated to discourage use.
+  @Deprecated
+  public static void shutdownWithInterruptAndAwaitTermination(ExecutorService pool) {
+    pool.shutdownNow(); // Cancel currently executing tasks - NOTE: this interrupts!
     boolean shutdown = false;
     while (!shutdown) {
       try {
         // Wait a while for existing tasks to terminate
-        shutdown = pool.awaitTermination(1, TimeUnit.SECONDS);
+        shutdown = pool.awaitTermination(60, TimeUnit.SECONDS);
       } catch (InterruptedException ie) {
         // Preserve interrupt status
         Thread.currentThread().interrupt();
       }
-      if (!shutdown) {
+    }
+  }
+  
+  // ** This will interrupt the threads! ** Lucene and Solr do not like this because it can close channels, so only use
+  // this if you know what you are doing - you probably want shutdownAndAwaitTermination.
+  // Marked as Deprecated to discourage use.
+  @Deprecated
+  public static void shutdownAndAwaitTerminationWithInterrupt(ExecutorService pool) {
+    pool.shutdown(); // Disable new tasks from being submitted
+    boolean shutdown = false;
+    boolean interrupted = false;
+    while (!shutdown) {
+      try {
+        // Wait a while for existing tasks to terminate
+        shutdown = pool.awaitTermination(60, TimeUnit.SECONDS);
+      } catch (InterruptedException ie) {
+        // Preserve interrupt status
+        Thread.currentThread().interrupt();
+      }
+      if (!shutdown && !interrupted) {
         pool.shutdownNow(); // Cancel currently executing tasks - NOTE: this interrupts!
+        interrupted = true;
       }
     }
   }
@@ -104,7 +126,7 @@ public class ExecutorUtil {
     while (!shutdown) {
       try {
         // Wait a while for existing tasks to terminate
-        shutdown = pool.awaitTermination(1, TimeUnit.SECONDS);
+        shutdown = pool.awaitTermination(60, TimeUnit.SECONDS);
       } catch (InterruptedException ie) {
         // Preserve interrupt status
         Thread.currentThread().interrupt();

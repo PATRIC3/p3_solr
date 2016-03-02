@@ -24,13 +24,17 @@ package org.apache.lucene.util;
  */
 public class GeoProjectionUtils {
   // WGS84 earth-ellipsoid major (a) minor (b) radius, (f) flattening and eccentricity (e)
-  static final double SEMIMAJOR_AXIS = 6_378_137; // [m]
-  static final double FLATTENING = 1.0/298.257223563;
-  static final double SEMIMINOR_AXIS = SEMIMAJOR_AXIS * (1.0 - FLATTENING); //6_356_752.31420; // [m]
-  static final double ECCENTRICITY = StrictMath.sqrt((2.0 - FLATTENING) * FLATTENING);
+  public static final double SEMIMAJOR_AXIS = 6_378_137; // [m]
+  public static final double FLATTENING = 1.0/298.257223563;
+  public static final double SEMIMINOR_AXIS = SEMIMAJOR_AXIS * (1.0 - FLATTENING); //6_356_752.31420; // [m]
+  public static final double ECCENTRICITY = StrictMath.sqrt((2.0 - FLATTENING) * FLATTENING);
   static final double PI_OVER_2 = StrictMath.PI / 2.0D;
   static final double SEMIMAJOR_AXIS2 = SEMIMAJOR_AXIS * SEMIMAJOR_AXIS;
   static final double SEMIMINOR_AXIS2 = SEMIMINOR_AXIS * SEMIMINOR_AXIS;
+  public static final double MIN_LON_RADIANS = StrictMath.toRadians(GeoUtils.MIN_LON_INCL);
+  public static final double MIN_LAT_RADIANS = StrictMath.toRadians(GeoUtils.MIN_LAT_INCL);
+  public static final double MAX_LON_RADIANS = StrictMath.toRadians(GeoUtils.MAX_LON_INCL);
+  public static final double MAX_LAT_RADIANS = StrictMath.toRadians(GeoUtils.MAX_LAT_INCL);
 
   /**
    * Converts from geocentric earth-centered earth-fixed to geodesic lat/lon/alt
@@ -375,8 +379,8 @@ public class GeoProjectionUtils {
 
     final double lam = lambda - (1-c) * FLATTENING * sinAlpha *
         (sigma + c * sinSigma * (cos2SigmaM + c * cosSigma * (-1 + 2* cos2SigmaM*cos2SigmaM)));
-    pt[0] = lon + StrictMath.toDegrees(lam);
-    pt[1] = StrictMath.toDegrees(lat2);
+    pt[0] = GeoUtils.normalizeLon(lon + StrictMath.toDegrees(lam));
+    pt[1] = GeoUtils.normalizeLat(StrictMath.toDegrees(lat2));
 
     return pt;
   }

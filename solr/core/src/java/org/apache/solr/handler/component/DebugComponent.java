@@ -37,6 +37,7 @@ import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.common.util.SuppressForbidden;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.search.DocList;
 import org.apache.solr.search.QueryParsing;
@@ -146,7 +147,8 @@ public class DebugComponent extends SearchComponent
     rb.rsp.addToLog(CommonParams.REQUEST_ID, rid); //to see it in the logs of the landing core
     
   }
-  
+
+  @SuppressForbidden(reason = "Need currentTimeMillis, only used for naming")
   private String generateRid(ResponseBuilder rb) {
     String hostName = rb.req.getCore().getCoreDescriptor().getCoreContainer().getHostName();
     return hostName + "-" + rb.req.getCore().getName() + "-" + System.currentTimeMillis() + "-" + ridCounter.getAndIncrement();

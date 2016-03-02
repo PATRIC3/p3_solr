@@ -88,7 +88,7 @@ public class IndexSearcher {
     }
 
     @Override
-    public SimWeight computeWeight(float queryBoost, CollectionStatistics collectionStats, TermStatistics... termStats) {
+    public SimWeight computeWeight(CollectionStatistics collectionStats, TermStatistics... termStats) {
       return new SimWeight() {
 
         @Override
@@ -97,7 +97,7 @@ public class IndexSearcher {
         }
 
         @Override
-        public void normalize(float queryNorm, float topLevelBoost) {}
+        public void normalize(float queryNorm, float boost) {}
 
       };
     }
@@ -126,9 +126,14 @@ public class IndexSearcher {
 
   };
 
-  // disabled by default
-  private static QueryCache DEFAULT_QUERY_CACHE = null;
+  private static QueryCache DEFAULT_QUERY_CACHE;
   private static QueryCachingPolicy DEFAULT_CACHING_POLICY = new UsageTrackingQueryCachingPolicy();
+  static {
+    final int maxCachedQueries = 1000;
+    // min of 32MB or 5% of the heap size
+    final long maxRamBytesUsed = Math.min(1L << 25, Runtime.getRuntime().maxMemory() / 20);
+    DEFAULT_QUERY_CACHE = new LRUQueryCache(maxCachedQueries, maxRamBytesUsed);
+  }
 
   final IndexReader reader; // package private for testing!
   
@@ -265,6 +270,17 @@ public class IndexSearcher {
   }
 
   /**
+   * Return the query cache of this {@link IndexSearcher}. This will be either
+   * the {@link #getDefaultQueryCache() default query cache} or the query cache
+   * that was last set through {@link #setQueryCache(QueryCache)}. A return
+   * value of {@code null} indicates that caching is disabled.
+   * @lucene.experimental
+   */
+  public QueryCache getQueryCache() {
+    return queryCache;
+  }
+
+  /**
    * Set the {@link QueryCachingPolicy} to use for query caching.
    * This method should be called <b>before</b> starting using this
    * {@link IndexSearcher}.
@@ -273,6 +289,16 @@ public class IndexSearcher {
    */
   public void setQueryCachingPolicy(QueryCachingPolicy queryCachingPolicy) {
     this.queryCachingPolicy = Objects.requireNonNull(queryCachingPolicy);
+  }
+
+  /**
+   * Return the query cache of this {@link IndexSearcher}. This will be either
+   * the {@link #getDefaultQueryCachingPolicy() default policy} or the policy
+   * that was last set through {@link #setQueryCachingPolicy(QueryCachingPolicy)}.
+   * @lucene.experimental
+   */
+  public QueryCachingPolicy getQueryCachingPolicy() {
+    return queryCachingPolicy;
   }
 
   /**
@@ -348,6 +374,29 @@ public class IndexSearcher {
    * Count how many documents match the given query.
    */
   public int count(Query query) throws IOException {
+    query = rewrite(query);
+    while (true) {
+      // remove wrappers that don't matter for counts
+      if (query instanceof ConstantScoreQuery) {
+        query = ((ConstantScoreQuery) query).getQuery();
+      } else {
+        break;
+      }
+    }
+
+    // some counts can be computed in constant time
+    if (query instanceof MatchAllDocsQuery) {
+      return reader.numDocs();
+    } else if (query instanceof TermQuery && reader.hasDeletions() == false) {
+      Term term = ((TermQuery) query).getTerm();
+      int count = 0;
+      for (LeafReaderContext leaf : reader.leaves()) {
+        count += leaf.reader().docFreq(term);
+      }
+      return count;
+    }
+
+    // general case: create a collecor and count matches
     final CollectorManager<TotalHitCountCollector, Integer> collectorManager = new CollectorManager<TotalHitCountCollector, Integer>() {
 
       @Override

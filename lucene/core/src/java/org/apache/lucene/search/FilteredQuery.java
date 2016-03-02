@@ -77,12 +77,13 @@ public class FilteredQuery extends Query {
   
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
     BooleanQuery.Builder builder = new BooleanQuery.Builder();
     builder.add(query, Occur.MUST);
     builder.add(strategy.rewrite(filter), Occur.FILTER);
-    Query rewritten = builder.build();
-    rewritten.setBoost(getBoost());
-    return rewritten;
+    return builder.build();
   }
 
   /** Returns this FilteredQuery's (unfiltered) Query */
@@ -329,6 +330,10 @@ public class FilteredQuery extends Query {
               public boolean matches() throws IOException {
                 final int doc = approximation.docID();
                 return bits.get(doc);
+              }
+              @Override
+              public float matchCost() {
+                return 10; // TODO use cost of bits.get()
               }
             };
             return new ConstantScoreScorer(this, 0f, twoPhase);

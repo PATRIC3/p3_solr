@@ -27,19 +27,24 @@ import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.response.UpdateResponse;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.ModifiableSolrParams;
+import org.apache.solr.util.TimeOut;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -48,6 +53,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * Incorporate the open/close stress tests into unit tests.
  */
 public class OpenCloseCoreStressTest extends SolrTestCaseJ4 {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private final Object locker = new Object();
 
@@ -309,7 +316,8 @@ public class OpenCloseCoreStressTest extends SolrTestCaseJ4 {
 }
 
 class Indexer {
-  static volatile long stopTime;
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   static AtomicInteger idUnique = new AtomicInteger(0);
 
@@ -322,13 +330,15 @@ class Indexer {
   static AtomicInteger updateCounts = new AtomicInteger(0);
 
   static volatile int lastCount;
-  static volatile long nextTime;
+
+  static volatile TimeOut stopTimeout;
+  private static volatile TimeOut nextTimeout;
 
   ArrayList<OneIndexer> _threads = new ArrayList<>();
 
   public Indexer(OpenCloseCoreStressTest OCCST, String url, List<HttpSolrClient> clients, int numThreads, int secondsToRun, Random random) {
-    stopTime = System.currentTimeMillis() + (secondsToRun * 1000);
-    nextTime = System.currentTimeMillis() + 60000;
+    stopTimeout = new TimeOut(secondsToRun, TimeUnit.SECONDS);
+    nextTimeout = new TimeOut(60, TimeUnit.SECONDS);
     docsThisCycle.set(0);
     qTimesAccum.set(0);
     updateCounts.set(0);
@@ -358,11 +368,11 @@ class Indexer {
   }
 
   synchronized static void progress(int myId, String core) {
-    if (nextTime - System.currentTimeMillis() <= 0) {
-      SolrTestCaseJ4.log.info(String.format(Locale.ROOT, " s indexed: [run %,8d] [cycle %,8d] [last minute %,8d] Last core updated: %s. Seconds left in cycle %,4d",
-          myId, docsThisCycle.get(), myId - lastCount, core, stopTime - (System.currentTimeMillis() / 1000)));
+    if (nextTimeout.hasTimedOut()) {
+      log.info(String.format(Locale.ROOT, " s indexed: [run %,8d] [cycle %,8d] [last minute %,8d] Last core updated: %s. Seconds left in cycle %,4d",
+          myId, docsThisCycle.get(), myId - lastCount, core, stopTimeout.timeLeft(TimeUnit.SECONDS)));
       lastCount = myId;
-      nextTime += (System.currentTimeMillis() / 1000) * 60;
+      nextTimeout = new TimeOut(60, TimeUnit.SECONDS);
     }
   }
 
@@ -374,6 +384,8 @@ class OneIndexer extends Thread {
   private final String baseUrl;
   private final Random random;
 
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   OneIndexer(OpenCloseCoreStressTest OCCST, String url, HttpSolrClient client, long seed) {
     this.OCCST = OCCST;
     this.client = client;
@@ -383,9 +395,9 @@ class OneIndexer extends Thread {
 
   @Override
   public void run() {
-    SolrTestCaseJ4.log.info(String.format(Locale.ROOT, "Starting indexing thread: " + getId()));
+    log.info(String.format(Locale.ROOT, "Starting indexing thread: " + getId()));
 
-    while (Indexer.stopTime > System.currentTimeMillis()) {
+    while (! Indexer.stopTimeout.hasTimedOut()) {
       int myId = Indexer.idUnique.incrementAndGet();
       Indexer.docsThisCycle.incrementAndGet();
       String core = OCCST.getRandomCore(random);
@@ -402,7 +414,7 @@ class OneIndexer extends Thread {
           client.setBaseURL(baseUrl + core);
           UpdateResponse response = client.add(doc, OpenCloseCoreStressTest.COMMIT_WITHIN);
           if (response.getStatus() != 0) {
-            SolrTestCaseJ4.log.warn("Failed to index a document to core " + core + " with status " + response.getStatus());
+            log.warn("Failed to index a document to core " + core + " with status " + response.getStatus());
           } else {
             Indexer.qTimesAccum.addAndGet(response.getQTime());
             Indexer.updateCounts.incrementAndGet();
@@ -413,9 +425,9 @@ class OneIndexer extends Thread {
           if (e instanceof InterruptedException) return;
           Indexer.errors.incrementAndGet();
           if (idx == 2) {
-            SolrTestCaseJ4.log.warn("Could not reach server while indexing for three tries, quitting " + e.getMessage());
+            log.warn("Could not reach server while indexing for three tries, quitting " + e.getMessage());
           } else {
-            SolrTestCaseJ4.log.info("Indexing thread " + Thread.currentThread().getId() + " swallowed one exception " + e.getMessage());
+            log.info("Indexing thread " + Thread.currentThread().getId() + " swallowed one exception " + e.getMessage());
             try {
               Thread.sleep(500);
             } catch (InterruptedException tex) {
@@ -425,7 +437,7 @@ class OneIndexer extends Thread {
         }
       }
     }
-    SolrTestCaseJ4.log.info("Leaving indexing thread " + getId());
+    log.info("Leaving indexing thread " + getId());
   }
 }
 
@@ -479,6 +491,8 @@ class OneQuery extends Thread {
   private final String baseUrl;
   private final Random random;
 
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   OneQuery(OpenCloseCoreStressTest OCCST, String url, HttpSolrClient client, long seed) {
     this.OCCST = OCCST;
     this.client = client;
@@ -488,7 +502,7 @@ class OneQuery extends Thread {
 
   @Override
   public void run() {
-    SolrTestCaseJ4.log.info(String.format(Locale.ROOT, "Starting query thread: " + getId()));
+    log.info(String.format(Locale.ROOT, "Starting query thread: " + getId()));
     while (Queries._keepon.get()) {
       String core = OCCST.getRandomCore(random);
       for (int idx = 0; idx < 3; ++idx) {
@@ -503,7 +517,7 @@ class OneQuery extends Thread {
           QueryResponse response = client.query(params);
 
           if (response.getStatus() != 0) {
-            SolrTestCaseJ4.log.warn("Failed to query core " + core + " with status " + response.getStatus());
+            log.warn("Failed to query core " + core + " with status " + response.getStatus());
           }
             // Perhaps collect some stats here in future.
           break; // retry loop
@@ -511,9 +525,9 @@ class OneQuery extends Thread {
           if (e instanceof InterruptedException) return;
           Queries._errors.incrementAndGet();
           if (idx == 2) {
-            SolrTestCaseJ4.log.warn("Could not reach server while indexing for three tries, quitting " + e.getMessage());
+            log.warn("Could not reach server while indexing for three tries, quitting " + e.getMessage());
           } else {
-            SolrTestCaseJ4.log.info("Querying thread: " + Thread.currentThread().getId() + " swallowed exception: " + e.getMessage());
+            log.info("Querying thread: " + Thread.currentThread().getId() + " swallowed exception: " + e.getMessage());
             try {
               Thread.sleep(500L);
             } catch (InterruptedException tex) {
@@ -523,7 +537,7 @@ class OneQuery extends Thread {
         }
       }
     }
-    SolrTestCaseJ4.log.info(String.format(Locale.ROOT, "Leaving query thread: " + getId()));
+    log.info(String.format(Locale.ROOT, "Leaving query thread: " + getId()));
   }
 
 }

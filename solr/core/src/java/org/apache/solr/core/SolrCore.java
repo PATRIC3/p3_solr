@@ -17,9 +17,6 @@
 
 package org.apache.solr.core;
 
-import static com.google.common.base.Preconditions.*;
-import static org.apache.solr.common.params.CommonParams.*;
-
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -27,32 +24,19 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.NoSuchFileException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-import java.util.StringTokenizer;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -93,20 +77,7 @@ import org.apache.solr.handler.component.SearchComponent;
 import org.apache.solr.logging.MDCLoggingContext;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestHandler;
-import org.apache.solr.response.BinaryResponseWriter;
-import org.apache.solr.response.CSVResponseWriter;
-import org.apache.solr.response.JSONResponseWriter;
-import org.apache.solr.response.PHPResponseWriter;
-import org.apache.solr.response.PHPSerializedResponseWriter;
-import org.apache.solr.response.PythonResponseWriter;
-import org.apache.solr.response.QueryResponseWriter;
-import org.apache.solr.response.RawResponseWriter;
-import org.apache.solr.response.RubyResponseWriter;
-import org.apache.solr.response.SchemaXmlResponseWriter;
-import org.apache.solr.response.SmileResponseWriter;
-import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.response.SortingResponseWriter;
-import org.apache.solr.response.XMLResponseWriter;
+import org.apache.solr.response.*;
 import org.apache.solr.response.transform.TransformerFactory;
 import org.apache.solr.rest.ManagedResourceStorage;
 import org.apache.solr.rest.ManagedResourceStorage.StorageIO;
@@ -146,6 +117,9 @@ import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.solr.common.params.CommonParams.PATH;
+
 /**
  *
  */
@@ -158,8 +132,8 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
   public static Map<SolrCore,Exception> openHandles = Collections.synchronizedMap(new IdentityHashMap<SolrCore, Exception>());
 
 
-  public static final Logger log = LoggerFactory.getLogger(SolrCore.class);
-  public static final Logger requestLog = LoggerFactory.getLogger(SolrCore.class.getName() + ".Request");
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  public static final Logger requestLog = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass().getName() + ".Request");
 
   private String name;
   private String logid; // used to show what name is set
@@ -178,7 +152,8 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
   private final UpdateHandler updateHandler;
   private final SolrCoreState solrCoreState;
 
-  private final long startTime;
+  private final Date startTime = new Date();
+  private final long startNanoTime = System.nanoTime();
   private final RequestHandlers reqHandlers;
   private final PluginBag<SearchComponent> searchComponents = new PluginBag<>(SearchComponent.class, this);
   private final PluginBag<UpdateRequestProcessorFactory> updateProcessors = new PluginBag<>(UpdateRequestProcessorFactory.class, this);
@@ -194,7 +169,18 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
 
   private final ReentrantLock ruleExpiryLock;
 
-  public long getStartTime() { return startTime; }
+  public Date getStartTimeStamp() { return startTime; }
+
+  @Deprecated
+  public long getStartTime() { return startTime.getTime(); }
+
+  public long getStartNanoTime() {
+    return startNanoTime;
+  }
+
+  public long getUptimeMs() {
+    return TimeUnit.MILLISECONDS.convert(System.nanoTime() - startNanoTime, TimeUnit.NANOSECONDS);
+  }
 
   private final RestManager restManager;
 
@@ -246,17 +232,37 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
   public String getSchemaResource() {
     return getLatestSchema().getResourceName();
   }
-
-  /** @return the latest snapshot of the schema used by this core instance. */
+  
+  /** 
+   * @return the latest snapshot of the schema used by this core instance. 
+   * @see #setLatestSchema 
+   */
   public IndexSchema getLatestSchema() {
     return schema;
   }
-
-  /** Sets the latest schema snapshot to be used by this core instance. */
+  
+  /** 
+   * Sets the latest schema snapshot to be used by this core instance. 
+   * If the specified <code>replacementSchema</code> uses a {@link SimilarityFactory} which is 
+   * {@link SolrCoreAware} then this method will {@link SolrCoreAware#inform} that factory about 
+   * this SolrCore prior to using the <code>replacementSchema</code>
+   * @see #getLatestSchema
+   */
   public void setLatestSchema(IndexSchema replacementSchema) {
-    schema = replacementSchema;
+    // 1) For a newly instantiated core, the Similarity needs SolrCore before inform() is called on
+    // any registered SolrCoreAware listeners (which will likeley need to use the SolrIndexSearcher.
+    //
+    // 2) If a new IndexSchema is assigned to an existing live SolrCore (ie: managed schema
+    // replacement via SolrCloud) then we need to explicitly inform() the similarity because
+    // we can't rely on the normal SolrResourceLoader lifecycle because the sim was instantiated
+    // after the SolrCore was already live (see: SOLR-8311 + SOLR-8280)
+    final SimilarityFactory similarityFactory = replacementSchema.getSimilarityFactory();
+    if (similarityFactory instanceof SolrCoreAware) {
+      ((SolrCoreAware) similarityFactory).inform(this);
+    }
+    this.schema = replacementSchema;
   }
-
+  
   public NamedList getConfigSetProperties() {
     return configSetProperties;
   }
@@ -517,17 +523,17 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
     initIndexReaderFactory();
 
     if (indexExists && firstTime && !reload) {
-
-      Directory dir = directoryFactory.get(indexDir, DirContext.DEFAULT,
-          getSolrConfig().indexConfig.lockType);
+      final String lockType = getSolrConfig().indexConfig.lockType;
+      Directory dir = directoryFactory.get(indexDir, DirContext.DEFAULT, lockType);
       try {
         if (IndexWriter.isLocked(dir)) {
-          log.error(logid
-              + "Solr index directory '{}' is locked.  Throwing exception.",
-              indexDir);
-          throw new LockObtainFailedException(
-              "Index locked for write for core '" + name +
-              "'. Solr now longer supports forceful unlocking via 'unlockOnStartup'. Please verify locks manually!");
+          log.error(logid + "Solr index directory '{}' is locked (lockType={}).  Throwing exception.",
+                    indexDir, lockType);
+          throw new LockObtainFailedException
+            ("Index dir '" + indexDir + "' of core '" + name + "' is already locked. " +
+             "The most likely cause is another Solr server (or another solr core in this server) " +
+             "also configured to use this directory; other possible causes may be specific to lockType: " +
+             lockType);
         }
       } finally {
         directoryFactory.release(dir);
@@ -674,7 +680,6 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
     this.ulogDir = null;
     this.solrConfig = null;
     this.configSetProperties = null;
-    this.startTime = System.currentTimeMillis();
     this.maxWarmingSearchers = 2;  // we don't have a config yet, just pick a number.
     this.slowQueryThresholdMillis = -1;
     this.resourceLoader = null;
@@ -731,7 +736,7 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
     this.dataDir = initDataDir(dataDir, config, coreDescriptor);
     this.ulogDir = initUpdateLogDir(coreDescriptor);
 
-    log.info("[{}] Opening new SolrCore at [{}], dataDir=[{}]", logid, resourceLoader.getInstanceDir(), dataDir);
+    log.info("[{}] Opening new SolrCore at [{}], dataDir=[{}]", logid, resourceLoader.getInstancePath(), dataDir);
 
     checkVersionFieldExistsInSchema(schema, coreDescriptor);
 
@@ -739,9 +744,8 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
     this.infoRegistry = initInfoRegistry(name, config);
     infoRegistry.put("fieldCache", new SolrFieldCacheMBean());
 
-    this.schema = initSchema(config, schema);
+    initSchema(config, schema);
 
-    this.startTime = System.currentTimeMillis();
     this.maxWarmingSearchers = config.maxWarmingSearchers;
     this.slowQueryThresholdMillis = config.slowQueryThresholdMillis;
 
@@ -937,17 +941,18 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
     infoRegistry.put("updateHandler", newUpdateHandler);
     return newUpdateHandler;
   }
-
-  private IndexSchema initSchema(SolrConfig config, IndexSchema schema) {
+  
+  /**
+   * Initializes the "Latest Schema" for this SolrCore using either the provided <code>schema</code> 
+   * if non-null, or a new instance build via the factory identified in the specified <code>config</code>
+   * @see IndexSchemaFactory
+   * @see #setLatestSchema
+   */
+  private void initSchema(SolrConfig config, IndexSchema schema) {
     if (schema == null) {
       schema = IndexSchemaFactory.buildIndexSchema(IndexSchema.DEFAULT_SCHEMA_FILE, config);
     }
-    final SimilarityFactory similarityFactory = schema.getSimilarityFactory();
-    if (similarityFactory instanceof SolrCoreAware) {
-      // Similarity needs SolrCore before inform() is called on all registered SolrCoreAware listeners below
-      ((SolrCoreAware) similarityFactory).inform(this);
-    }
-    return schema;
+    setLatestSchema(schema);
   }
 
   private Map<String,SolrInfoMBean> initInfoRegistry(String name, SolrConfig config) {
@@ -1573,8 +1578,8 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
 
         // SolrCore.verbose("start reopen from",previousSearcher,"writer=",writer);
 
-        RefCounted<IndexWriter> writer = getUpdateHandler().getSolrCoreState()
-            .getIndexWriter(null);
+        RefCounted<IndexWriter> writer = getSolrCoreState().getIndexWriter(null);
+
         try {
           if (writer != null) {
             // if in NRT mode, open from the writer
@@ -1628,7 +1633,7 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
           tmp = new SolrIndexSearcher(this, newIndexDir, getLatestSchema(),
               (realtime ? "realtime":"main"), newReader, true, !realtime, true, directoryFactory);
         } else  {
-          RefCounted<IndexWriter> writer = getUpdateHandler().getSolrCoreState().getIndexWriter(this);
+          RefCounted<IndexWriter> writer = getSolrCoreState().getIndexWriter(this);
           DirectoryReader newReader = null;
           try {
             newReader = indexReaderFactory.newReader(writer.get(), this);
@@ -2431,9 +2436,9 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
   public NamedList getStatistics() {
     NamedList<Object> lst = new SimpleOrderedMap<>();
     lst.add("coreName", name==null ? "(null)" : name);
-    lst.add("startTime", new Date(startTime));
+    lst.add("startTime", startTime);
     lst.add("refCount", getOpenCount());
-    lst.add("instanceDir", resourceLoader.getInstanceDir());
+    lst.add("instanceDir", resourceLoader.getInstancePath());
     lst.add("indexDir", getIndexDir());
 
     CoreDescriptor cd = getCoreDescriptor();
@@ -2629,7 +2634,7 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
     } catch (KeeperException e) {
       log.error("error refreshing solrconfig ", e);
     } catch (InterruptedException e) {
-      Thread.currentThread().isInterrupted();
+      Thread.currentThread().interrupt();
     }
     return false;
   }

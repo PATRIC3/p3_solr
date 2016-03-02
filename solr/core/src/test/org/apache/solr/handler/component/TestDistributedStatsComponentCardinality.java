@@ -1,5 +1,7 @@
 package org.apache.solr.handler.component;
 
+import java.lang.invoke.MethodHandles;
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -41,8 +43,7 @@ import org.slf4j.LoggerFactory;
 @Slow
 public class TestDistributedStatsComponentCardinality extends BaseDistributedSearchTestCase {
   
-  public static final Logger log 
-    = LoggerFactory.getLogger(TestDistributedStatsComponentCardinality.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   final static HashFunction HASHER = Hashing.murmur3_128();
 
@@ -88,7 +89,6 @@ public class TestDistributedStatsComponentCardinality extends BaseDistributedSea
                     "long_l", ""+longValue, 
                     "long_l_prehashed_l", ""+HASHER.hashLong(longValue).asLong(),
                     "string_s", strValue,
-                    // NOTE: renamed hashUnencodedChars starting with guava 15
                     "string_s_prehashed_l", ""+HASHER.hashString(strValue).asLong()));
 
       longValue -= BIG_PRIME;

@@ -34,13 +34,21 @@ import org.apache.solr.core.NodeConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class UpdateShardHandler {
   
-  private static Logger log = LoggerFactory.getLogger(UpdateShardHandler.class);
-  
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+  /*
+   * A downside to configuring an upper bound will be big update reorders (when that upper bound is hit)
+   * and then undetected shard inconsistency as a result.
+   * This update executor is used for different things too... both update streams (which may be very long lived)
+   * and control messages (peersync? LIR?) and could lead to starvation if limited.
+   * Therefore this thread pool is left unbounded. See SOLR-8205
+   */
   private ExecutorService updateExecutor = ExecutorUtil.newMDCAwareCachedThreadPool(
       new SolrjNamedThreadFactory("updateExecutor"));
   
@@ -103,7 +111,7 @@ public class UpdateShardHandler {
 
   public void close() {
     try {
-      ExecutorUtil.shutdownAndAwaitTermination(updateExecutor);
+      ExecutorUtil.shutdownWithInterruptAndAwaitTermination(updateExecutor);
     } catch (Exception e) {
       SolrException.log(log, e);
     } finally {

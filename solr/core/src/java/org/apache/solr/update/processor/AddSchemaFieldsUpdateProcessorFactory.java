@@ -36,6 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -47,6 +48,7 @@ import java.util.Set;
 
 import static org.apache.solr.common.SolrException.ErrorCode.BAD_REQUEST;
 import static org.apache.solr.common.SolrException.ErrorCode.SERVER_ERROR;
+import static org.apache.solr.core.ConfigSetProperties.IMMUTABLE_CONFIGSET_ARG;
 
 
 /**
@@ -120,7 +122,7 @@ import static org.apache.solr.common.SolrException.ErrorCode.SERVER_ERROR;
  * &lt;/processor&gt;</pre>
  */
 public class AddSchemaFieldsUpdateProcessorFactory extends UpdateRequestProcessorFactory implements SolrCoreAware {
-  public final static Logger log = LoggerFactory.getLogger(AddSchemaFieldsUpdateProcessorFactory.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static final String TYPE_MAPPING_PARAM = "typeMapping";
   private static final String VALUE_CLASS_PARAM = "valueClass";
@@ -290,6 +292,9 @@ public class AddSchemaFieldsUpdateProcessorFactory extends UpdateRequestProcesso
           // nothing to do - no fields will be added - exit from the retry loop
           log.debug("No fields to add to the schema.");
           break;
+        } else if ( isImmutableConfigSet(core) ) {
+          final String message = "This ConfigSet is immutable.";
+          throw new SolrException(BAD_REQUEST, message);
         }
         if (log.isDebugEnabled()) {
           StringBuilder builder = new StringBuilder();
@@ -398,6 +403,12 @@ public class AddSchemaFieldsUpdateProcessorFactory extends UpdateRequestProcesso
           (solrResourceLoader, schema, exc, FieldMutatingUpdateProcessor.SELECT_NO_FIELDS));
       }
       return selector;
+    }
+
+    private boolean isImmutableConfigSet(SolrCore core) {
+      NamedList args = core.getConfigSetProperties();
+      Object immutable = args != null ? args.get(IMMUTABLE_CONFIGSET_ARG) : null;
+      return immutable != null ? Boolean.parseBoolean(immutable.toString()) : false;
     }
   }
 }

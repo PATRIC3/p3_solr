@@ -52,10 +52,14 @@ import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.update.DirectUpdateHandler2;
 import org.apache.solr.util.DefaultSolrThreadFactory;
+import org.apache.solr.util.TimeOut;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -80,7 +84,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slow 
 @SuppressSSL(bugUrl = "https://issues.apache.org/jira/browse/SOLR-5776")
 public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
-  
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   private static final String DEFAULT_COLLECTION = "collection1";
   protected static final boolean DEBUG = false;
   String t1="a_t";
@@ -318,11 +324,11 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
     long before = cloudClient.query(new SolrQuery("*:*")).getResults().getNumFound();
     ModifiableSolrParams params = new ModifiableSolrParams();
     params.set("commitWithin", 10);
-    add(cloudClient, params , getDoc("id", 300));
-    
-    long timeout = System.currentTimeMillis() + 45000;
+    add(cloudClient, params, getDoc("id", 300));
+
+    TimeOut timeout = new TimeOut(45, TimeUnit.SECONDS);
     while (cloudClient.query(new SolrQuery("*:*")).getResults().getNumFound() != before + 1) {
-      if (timeout <= System.currentTimeMillis()) {
+      if (timeout.hasTimedOut()) {
         fail("commitWithin did not work");
       }
       Thread.sleep(100);
@@ -374,10 +380,10 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
     } catch (Exception e) {
       
     }
-    
-    long timeout = System.currentTimeMillis() + 15000;
+
+    TimeOut timeout = new TimeOut(15, TimeUnit.SECONDS);
     while (cloudClient.getZkStateReader().getZkClient().exists("/collections/the_core_collection", true)) {
-      if (timeout <= System.currentTimeMillis()) {
+      if (timeout.hasTimedOut()) {
         fail(cloudClient.getZkStateReader().getZkClient().getChildren("/collections", null, true).toString() + " Collection zk node still exists");
       }
       Thread.sleep(100);
@@ -571,10 +577,10 @@ public class BasicDistributedZkTest extends AbstractFullDistribZkTestBase {
     ModifiableSolrParams params = new ModifiableSolrParams();
     params.set("action", CollectionAction.CREATE.toString());
 
-    params.set(OverseerCollectionProcessor.NUM_SLICES, numShards);
+    params.set(OverseerCollectionMessageHandler.NUM_SLICES, numShards);
     params.set(ZkStateReader.REPLICATION_FACTOR, numReplicas);
     params.set(ZkStateReader.MAX_SHARDS_PER_NODE, maxShardsPerNode);
-    if (createNodeSetStr != null) params.set(OverseerCollectionProcessor.CREATE_NODE_SET, createNodeSetStr);
+    if (createNodeSetStr != null) params.set(OverseerCollectionMessageHandler.CREATE_NODE_SET, createNodeSetStr);
 
     int clientIndex = clients.size() > 1 ? random().nextInt(2) : 0;
     List<Integer> list = new ArrayList<>();

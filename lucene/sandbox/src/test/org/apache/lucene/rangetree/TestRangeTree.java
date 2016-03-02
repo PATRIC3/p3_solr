@@ -19,7 +19,7 @@ package org.apache.lucene.rangetree;
 
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.DocValuesFormat;
-import org.apache.lucene.codecs.lucene53.Lucene53Codec;
+import org.apache.lucene.codecs.lucene54.Lucene54Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.NumericDocValuesField;
@@ -56,8 +56,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-// TODO: can test framework assert we don't leak temp files?
 
 public class TestRangeTree extends LuceneTestCase {
 
@@ -123,9 +121,7 @@ public class TestRangeTree extends LuceneTestCase {
 
     // We rely on docID order:
     iwc.setMergePolicy(newLogMergePolicy());
-    int maxPointsInLeaf = TestUtil.nextInt(random(), 16, 2048);
-    int maxPointsSortInHeap = TestUtil.nextInt(random(), maxPointsInLeaf, 1024*1024);
-    Codec codec = TestUtil.alwaysDocValuesFormat(new RangeTreeDocValuesFormat(maxPointsInLeaf, maxPointsSortInHeap));
+    Codec codec = TestUtil.alwaysDocValuesFormat(getDocValuesFormat());
     iwc.setCodec(codec);
     RandomIndexWriter w = new RandomIndexWriter(random(), dir, iwc);
 
@@ -210,9 +206,7 @@ public class TestRangeTree extends LuceneTestCase {
 
     // We rely on docID order:
     iwc.setMergePolicy(newLogMergePolicy());
-    int maxPointsInLeaf = TestUtil.nextInt(random(), 16, 2048);
-    int maxPointsSortInHeap = TestUtil.nextInt(random(), 1024, 1024*1024);
-    Codec codec = TestUtil.alwaysDocValuesFormat(new RangeTreeDocValuesFormat(maxPointsInLeaf, maxPointsSortInHeap));
+    Codec codec = TestUtil.alwaysDocValuesFormat(getDocValuesFormat());
     iwc.setCodec(codec);
     RandomIndexWriter w = new RandomIndexWriter(random(), dir, iwc);
 
@@ -353,8 +347,6 @@ public class TestRangeTree extends LuceneTestCase {
   }
 
   private static void verify(final Bits missing, final long[] values) throws Exception {
-    int maxPointsInLeaf = TestUtil.nextInt(random(), 16, 2048);
-    int maxPointsSortInHeap = TestUtil.nextInt(random(), maxPointsInLeaf, 1024*1024);
     IndexWriterConfig iwc = newIndexWriterConfig();
 
     // Else we can get O(N^2) merging:
@@ -362,8 +354,8 @@ public class TestRangeTree extends LuceneTestCase {
     if (mbd != -1 && mbd < values.length/100) {
       iwc.setMaxBufferedDocs(values.length/100);
     }
-    final DocValuesFormat dvFormat = new RangeTreeDocValuesFormat(maxPointsInLeaf, maxPointsSortInHeap);
-    Codec codec = new Lucene53Codec() {
+    final DocValuesFormat dvFormat = getDocValuesFormat();
+    Codec codec = new Lucene54Codec() {
         @Override
         public DocValuesFormat getDocValuesFormatForField(String field) {
           if (field.equals("sn_value") || field.equals("ss_value")) {
@@ -768,4 +760,10 @@ public class TestRangeTree extends LuceneTestCase {
     return v ^ 0x8000000000000000L;
   }
   */
+
+  private static DocValuesFormat getDocValuesFormat() {
+    int maxPointsInLeaf = TestUtil.nextInt(random(), 16, 2048);
+    int maxPointsSortInHeap = TestUtil.nextInt(random(), maxPointsInLeaf, 1024*1024);
+    return new RangeTreeDocValuesFormat(maxPointsInLeaf, maxPointsSortInHeap);
+  }
 }

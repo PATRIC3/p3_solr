@@ -57,11 +57,12 @@ import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.Lock;
 import org.apache.lucene.store.LockObtainFailedException;
+import org.apache.lucene.store.LockValidatingDirectoryWrapper;
+import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.MergeInfo;
 import org.apache.lucene.store.RateLimitedIndexOutput;
 import org.apache.lucene.store.SleepingLockWrapper;
 import org.apache.lucene.store.TrackingDirectoryWrapper;
-import org.apache.lucene.store.LockValidatingDirectoryWrapper;
 import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -150,8 +151,8 @@ import org.apache.lucene.util.Version;
   it decides when and how to run the merges.  The default is
   {@link ConcurrentMergeScheduler}. </p>
 
-  <a name="OOME"></a><p><b>NOTE</b>: if you hit an
-  OutOfMemoryError, or disaster strikes during a checkpoint
+  <a name="OOME"></a><p><b>NOTE</b>: if you hit a
+  VirtualMachineError, or disaster strikes during a checkpoint
   then IndexWriter will close itself.  This is a
   defensive measure in case any internal state (buffered
   documents, deletions, reference counts) were corrupted.  
@@ -457,7 +458,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
         infoStream.message("IW", "getReader took " + (System.currentTimeMillis() - tStart) + " msec");
       }
       success2 = true;
-    } catch (AbortingException | OutOfMemoryError tragedy) {
+    } catch (AbortingException | VirtualMachineError tragedy) {
       tragicEvent(tragedy, "getReader");
       // never reached but javac disagrees:
       return null;
@@ -1054,6 +1055,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
             "index=" + segString() + "\n" +
             "version=" + Version.LATEST.toString() + "\n" +
             config.toString());
+      infoStream.message("IW", "MMapDirectory.UNMAP_SUPPORTED=" + MMapDirectory.UNMAP_SUPPORTED);
     }
   }
 
@@ -1324,7 +1326,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
           }
         }
       }
-    } catch (AbortingException | OutOfMemoryError tragedy) {
+    } catch (AbortingException | VirtualMachineError tragedy) {
       tragicEvent(tragedy, "updateDocuments");
     }
   }
@@ -1420,8 +1422,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
       if (docWriter.deleteTerms(terms)) {
         processEvents(true, false);
       }
-    } catch (OutOfMemoryError oom) {
-      tragicEvent(oom, "deleteDocuments(Term..)");
+    } catch (VirtualMachineError tragedy) {
+      tragicEvent(tragedy, "deleteDocuments(Term..)");
     }
   }
 
@@ -1449,8 +1451,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
       if (docWriter.deleteQueries(queries)) {
         processEvents(true, false);
       }
-    } catch (OutOfMemoryError oom) {
-      tragicEvent(oom, "deleteDocuments(Query..)");
+    } catch (VirtualMachineError tragedy) {
+      tragicEvent(tragedy, "deleteDocuments(Query..)");
     }
   }
 
@@ -1483,7 +1485,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
           }
         }
       }
-    } catch (AbortingException | OutOfMemoryError tragedy) {
+    } catch (AbortingException | VirtualMachineError tragedy) {
       tragicEvent(tragedy, "updateDocument");
     }
   }
@@ -1513,8 +1515,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
       if (docWriter.updateDocValues(new NumericDocValuesUpdate(term, field, value))) {
         processEvents(true, false);
       }
-    } catch (OutOfMemoryError oom) {
-      tragicEvent(oom, "updateNumericDocValue");
+    } catch (VirtualMachineError tragedy) {
+      tragicEvent(tragedy, "updateNumericDocValue");
     }
   }
 
@@ -1550,8 +1552,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
       if (docWriter.updateDocValues(new BinaryDocValuesUpdate(term, field, value))) {
         processEvents(true, false);
       }
-    } catch (OutOfMemoryError oom) {
-      tragicEvent(oom, "updateBinaryDocValue");
+    } catch (VirtualMachineError tragedy) {
+      tragicEvent(tragedy, "updateBinaryDocValue");
     }
   }
   
@@ -1598,8 +1600,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
       if (docWriter.updateDocValues(dvUpdates)) {
         processEvents(true, false);
       }
-    } catch (OutOfMemoryError oom) {
-      tragicEvent(oom, "updateDocValues");
+    } catch (VirtualMachineError tragedy) {
+      tragicEvent(tragedy, "updateDocValues");
     }
   }
   
@@ -2028,15 +2030,19 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
     
     // Ensure that only one thread actually gets to do the
     // closing, and make sure no commit is also in progress:
-    synchronized(commitLock) {
-      if (shouldClose(true)) {
-        rollbackInternal();
-      }
+    if (shouldClose(true)) {
+      rollbackInternal();
     }
   }
 
   private void rollbackInternal() throws IOException {
+    // Make sure no commit is running, else e.g. we can close while another thread is still fsync'ing:
+    synchronized(commitLock) {
+      rollbackInternalNoCommit();
+    }
+  }
 
+  private void rollbackInternalNoCommit() throws IOException {
     boolean success = false;
 
     if (infoStream.isEnabled("IW")) {
@@ -2105,8 +2111,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
       }
 
       success = true;
-    } catch (OutOfMemoryError oom) {
-      tragicEvent(oom, "rollbackInternal");
+    } catch (VirtualMachineError tragedy) {
+      tragicEvent(tragedy, "rollbackInternal");
     } finally {
       if (success == false) {
         // Must not hold IW's lock while closing
@@ -2225,8 +2231,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
           }
         }
       }
-    } catch (OutOfMemoryError oom) {
-      tragicEvent(oom, "deleteAll");
+    } catch (VirtualMachineError tragedy) {
+      tragicEvent(tragedy, "deleteAll");
     }
   }
 
@@ -2400,7 +2406,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
    *  to match with a call to {@link IOUtils#close} in a
    *  finally clause. */
   private List<Lock> acquireWriteLocks(Directory... dirs) throws IOException {
-    List<Lock> locks = new ArrayList<>();
+    List<Lock> locks = new ArrayList<>(dirs.length);
     for(int i=0;i<dirs.length;i++) {
       boolean success = false;
       try {
@@ -2540,8 +2546,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
 
       successTop = true;
 
-    } catch (OutOfMemoryError oom) {
-      tragicEvent(oom, "addIndexes(Directory...)");
+    } catch (VirtualMachineError tragedy) {
+      tragicEvent(tragedy, "addIndexes(Directory...)");
     } finally {
       if (successTop) {
         IOUtils.close(locks);
@@ -2620,17 +2626,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
         return;
       }
 
-      boolean success = false;
-      try {
-        merger.merge();                // merge 'em
-        success = true;
-      } finally {
-        if (!success) { 
-          synchronized(this) {
-            deleter.refresh(info.name);
-          }
-        }
-      }
+      merger.merge();                // merge 'em
 
       SegmentCommitInfo infoPerCommit = new SegmentCommitInfo(info, 0, -1L, -1L, -1L);
 
@@ -2671,17 +2667,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
       // creating CFS so that 1) .si isn't slurped into CFS,
       // and 2) .si reflects useCompoundFile=true change
       // above:
-      success = false;
-      try {
-        codec.segmentInfoFormat().write(trackingDir, info, context);
-        success = true;
-      } finally {
-        if (!success) {
-          synchronized(this) {
-            deleter.refresh(info.name);
-          }
-        }
-      }
+      codec.segmentInfoFormat().write(trackingDir, info, context);
 
       info.addFiles(trackingDir.getCreatedFiles());
 
@@ -2700,8 +2686,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
         segmentInfos.add(infoPerCommit);
         checkpoint();
       }
-    } catch (OutOfMemoryError oom) {
-      tragicEvent(oom, "addIndexes(CodecReader...)");
+    } catch (VirtualMachineError tragedy) {
+      tragicEvent(tragedy, "addIndexes(CodecReader...)");
     }
     maybeMerge();
   }
@@ -2862,7 +2848,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
             doAfterFlush();
           }
         }
-      } catch (AbortingException | OutOfMemoryError tragedy) {
+      } catch (AbortingException | VirtualMachineError tragedy) {
         tragicEvent(tragedy, "prepareCommit");
       }
      
@@ -3074,6 +3060,12 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
     return Thread.holdsLock(fullFlushLock);
   }
 
+  /** Moves all in-memory segments to the {@link Directory}, but does not commit
+   *  (fsync) them (call {@link #commit} for that). */
+  public final void flush() throws IOException {
+    flush(true, true);
+  }
+
   /**
    * Flush all in-memory buffered updates (adds and deletes)
    * to the Directory.
@@ -3081,8 +3073,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
    *  deletes or docs were flushed) if necessary
    * @param applyAllDeletes whether pending deletes should also
    */
-  // why protected
-  protected final void flush(boolean triggerMerge, boolean applyAllDeletes) throws IOException {
+  final void flush(boolean triggerMerge, boolean applyAllDeletes) throws IOException {
 
     // NOTE: this method cannot be sync'd because
     // maybeMerge() in turn calls mergeScheduler.merge which
@@ -3135,7 +3126,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
         success = true;
         return anyChanges;
       }
-    } catch (AbortingException | OutOfMemoryError tragedy) {
+    } catch (AbortingException | VirtualMachineError tragedy) {
       tragicEvent(tragedy, "doFlush");
       // never hit
       return false;
@@ -3676,9 +3667,6 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
             if (infoStream.isEnabled("IW")) {
               infoStream.message("IW", "hit exception during merge");
             }
-            if (merge.info != null && !segmentInfos.contains(merge.info)) {
-              deleter.refresh(merge.info.info.name);
-            }
           } else if (merge.rateLimiter.getAbort() == false && (merge.maxNumSegments != -1 || (!closed && !closing))) {
             // This merge (and, generally, any change to the
             // segments) may now enable new merges, so we call
@@ -3994,7 +3982,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
       infoStream.message("IW", "merging " + segString(merge.segments));
     }
 
-    merge.readers = new ArrayList<>();
+    merge.readers = new ArrayList<>(sourceSegments.size());
 
     // This is try/finally to make sure merger's readers are
     // closed:
@@ -4083,19 +4071,10 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
       merge.mergeStartNS = System.nanoTime();
 
       // This is where all the work happens:
-      boolean success3 = false;
-      try {
-        if (merger.shouldMerge()) {
-          merger.merge();
-        }
-        success3 = true;
-      } finally {
-        if (!success3) {
-          synchronized(this) {  
-            deleter.refresh(merge.info.info.name);
-          }
-        }
+      if (merger.shouldMerge()) {
+        merger.merge();
       }
+
       MergeState mergeState = merger.mergeState;
       assert mergeState.segmentInfo == merge.info.info;
       merge.info.info.setFiles(new HashSet<>(dirWrapper.getCreatedFiles()));
@@ -4488,8 +4467,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
           }
         }
       }
-    } catch (OutOfMemoryError oom) {
-      tragicEvent(oom, "startCommit");
+    } catch (VirtualMachineError tragedy) {
+      tragicEvent(tragedy, "startCommit");
     }
     testPoint("finishStartCommit");
   }
@@ -4702,10 +4681,19 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
   
   /**
    * Cleans up residuals from a segment that could not be entirely flushed due to an error
-   * @see IndexFileDeleter#refresh(String) 
    */
   synchronized final void flushFailed(SegmentInfo info) throws IOException {
-    deleter.refresh(info.name);
+    // TODO: this really should be a tragic
+    Collection<String> files;
+    try {
+      files = info.files();
+    } catch (IllegalStateException ise) {
+      // OK
+      files = null;
+    }
+    if (files != null) {
+      deleter.deleteNewFiles(files);
+    }
   }
   
   final int purge(boolean forced) throws IOException {
@@ -4731,17 +4719,22 @@ public class IndexWriter implements Closeable, TwoPhaseCommit, Accountable {
         maybeMerge(config.getMergePolicy(), MergeTrigger.SEGMENT_FLUSH, UNBOUNDED_MAX_MERGE_SEGMENTS);
       }
     }
-    
   }
   
   synchronized void incRefDeleter(SegmentInfos segmentInfos) throws IOException {
     ensureOpen();
     deleter.incRef(segmentInfos, false);
+    if (infoStream.isEnabled("IW")) {
+      infoStream.message("IW", "incRefDeleter for NRT reader version=" + segmentInfos.getVersion() + " segments=" + segString(segmentInfos));
+    }
   }
   
   synchronized void decRefDeleter(SegmentInfos segmentInfos) throws IOException {
     ensureOpen();
     deleter.decRef(segmentInfos);
+    if (infoStream.isEnabled("IW")) {
+      infoStream.message("IW", "decRefDeleter for NRT reader version=" + segmentInfos.getVersion() + " segments=" + segString(segmentInfos));
+    }
   }
   
   private boolean processEvents(boolean triggerMerge, boolean forcePurge) throws IOException {

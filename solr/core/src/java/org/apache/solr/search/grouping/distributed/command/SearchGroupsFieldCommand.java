@@ -38,7 +38,7 @@ import java.util.*;
 /**
  * Creates all the collectors needed for the first phase and how to handle the results.
  */
-public class SearchGroupsFieldCommand implements Command<Pair<Integer, Collection<SearchGroup<BytesRef>>>> {
+public class SearchGroupsFieldCommand implements Command<SearchGroupsFieldCommandResult> {
 
   public static class Builder {
 
@@ -94,8 +94,8 @@ public class SearchGroupsFieldCommand implements Command<Pair<Integer, Collectio
 
   @Override
   public List<Collector> create() throws IOException {
-    List<Collector> collectors = new ArrayList<>();
-    FieldType fieldType = field.getType();
+    final List<Collector> collectors = new ArrayList<>(2);
+    final FieldType fieldType = field.getType();
     if (topNGroups > 0) {
       if (fieldType.getNumericType() != null) {
         ValueSource vs = fieldType.getValueSource(field, null);
@@ -118,9 +118,9 @@ public class SearchGroupsFieldCommand implements Command<Pair<Integer, Collectio
   }
 
   @Override
-  public Pair<Integer, Collection<SearchGroup<BytesRef>>> result() {
+  public SearchGroupsFieldCommandResult result() {
     final Collection<SearchGroup<BytesRef>> topGroups;
-    if (topNGroups > 0) {
+    if (firstPassGroupingCollector != null) {
       if (field.getType().getNumericType() != null) {
         topGroups = GroupConverter.fromMutable(field, firstPassGroupingCollector.getTopGroups(0, true));
       } else {
@@ -130,12 +130,12 @@ public class SearchGroupsFieldCommand implements Command<Pair<Integer, Collectio
       topGroups = Collections.emptyList();
     }
     final Integer groupCount;
-    if (includeGroupCount) {
+    if (allGroupsCollector != null) {
       groupCount = allGroupsCollector.getGroupCount();
     } else {
       groupCount = null;
     }
-    return new Pair<>(groupCount, topGroups);
+    return new SearchGroupsFieldCommandResult(groupCount, topGroups);
   }
 
   @Override

@@ -81,7 +81,7 @@ public final class DocValuesRangeQuery extends Query {
 
   @Override
   public boolean equals(Object obj) {
-    if (obj instanceof DocValuesRangeQuery == false) {
+    if (super.equals(obj) == false) {
       return false;
     }
     final DocValuesRangeQuery that = (DocValuesRangeQuery) obj;
@@ -95,7 +95,7 @@ public final class DocValuesRangeQuery extends Query {
 
   @Override
   public int hashCode() {
-    return Objects.hash(field, lowerVal, upperVal, includeLower, includeUpper, getBoost());
+    return 31 * super.hashCode() + Objects.hash(field, lowerVal, upperVal, includeLower, includeUpper);
   }
 
   @Override
@@ -115,12 +115,13 @@ public final class DocValuesRangeQuery extends Query {
 
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
-    if (lowerVal == null && upperVal == null) {
-      final FieldValueQuery rewritten = new FieldValueQuery(field);
-      rewritten.setBoost(getBoost());
-      return rewritten;
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
     }
-    return this;
+    if (lowerVal == null && upperVal == null) {
+      return new FieldValueQuery(field);
+    }
+    return super.rewrite(reader);
   }
 
   @Override

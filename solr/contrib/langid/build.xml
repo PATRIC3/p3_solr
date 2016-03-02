@@ -23,17 +23,12 @@
     Language Identifier contrib for extracting language from a document being indexed
   </description>
 
-	<import file="../contrib-build.xml"/>
+  <import file="../contrib-build.xml"/>
 
-	<path id="classpath">
+  <path id="classpath">
     <fileset dir="../extraction/lib" excludes="${common.classpath.excludes}"/>
     <fileset dir="lib" excludes="${common.classpath.excludes}"/>
     <path refid="solr.base.classpath"/>   
-  </path>
-
-  <path id="test.classpath">
-    <path refid="solr.test.base.classpath"/>
-    <fileset dir="${test.lib.dir}" includes="*.jar"/>
   </path>
 
   <!-- we don't actually need to compile this thing, we just want its libs -->

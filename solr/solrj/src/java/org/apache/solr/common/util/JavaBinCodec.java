@@ -16,19 +16,28 @@
  */
 package org.apache.solr.common.util;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+
 import org.apache.solr.common.EnumFieldValue;
-import org.noggit.CharArr;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.*;
-import java.util.Map.Entry;
-import java.nio.ByteBuffer;
+import org.noggit.CharArr;
 
 /**
  * The class is designed to optimaly serialize/deserialize any supported types in Solr response. As we know there are only a limited type of
@@ -76,6 +85,8 @@ public class JavaBinCodec {
           ORDERED_MAP = (byte) (5 << 5), // SimpleOrderedMap (a NamedList subclass, and more common)
           NAMED_LST = (byte) (6 << 5), // NamedList
           EXTERN_STRING = (byte) (7 << 5);
+
+  private static final int MAX_UTF8_SIZE_FOR_ARRAY_GROW_STRATEGY = 65536;
 
 
   private static byte VERSION = 2;
@@ -293,6 +304,10 @@ public class JavaBinCodec {
     }
     if (val instanceof Iterator) {
       writeIterator((Iterator) val);
+      return true;
+    }
+    if (val instanceof Path) {
+      writeStr(((Path) val).toAbsolutePath().toString());
       return true;
     }
     if (val instanceof Iterable) {
@@ -614,12 +629,20 @@ public class JavaBinCodec {
       return;
     }
     int end = s.length();
-    int maxSize = end * 4;
-    if (bytes == null || bytes.length < maxSize) bytes = new byte[maxSize];
-    int sz = ByteUtils.UTF16toUTF8(s, 0, end, bytes, 0);
+    int maxSize = end * ByteUtils.MAX_UTF8_BYTES_PER_CHAR;
 
-    writeTag(STR, sz);
-    daos.write(bytes, 0, sz);
+    if (maxSize <= MAX_UTF8_SIZE_FOR_ARRAY_GROW_STRATEGY) {
+      if (bytes == null || bytes.length < maxSize) bytes = new byte[maxSize];
+      int sz = ByteUtils.UTF16toUTF8(s, 0, end, bytes, 0);
+      writeTag(STR, sz);
+      daos.write(bytes, 0, sz);
+    } else {
+      // double pass logic for large strings, see SOLR-7971
+      int sz = ByteUtils.calcUTF16toUTF8Length(s, 0, end);
+      writeTag(STR, sz);
+      if (bytes == null || bytes.length < 8192) bytes = new byte[8192];
+      ByteUtils.writeUTF16toUTF8(s, 0, end, daos, bytes);
+    }
   }
 
   byte[] bytes;

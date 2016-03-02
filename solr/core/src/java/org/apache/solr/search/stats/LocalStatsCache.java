@@ -1,6 +1,8 @@
 package org.apache.solr.search.stats;
 
-/**
+import java.lang.invoke.MethodHandles;
+
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -33,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * uses local term statistics.
  */
 public class LocalStatsCache extends StatsCache {
-  private static final Logger LOG = LoggerFactory.getLogger(LocalStatsCache.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   @Override
   public StatsSource get(SolrQueryRequest req) {

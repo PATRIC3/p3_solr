@@ -18,6 +18,7 @@ package org.apache.lucene.search;
  */
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -29,8 +30,11 @@ import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
@@ -42,7 +46,7 @@ import org.junit.Test;
 public class TestIndexSearcher extends LuceneTestCase {
   Directory dir;
   IndexReader reader;
-  
+
   @Override
   public void setUp() throws Exception {
     super.setUp();
@@ -58,20 +62,20 @@ public class TestIndexSearcher extends LuceneTestCase {
     reader = iw.getReader();
     iw.close();
   }
-  
+
   @Override
   public void tearDown() throws Exception {
     super.tearDown();
     reader.close();
     dir.close();
   }
-  
+
   // should not throw exception
   public void testHugeN() throws Exception {
     ExecutorService service = new ThreadPoolExecutor(4, 4, 0L, TimeUnit.MILLISECONDS,
                                    new LinkedBlockingQueue<Runnable>(),
                                    new NamedThreadFactory("TestIndexSearcher"));
-    
+
     IndexSearcher searchers[] = new IndexSearcher[] {
         new IndexSearcher(reader),
         new IndexSearcher(reader, service)
@@ -92,7 +96,7 @@ public class TestIndexSearcher extends LuceneTestCase {
         null,
         new FieldDoc(0, 0f, new Object[] { new BytesRef("boo!") })
     };
-    
+
     for (IndexSearcher searcher : searchers) {
       for (ScoreDoc after : afters) {
         for (Query query : queries) {
@@ -120,10 +124,10 @@ public class TestIndexSearcher extends LuceneTestCase {
         }
       }
     }
-    
+
     TestUtil.shutdownExecutorService(service);
   }
-  
+
   @Test
   public void testSearchAfterPassedMaxDoc() throws Exception {
     // LUCENE-5128: ensure we get a meaningful message if searchAfter exceeds maxDoc
@@ -132,7 +136,7 @@ public class TestIndexSearcher extends LuceneTestCase {
     w.addDocument(new Document());
     IndexReader r = w.getReader();
     w.close();
-    
+
     IndexSearcher s = new IndexSearcher(r);
     try {
       s.searchAfter(new ScoreDoc(r.maxDoc(), 0.54f), new MatchAllDocsQuery(), 10);
@@ -153,16 +157,79 @@ public class TestIndexSearcher extends LuceneTestCase {
       if (random().nextBoolean()) {
         doc.add(new StringField("foo", "bar", Store.NO));
       }
+      if (random().nextBoolean()) {
+        doc.add(new StringField("foo", "baz", Store.NO));
+      }
+      if (rarely()) {
+        doc.add(new StringField("delete", "yes", Store.NO));
+      }
       w.addDocument(doc);
     }
-    w.commit();
-    final IndexReader reader = w.getReader();
+    for (boolean delete : new boolean[] {false, true}) {
+      if (delete) {
+        w.deleteDocuments(new Term("delete", "yes"));
+      }
+      final IndexReader reader = w.getReader();
+      final IndexSearcher searcher = newSearcher(reader);
+      // Test multiple queries, some of them are optimized by IndexSearcher.count()
+      for (Query query : Arrays.asList(
+          new MatchAllDocsQuery(),
+          new MatchNoDocsQuery(),
+          new TermQuery(new Term("foo", "bar")),
+          new ConstantScoreQuery(new TermQuery(new Term("foo", "baz"))),
+          new BooleanQuery.Builder()
+            .add(new TermQuery(new Term("foo", "bar")), Occur.SHOULD)
+            .add(new TermQuery(new Term("foo", "baz")), Occur.SHOULD)
+            .build()
+          )) {
+        assertEquals(searcher.count(query), searcher.search(query, 1).totalHits);
+      }
+      reader.close();
+    }
     w.close();
-    final IndexSearcher searcher = newSearcher(reader);
-    final Query query = new TermQuery(new Term("foo", "bar"));
-    assertEquals(searcher.count(query), searcher.search(query, 1).totalHits);
-    reader.close();
     dir.close();
   }
 
+  public void testGetQueryCache() throws IOException {
+    IndexSearcher searcher = new IndexSearcher(new MultiReader());
+    assertEquals(IndexSearcher.getDefaultQueryCache(), searcher.getQueryCache());
+    QueryCache dummyCache = new QueryCache() {
+      @Override
+      public Weight doCache(Weight weight, QueryCachingPolicy policy) {
+        return weight;
+      }
+    };
+    searcher.setQueryCache(dummyCache);
+    assertEquals(dummyCache, searcher.getQueryCache());
+
+    IndexSearcher.setDefaultQueryCache(dummyCache);
+    searcher = new IndexSearcher(new MultiReader());
+    assertEquals(dummyCache, searcher.getQueryCache());
+
+    searcher.setQueryCache(null);
+    assertNull(searcher.getQueryCache());
+
+    IndexSearcher.setDefaultQueryCache(null);
+    searcher = new IndexSearcher(new MultiReader());
+    assertNull(searcher.getQueryCache());
+  }
+
+  public void testGetQueryCachingPolicy() throws IOException {
+    IndexSearcher searcher = new IndexSearcher(new MultiReader());
+    assertEquals(IndexSearcher.getDefaultQueryCachingPolicy(), searcher.getQueryCachingPolicy());
+    QueryCachingPolicy dummyPolicy = new QueryCachingPolicy() {
+      @Override
+      public boolean shouldCache(Query query, LeafReaderContext context) throws IOException {
+        return false;
+      }
+      @Override
+      public void onUse(Query query) {}
+    };
+    searcher.setQueryCachingPolicy(dummyPolicy);
+    assertEquals(dummyPolicy, searcher.getQueryCachingPolicy());
+
+    IndexSearcher.setDefaultQueryCachingPolicy(dummyPolicy);
+    searcher = new IndexSearcher(new MultiReader());
+    assertEquals(dummyPolicy, searcher.getQueryCachingPolicy());
+  }
 }

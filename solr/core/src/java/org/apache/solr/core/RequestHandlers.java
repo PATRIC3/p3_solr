@@ -17,6 +17,7 @@
 
 package org.apache.solr.core;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -31,7 +32,7 @@ import org.slf4j.LoggerFactory;
 /**
  */
 public final class RequestHandlers {
-  public static Logger log = LoggerFactory.getLogger(RequestHandlers.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   protected final SolrCore core;
 
@@ -130,12 +131,11 @@ public final class RequestHandlers {
     handlers.init(Collections.EMPTY_MAP,core, modifiedInfos);
     handlers.alias(handlers.getDefault(), "");
     log.info("Registered paths: {}" , StrUtils.join(new ArrayList<>(handlers.keySet()) , ',' ));
-    if(!handlers.alias( "/select","")){
-      if(!handlers.alias( "standard","")){
+    if (handlers.get("") == null && !handlers.alias("/select", "")) {
+      if (handlers.get("") == null && !handlers.alias("standard", "")) {
         log.warn("no default request handler is registered (either '/select' or 'standard')");
       }
     }
-
   }
 
   private PluginInfo applyInitParams(SolrConfig config, PluginInfo info) {

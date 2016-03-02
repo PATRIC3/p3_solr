@@ -18,6 +18,7 @@ package org.apache.solr.uima.processor;
  */
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import java.util.Map.Entry;
 
@@ -42,10 +43,9 @@ import org.slf4j.LoggerFactory;
  */
 public class UIMAUpdateRequestProcessor extends UpdateRequestProcessor {
   
-  private final Logger log = LoggerFactory
-      .getLogger(UIMAUpdateRequestProcessor.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
-  SolrUIMAConfiguration solrUIMAConfiguration;
+  private SolrUIMAConfiguration solrUIMAConfiguration;
   
   private AnalysisEngine ae;
   
@@ -175,5 +175,12 @@ public class UIMAUpdateRequestProcessor extends UpdateRequestProcessor {
       log.debug("Text processing completed");
     }
   }
-  
+
+  /**
+   * @return the configuration object for this request processor
+   */
+  public SolrUIMAConfiguration getConfiguration()
+  {
+    return solrUIMAConfiguration;
+  }
 }

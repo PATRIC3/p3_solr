@@ -20,6 +20,7 @@ package org.apache.solr.core;
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.net.URLEncoder;
 import java.util.Arrays;
 import java.util.Collection;
@@ -67,8 +68,7 @@ import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 
 public class HdfsDirectoryFactory extends CachingDirectoryFactory implements SolrCoreAware {
-  public static Logger LOG = LoggerFactory
-      .getLogger(HdfsDirectoryFactory.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   public static final String BLOCKCACHE_SLAB_COUNT = "solr.hdfs.blockcache.slab.count";
   public static final String BLOCKCACHE_DIRECT_MEMORY_ALLOCATION = "solr.hdfs.blockcache.direct.memory.allocation";
@@ -81,7 +81,9 @@ public class HdfsDirectoryFactory extends CachingDirectoryFactory implements Sol
   public static final String NRTCACHINGDIRECTORY_MAXMERGESIZEMB = "solr.hdfs.nrtcachingdirectory.maxmergesizemb";
   public static final String NRTCACHINGDIRECTORY_MAXCACHEMB = "solr.hdfs.nrtcachingdirectory.maxcachedmb";
   public static final String NUMBEROFBLOCKSPERBANK = "solr.hdfs.blockcache.blocksperbank";
-  
+
+  public static final String LOCALITYMETRICS_ENABLED = "solr.hdfs.locality.metrics.enabled";
+
   public static final String KERBEROS_ENABLED = "solr.hdfs.security.kerberos.enabled";
   public static final String KERBEROS_KEYTAB = "solr.hdfs.security.kerberos.keytabfile";
   public static final String KERBEROS_PRINCIPAL = "solr.hdfs.security.kerberos.principal";
@@ -219,8 +221,9 @@ public class HdfsDirectoryFactory extends CachingDirectoryFactory implements Sol
       hdfsDir = new HdfsDirectory(new Path(path), lockFactory, conf);
       dir = hdfsDir;
     }
-    
-    LocalityHolder.reporter.registerDirectory(hdfsDir);
+    if (params.getBool(LOCALITYMETRICS_ENABLED, false)) {
+      LocalityHolder.reporter.registerDirectory(hdfsDir);
+    }
 
     boolean nrtCachingDirectory = getConfig(NRTCACHINGDIRECTORY_ENABLE, true);
     if (nrtCachingDirectory) {

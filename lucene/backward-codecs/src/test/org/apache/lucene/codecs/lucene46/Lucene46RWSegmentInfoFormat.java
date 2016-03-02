@@ -37,12 +37,14 @@ public final class Lucene46RWSegmentInfoFormat extends Lucene46SegmentInfoFormat
   @Override
   public void write(Directory dir, SegmentInfo si, IOContext ioContext) throws IOException {
     final String fileName = IndexFileNames.segmentFileName(si.name, "", Lucene46SegmentInfoFormat.SI_EXTENSION);
-    si.addFile(fileName);
 
     final IndexOutput output = dir.createOutput(fileName, ioContext);
 
     boolean success = false;
     try {
+      // Only add the file once we've successfully created it, else IFD assert can trip:
+      si.addFile(fileName);
+
       CodecUtil.writeHeader(output, Lucene46SegmentInfoFormat.CODEC_NAME, Lucene46SegmentInfoFormat.VERSION_CURRENT);
       Version version = si.getVersion();
       if (version.major < 4) {
@@ -60,8 +62,6 @@ public final class Lucene46RWSegmentInfoFormat extends Lucene46SegmentInfoFormat
     } finally {
       if (!success) {
         IOUtils.closeWhileHandlingException(output);
-        // TODO: are we doing this outside of the tracking wrapper? why must SIWriter cleanup like this?
-        IOUtils.deleteFilesIgnoringExceptions(si.dir, fileName);
       } else {
         output.close();
       }

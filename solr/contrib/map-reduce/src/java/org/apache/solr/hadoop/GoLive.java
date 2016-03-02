@@ -16,6 +16,21 @@
  */
 package org.apache.solr.hadoop;
 
+import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.CloudSolrClient;
@@ -26,28 +41,13 @@ import org.apache.solr.hadoop.MapReduceIndexerTool.Options;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CompletionService;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorCompletionService;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-
 /**
  * The optional (parallel) GoLive phase merges the output shards of the previous
  * phase into a set of live customer facing Solr servers, typically a SolrCloud.
  */
 class GoLive {
 
-  private static final Logger LOG = LoggerFactory.getLogger(GoLive.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   // TODO: handle clusters with replicas
   public boolean goLive(Options options, FileStatus[] outDirs) {
@@ -164,7 +164,7 @@ class GoLive {
       success = true;
       return true;
     } finally {
-      shutdownNowAndAwaitTermination(executor);
+      ExecutorUtil.shutdownAndAwaitTermination(executor);
       float secs = (System.nanoTime() - start) / (float)(10^9);
       LOG.info("Live merging of index shards into Solr cluster took " + secs + " secs");
       if (success) {
@@ -176,25 +176,6 @@ class GoLive {
     
     // if an output dir does not exist, we should fail and do no merge?
   }
-
-  private void shutdownNowAndAwaitTermination(ExecutorService pool) {
-    pool.shutdown(); // Disable new tasks from being submitted
-    pool.shutdownNow(); // Cancel currently executing tasks
-    boolean shutdown = false;
-    while (!shutdown) {
-      try {
-        // Wait a while for existing tasks to terminate
-        shutdown = pool.awaitTermination(5, TimeUnit.SECONDS);
-      } catch (InterruptedException ie) {
-        // Preserve interrupt status
-        Thread.currentThread().interrupt();
-      }
-      if (!shutdown) {
-        pool.shutdownNow(); // Cancel currently executing tasks
-      }
-    }
-  }
-  
   
   private static final class Request {
     Exception e;

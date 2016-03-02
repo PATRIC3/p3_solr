@@ -17,6 +17,16 @@ package org.apache.solr.core;
  * limitations under the License.
  */
 
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
+
 import com.google.common.collect.ImmutableList;
 import org.apache.commons.codec.Charsets;
 import org.apache.commons.io.FileUtils;
@@ -34,16 +44,6 @@ import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.update.UpdateHandler;
 import org.apache.solr.util.ReadOnlyCoresLocator;
 import org.junit.Test;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Pattern;
 
 public class TestLazyCores extends SolrTestCaseJ4 {
 
@@ -80,7 +80,7 @@ public class TestLazyCores extends SolrTestCaseJ4 {
       copyMinConf(new File(solrHomeDirectory, "collection" + idx));
     }
 
-    SolrResourceLoader loader = new SolrResourceLoader(solrHomeDirectory.getAbsolutePath());
+    SolrResourceLoader loader = new SolrResourceLoader(solrHomeDirectory.toPath());
     NodeConfig config = new NodeConfig.NodeConfigBuilder("testNode", loader).setTransientCacheSize(4).build();
     return createCoreContainer(config, testCores);
   }
@@ -559,12 +559,8 @@ public class TestLazyCores extends SolrTestCaseJ4 {
       writeCustomConfig(coreName, min_config, bad_schema, rand_snip);
     }
 
-    // Write the solr.xml file. Cute how minimal it can be now....
-    File solrXml = new File(solrHomeDirectory, "solr.xml");
-    FileUtils.write(solrXml, "<solr/>", Charsets.UTF_8.toString());
-
-    SolrResourceLoader loader = new SolrResourceLoader(solrHomeDirectory.getAbsolutePath());
-    NodeConfig config = SolrXmlConfig.fromFile(loader, solrXml);
+    SolrResourceLoader loader = new SolrResourceLoader(solrHomeDirectory.toPath());
+    NodeConfig config = SolrXmlConfig.fromString(loader, "<solr/>");
 
     // OK this should succeed, but at the end we should have recorded a series of errors.
     return createCoreContainer(config, new CorePropertiesLocator(config.getCoreRootDirectory()));

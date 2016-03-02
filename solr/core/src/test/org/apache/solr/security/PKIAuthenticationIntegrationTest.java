@@ -20,6 +20,8 @@ package org.apache.solr.security;
 
 import javax.servlet.ServletRequest;
 import javax.servlet.http.HttpServletRequest;
+
+import java.lang.invoke.MethodHandles;
 import java.security.Principal;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -38,10 +40,11 @@ import org.slf4j.LoggerFactory;
 
 import static java.util.Collections.singletonMap;
 import static org.apache.solr.common.util.Utils.makeMap;
+import static org.apache.solr.security.TestAuthorizationFramework.verifySecurityStatus;
 
 @SolrTestCaseJ4.SuppressSSL
 public class PKIAuthenticationIntegrationTest extends AbstractFullDistribZkTestBase {
-  final private Logger log = LoggerFactory.getLogger(PKIAuthenticationIntegrationTest.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   static final int TIMEOUT = 10000;
 
@@ -58,7 +61,8 @@ public class PKIAuthenticationIntegrationTest extends AbstractFullDistribZkTestB
     }
     for (JettySolrRunner jetty : jettys) {
       String baseUrl = jetty.getBaseUrl().toString();
-      TestAuthorizationFramework.verifySecurityStatus(cloudClient.getLbClient().getHttpClient(), baseUrl + "/admin/authorization", "authorization/class", MockAuthorizationPlugin.class.getName(), 20);
+      verifySecurityStatus(cloudClient.getLbClient().getHttpClient(), baseUrl + "/admin/authorization", "authorization/class", MockAuthorizationPlugin.class.getName(), 20);
+      verifySecurityStatus(cloudClient.getLbClient().getHttpClient(), baseUrl + "/admin/authentication", "authentication.enabled", "true", 20);
     }
     log.info("Starting test");
     ModifiableSolrParams params = new ModifiableSolrParams();

@@ -19,6 +19,7 @@ package org.apache.solr.cloud;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URL;
@@ -73,6 +74,8 @@ import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.servlet.SolrDispatchFilter;
 import org.apache.solr.update.DirectUpdateHandler2;
+import org.apache.solr.util.RTimer;
+import org.apache.solr.util.TimeOut;
 import org.apache.zookeeper.CreateMode;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -81,9 +84,9 @@ import org.noggit.JSONWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.apache.solr.cloud.OverseerCollectionProcessor.CREATE_NODE_SET;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.SHARDS_PROP;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.CREATE_NODE_SET;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.NUM_SLICES;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.SHARDS_PROP;
 import static org.apache.solr.common.util.Utils.makeMap;
 
 /**
@@ -92,7 +95,7 @@ import static org.apache.solr.common.util.Utils.makeMap;
  */
 @Slow
 public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTestBase {
-  static Logger log = LoggerFactory.getLogger(AbstractFullDistribZkTestBase.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   @BeforeClass
   public static void beforeFullSolrCloudTest() {
@@ -1123,7 +1126,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
       boolean active = Replica.State.getState(props.getStr(ZkStateReader.STATE_PROP)) == Replica.State.ACTIVE;
       if (active && live) {
         if (lastNum > -1 && lastNum != num && failMessage == null) {
-          failMessage = shard + " is not consistent.  Got " + lastNum + " from " + lastJetty.url + "lastClient"
+          failMessage = shard + " is not consistent.  Got " + lastNum + " from " + lastJetty.url + " (previous client)"
               + " and got " + num + " from " + cjetty.url;
 
           if (!expectFailure || verbose) {
@@ -1198,8 +1201,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     log.info("Turning on auto soft commit: " + time);
     for (List<CloudJettyRunner> jettyList : shardToJetty.values()) {
       for (CloudJettyRunner jetty : jettyList) {
-        CoreContainer cores = ((SolrDispatchFilter) jetty.jetty
-            .getDispatchFilter().getFilter()).getCores();
+        CoreContainer cores = jetty.jetty.getCoreContainer();
         for (SolrCore core : cores.getCores()) {
           ((DirectUpdateHandler2) core.getUpdateHandler())
               .getSoftCommitTracker().setTimeUpperBound(time);
@@ -1540,7 +1542,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     }
     Integer replicationFactor = (Integer) collectionProps.get(ZkStateReader.REPLICATION_FACTOR);
     if(replicationFactor==null){
-      replicationFactor = (Integer) OverseerCollectionProcessor.COLL_PROPS.get(ZkStateReader.REPLICATION_FACTOR);
+      replicationFactor = (Integer) OverseerCollectionMessageHandler.COLL_PROPS.get(ZkStateReader.REPLICATION_FACTOR);
     }
 
     if (confSetName != null) {
@@ -1680,10 +1682,10 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
       List<Integer> numShardsNumReplicaList,
       List<String> nodesAllowedToRunShards) throws Exception {
     // check for an expectedSlices new collection - we poll the state
-    long timeoutAt = System.currentTimeMillis() + 120000;
+    final TimeOut timeout = new TimeOut(120, TimeUnit.SECONDS);
     boolean success = false;
     String checkResult = "Didnt get to perform a single check";
-    while (System.currentTimeMillis() < timeoutAt) {
+    while (! timeout.hasTimedOut()) {
       checkResult = checkCollectionExpectations(collectionName,
           numShardsNumReplicaList, nodesAllowedToRunShards);
       if (checkResult == null) {
@@ -1743,9 +1745,9 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
  public static void waitForNon403or404or503(HttpSolrClient collectionClient)
       throws Exception {
     SolrException exp = null;
-    long timeoutAt = System.currentTimeMillis() + 30000;
+    final TimeOut timeout = new TimeOut(30, TimeUnit.SECONDS);
 
-    while (System.currentTimeMillis() < timeoutAt) {
+    while (! timeout.hasTimedOut()) {
       boolean missing = false;
 
       try {
@@ -1787,7 +1789,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   }
 
   protected List<Replica> ensureAllReplicasAreActive(String testCollectionName, String shardId, int shards, int rf, int maxWaitSecs) throws Exception {
-    long startMs = System.currentTimeMillis();
+    final RTimer timer = new RTimer();
 
     Map<String,Replica> notLeaders = new HashMap<>();
 
@@ -1845,8 +1847,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     if (notLeaders.isEmpty())
       fail("Didn't isolate any replicas that are not the leader! ClusterState: " + printClusterStateInfo());
 
-    long diffMs = (System.currentTimeMillis() - startMs);
-    log.info("Took " + diffMs + " ms to see all replicas become active.");
+    log.info("Took {} ms to see all replicas become active.", timer.getTime());
 
     List<Replica> replicas = new ArrayList<>();
     replicas.addAll(notLeaders.values());
@@ -1878,9 +1879,9 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   static String getRequestStateAfterCompletion(String requestId, int waitForSeconds, SolrClient client)
       throws IOException, SolrServerException {
     String state = null;
-    long maxWait = System.nanoTime() + TimeUnit.NANOSECONDS.convert(waitForSeconds, TimeUnit.SECONDS);
+    final TimeOut timeout = new TimeOut(waitForSeconds, TimeUnit.SECONDS);
 
-    while (System.nanoTime() < maxWait)  {
+    while (! timeout.hasTimedOut())  {
       state = getRequestState(requestId, client);
       if(state.equals("completed") || state.equals("failed"))
         return state;

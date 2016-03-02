@@ -40,8 +40,10 @@ import org.apache.lucene.util.RoaringDocIdSet;
  * Wraps another {@link Query}'s result and caches it when scores are not
  * needed.  The purpose is to allow queries to simply care about matching and
  * scoring, and then wrap with this class to add caching.
+ * @deprecated Use a {@link QueryCache} instead, such as {@link LRUQueryCache}.
  */
-public class CachingWrapperQuery extends Query implements Accountable {
+@Deprecated
+public class CachingWrapperQuery extends Query implements Accountable, Cloneable {
   private Query query; // not final because of clone
   private final QueryCachingPolicy policy;
   private final Map<Object,DocIdSet> cache = Collections.synchronizedMap(new WeakHashMap<Object,DocIdSet>());
@@ -62,29 +64,12 @@ public class CachingWrapperQuery extends Query implements Accountable {
     this(query, QueryCachingPolicy.CacheOnLargeSegments.DEFAULT);
   }
 
-  @Override
-  public CachingWrapperQuery clone() {
-    final CachingWrapperQuery clone = (CachingWrapperQuery) super.clone();
-    clone.query = query.clone();
-    return clone;
-  }
-
   /**
    * Gets the contained query.
    * @return the contained query.
    */
   public Query getQuery() {
     return query;
-  }
-  
-  @Override
-  public float getBoost() {
-    return query.getBoost();
-  }
-  
-  @Override
-  public void setBoost(float b) {
-    query.setBoost(b);
   }
   
   /**
@@ -96,11 +81,14 @@ public class CachingWrapperQuery extends Query implements Accountable {
 
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
     final Query rewritten = query.rewrite(reader);
     if (query == rewritten) {
-      return this;
+      return super.rewrite(reader);
     } else {
-      CachingWrapperQuery clone = clone();
+      CachingWrapperQuery clone = (CachingWrapperQuery) clone();
       clone.query = rewritten;
       return clone;
     }
@@ -172,14 +160,14 @@ public class CachingWrapperQuery extends Query implements Accountable {
 
   @Override
   public boolean equals(Object o) {
-    if (o == null || !getClass().equals(o.getClass())) return false;
+    if (super.equals(o) == false) return false;
     final CachingWrapperQuery other = (CachingWrapperQuery) o;
     return this.query.equals(other.query);
   }
 
   @Override
   public int hashCode() {
-    return (query.hashCode() ^ getClass().hashCode());
+    return (query.hashCode() ^ super.hashCode());
   }
 
   @Override

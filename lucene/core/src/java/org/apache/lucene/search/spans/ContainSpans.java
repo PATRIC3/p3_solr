@@ -21,13 +21,15 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Objects;
 
+import org.apache.lucene.search.similarities.Similarity;
+
 abstract class ContainSpans extends ConjunctionSpans {
   Spans sourceSpans;
   Spans bigSpans;
   Spans littleSpans;
 
-  ContainSpans(Spans bigSpans, Spans littleSpans, Spans sourceSpans) {
-    super(Arrays.asList(bigSpans, littleSpans));
+  ContainSpans(SpanWeight weight, Similarity.SimScorer simScorer, Spans bigSpans, Spans littleSpans, Spans sourceSpans) {
+    super(Arrays.asList(bigSpans, littleSpans), weight, simScorer);
     this.bigSpans = Objects.requireNonNull(bigSpans);
     this.littleSpans = Objects.requireNonNull(littleSpans);
     this.sourceSpans = Objects.requireNonNull(sourceSpans);

@@ -32,21 +32,28 @@ import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.util.TimeOut;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
-import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.ONLY_IF_DOWN;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.NUM_SLICES;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.ONLY_IF_DOWN;
 import static org.apache.solr.common.util.Utils.makeMap;
 import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.DELETEREPLICA;
 
 public class DeleteReplicaTest extends AbstractFullDistribZkTestBase {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   protected String getSolrXml() {
     return "solr-no-core.xml";
@@ -133,10 +140,10 @@ public class DeleteReplicaTest extends AbstractFullDistribZkTestBase {
     SolrRequest request = new QueryRequest(params);
     request.setPath("/admin/collections");
     client.request(request);
-    long endAt = System.currentTimeMillis() + 3000;
+    TimeOut timeout = new TimeOut(3, TimeUnit.SECONDS);
     boolean success = false;
     DocCollection testcoll = null;
-    while (System.currentTimeMillis() < endAt) {
+    while (! timeout.hasTimedOut()) {
       testcoll = client.getZkStateReader()
           .getClusterState().getCollection(COLL_NAME);
       success = testcoll.getSlice(shard).getReplica(replica.getName()) == null;

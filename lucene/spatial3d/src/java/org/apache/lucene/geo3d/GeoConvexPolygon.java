@@ -29,7 +29,7 @@ import java.util.List;
  *
  * @lucene.experimental
  */
-public class GeoConvexPolygon extends GeoBaseMembershipShape {
+public class GeoConvexPolygon extends GeoBasePolygon {
   /** The list of polygon points */
   protected final List<GeoPoint> points;
   /** A bitset describing, for each edge, whether it is internal or not */
@@ -213,8 +213,8 @@ public class GeoConvexPolygon extends GeoBaseMembershipShape {
   }
 
   @Override
-  public Bounds getBounds(Bounds bounds) {
-    bounds = super.getBounds(bounds);
+  public void getBounds(Bounds bounds) {
+    super.getBounds(bounds);
 
     // Add all the points
     for (final GeoPoint point : points) {
@@ -232,14 +232,8 @@ public class GeoConvexPolygon extends GeoBaseMembershipShape {
           membershipBounds[count++] = edges[otherIndex];
         }
       }
-      edge.recordBounds(planetModel, bounds, membershipBounds);
+      bounds.addPlane(planetModel, edge, membershipBounds);
     }
-
-    if (fullDistance >= Math.PI) {
-      // We can't reliably assume that bounds did its longitude calculation right, so we force it to be unbounded.
-      bounds.noLongitudeBound();
-    }
-    return bounds;
   }
 
   @Override

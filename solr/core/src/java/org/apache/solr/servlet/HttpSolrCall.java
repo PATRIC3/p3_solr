@@ -1,38 +1,5 @@
 package org.apache.solr.servlet;
 
-import static org.apache.solr.common.cloud.ZkStateReader.BASE_URL_PROP;
-import static org.apache.solr.common.cloud.ZkStateReader.COLLECTION_PROP;
-import static org.apache.solr.common.cloud.ZkStateReader.CORE_NAME_PROP;
-import static org.apache.solr.common.cloud.ZkStateReader.NODE_NAME_PROP;
-import static org.apache.solr.common.params.CollectionParams.CollectionAction.CREATE;
-import static org.apache.solr.common.params.CollectionParams.CollectionAction.DELETE;
-import static org.apache.solr.common.params.CollectionParams.CollectionAction.RELOAD;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.ADMIN;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.FORWARD;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.PASSTHROUGH;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.PROCESS;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.REMOTEQUERY;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.RETRY;
-import static org.apache.solr.servlet.SolrDispatchFilter.Action.RETURN;
-
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
-import java.security.Principal;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -50,9 +17,26 @@ import java.util.Set;
  * limitations under the License.
  */
 
-
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
+import java.lang.invoke.MethodHandles;
+import java.security.Principal;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
@@ -110,16 +94,31 @@ import org.apache.solr.servlet.SolrDispatchFilter.Action;
 import org.apache.solr.servlet.cache.HttpCacheHeaderUtil;
 import org.apache.solr.servlet.cache.Method;
 import org.apache.solr.update.processor.DistributingUpdateProcessorFactory;
-import org.apache.solr.util.RTimer;
+import org.apache.solr.util.RTimerTree;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory; 
+import org.slf4j.LoggerFactory;
+
+import static org.apache.solr.common.cloud.ZkStateReader.BASE_URL_PROP;
+import static org.apache.solr.common.cloud.ZkStateReader.COLLECTION_PROP;
+import static org.apache.solr.common.cloud.ZkStateReader.CORE_NAME_PROP;
+import static org.apache.solr.common.cloud.ZkStateReader.NODE_NAME_PROP;
+import static org.apache.solr.common.params.CollectionParams.CollectionAction.CREATE;
+import static org.apache.solr.common.params.CollectionParams.CollectionAction.DELETE;
+import static org.apache.solr.common.params.CollectionParams.CollectionAction.RELOAD;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.ADMIN;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.FORWARD;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.PASSTHROUGH;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.PROCESS;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.REMOTEQUERY;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.RETRY;
+import static org.apache.solr.servlet.SolrDispatchFilter.Action.RETURN;
 
 /**
  * This class represents a call made to Solr
  **/
 public class HttpSolrCall {
-  protected static Logger log = LoggerFactory.getLogger(HttpSolrCall.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   static final Random random;
   static {
@@ -195,7 +194,7 @@ public class HttpSolrCall {
     String corename = "";
     String origCorename = null;
     // set a request timer which can be reused by requests if needed
-    req.setAttribute(SolrRequestParsers.REQUEST_TIMER_SERVLET_ATTRIBUTE, new RTimer());
+    req.setAttribute(SolrRequestParsers.REQUEST_TIMER_SERVLET_ATTRIBUTE, new RTimerTree());
     // put the core container in request attribute
     req.setAttribute("org.apache.solr.CoreContainer", cores);
     path = req.getServletPath();
@@ -281,11 +280,6 @@ public class HttpSolrCall {
       // if we couldn't find it locally, look on other nodes
       extractRemotePath(corename, origCorename, idx);
       if (action != null) return;
-
-      // try the default core
-      if (core == null) {
-        core = cores.getCore("");
-      }
     }
 
     // With a valid core...
@@ -316,7 +310,7 @@ public class HttpSolrCall {
         return; // we are done with a valid handler
       }
     }
-    SolrDispatchFilter.log.debug("no handler or core retrieved for " + path + ", follow through...");
+    log.debug("no handler or core retrieved for " + path + ", follow through...");
 
     action = PASSTHROUGH;
   }
@@ -481,7 +475,7 @@ public class HttpSolrCall {
       while (t != null) {
         if (t instanceof Error) {
           if (t != ex) {
-            SolrDispatchFilter.log.error("An Error was wrapped in another exception - please report complete stacktrace on SOLR-6161", ex);
+            log.error("An Error was wrapped in another exception - please report complete stacktrace on SOLR-6161", ex);
           }
           throw (Error) t;
         }
@@ -508,7 +502,7 @@ public class HttpSolrCall {
   void destroy() {
     try {
       if (solrReq != null) {
-        SolrDispatchFilter.log.debug("Closing out SolrRequest: {}", solrReq);
+        log.debug("Closing out SolrRequest: {}", solrReq);
         solrReq.close();
       }
     } finally {
@@ -527,11 +521,7 @@ public class HttpSolrCall {
     HttpEntity httpEntity = null;
     boolean success = false;
     try {
-      String urlstr = coreUrl;
-
-      String queryString = req.getQueryString();
-
-      urlstr += queryString == null ? "" : "?" + queryString;
+      String urlstr = coreUrl + queryParams.toQueryString();
 
       boolean isPostOrPutRequest = "POST".equals(req.getMethod()) || "PUT".equals(req.getMethod());
       if ("GET".equals(req.getMethod())) {
@@ -575,8 +565,8 @@ public class HttpSolrCall {
 
         // We pull out these two headers below because they can cause chunked
         // encoding issues with Tomcat
-        if (header != null && !header.getName().equals(TRANSFER_ENCODING_HEADER)
-            && !header.getName().equals(CONNECTION_HEADER)) {
+        if (header != null && !header.getName().equalsIgnoreCase(TRANSFER_ENCODING_HEADER)
+            && !header.getName().equalsIgnoreCase(CONNECTION_HEADER)) {
           resp.addHeader(header.getName(), header.getValue());
         }
       }
@@ -620,11 +610,7 @@ public class HttpSolrCall {
       } else {
         solrResp.setException(new RuntimeException(ex));
       }
-      if (core == null) {
-        localCore = cores.getCore(""); // default core
-      } else {
-        localCore = core;
-      }
+      localCore = core;
       if (solrReq == null) {
         final SolrParams solrParams;
         if (req != null) {
@@ -645,7 +631,7 @@ public class HttpSolrCall {
       try {
         if (exp != null) {
           SimpleOrderedMap info = new SimpleOrderedMap();
-          int code = ResponseUtils.getErrorInfo(ex, info, SolrDispatchFilter.log);
+          int code = ResponseUtils.getErrorInfo(ex, info, log);
           sendError(code, info.toString());
         }
       } finally {
@@ -660,7 +646,7 @@ public class HttpSolrCall {
     try {
       response.sendError(code, message);
     } catch (EOFException e) {
-      SolrDispatchFilter.log.info("Unable to write error response, client closed connection or we are shutting down", e);
+      log.info("Unable to write error response, client closed connection or we are shutting down", e);
     }
   }
 
@@ -677,8 +663,8 @@ public class HttpSolrCall {
     SolrCore.preDecorateResponse(solrReq, solrResp);
     handler.handleRequest(solrReq, solrResp);
     SolrCore.postDecorateResponse(handler, solrReq, solrResp);
-    if (SolrDispatchFilter.log.isInfoEnabled() && solrResp.getToLog().size() > 0) {
-      SolrDispatchFilter.log.info(solrResp.getToLogAsString("[admin] "));
+    if (log.isInfoEnabled() && solrResp.getToLog().size() > 0) {
+      log.info(solrResp.getToLogAsString("[admin] "));
     }
     QueryResponseWriter respWriter = SolrCore.DEFAULT_RESPONSE_WRITERS.get(solrReq.getParams().get(CommonParams.WT));
     if (respWriter == null) respWriter = SolrCore.DEFAULT_RESPONSE_WRITERS.get("standard");
@@ -736,7 +722,7 @@ public class HttpSolrCall {
 
       if (solrRsp.getException() != null) {
         NamedList info = new SimpleOrderedMap();
-        int code = ResponseUtils.getErrorInfo(solrRsp.getException(), info, SolrDispatchFilter.log);
+        int code = ResponseUtils.getErrorInfo(solrRsp.getException(), info, log);
         solrRsp.add("error", info);
         response.setStatus(code);
       }
@@ -746,7 +732,7 @@ public class HttpSolrCall {
       }
       //else http HEAD request, nothing to write out, waited this long just to get ContentType
     } catch (EOFException e) {
-      SolrDispatchFilter.log.info("Unable to write response, client closed connection or we are shutting down", e);
+      log.info("Unable to write response, client closed connection or we are shutting down", e);
     }
   }
 
@@ -770,26 +756,29 @@ public class HttpSolrCall {
     return result;
   }
 
-  private SolrCore getCoreByCollection(String corename) {
+  private SolrCore getCoreByCollection(String collection) {
     ZkStateReader zkStateReader = cores.getZkController().getZkStateReader();
 
     ClusterState clusterState = zkStateReader.getClusterState();
-    Map<String, Slice> slices = clusterState.getActiveSlicesMap(corename);
+    Map<String, Slice> slices = clusterState.getActiveSlicesMap(collection);
     if (slices == null) {
       return null;
     }
+    Set<String> liveNodes = clusterState.getLiveNodes();
     // look for a core on this node
     Set<Map.Entry<String, Slice>> entries = slices.entrySet();
     SolrCore core = null;
-    done:
+
+    //Hitting the leaders is useful when it's an update request.
+    //For queries it doesn't matter and hence we don't distinguish here.
     for (Map.Entry<String, Slice> entry : entries) {
       // first see if we have the leader
-      ZkNodeProps leaderProps = clusterState.getLeader(corename, entry.getKey());
-      if (leaderProps != null) {
+      Replica leaderProps = clusterState.getLeader(collection, entry.getKey());
+      if (leaderProps != null && liveNodes.contains(leaderProps.getNodeName()) && leaderProps.getState() == Replica.State.ACTIVE) {
         core = checkProps(leaderProps);
-      }
-      if (core != null) {
-        break done;
+        if (core != null) {
+          return core;
+        }
       }
 
       // check everyone then
@@ -797,13 +786,15 @@ public class HttpSolrCall {
       Set<Map.Entry<String, Replica>> shardEntries = shards.entrySet();
       for (Map.Entry<String, Replica> shardEntry : shardEntries) {
         Replica zkProps = shardEntry.getValue();
-        core = checkProps(zkProps);
-        if (core != null) {
-          break done;
+        if (liveNodes.contains(zkProps.getNodeName()) && zkProps.getState() == Replica.State.ACTIVE) {
+          core = checkProps(zkProps);
+          if (core != null) {
+            return core;
+          }
         }
       }
     }
-    return core;
+    return null;
   }
 
   private SolrCore checkProps(ZkNodeProps zkProps) {

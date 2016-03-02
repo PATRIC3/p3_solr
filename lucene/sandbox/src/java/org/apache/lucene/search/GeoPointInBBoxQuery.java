@@ -17,7 +17,10 @@ package org.apache.lucene.search;
  * limitations under the License.
  */
 
+import java.io.IOException;
+
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.util.GeoUtils;
 import org.apache.lucene.util.ToStringUtils;
 
 /** Implements a simple bounding box query on a GeoPoint field. This is inspired by
@@ -55,15 +58,24 @@ public class GeoPointInBBoxQuery extends Query {
   }
 
   @Override
-  public Query rewrite(IndexReader reader) {
+  public Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
+
+    // short-circuit to match all if specifying the whole map
+    if (minLon == GeoUtils.MIN_LON_INCL && maxLon == GeoUtils.MAX_LON_INCL
+        && minLat == GeoUtils.MIN_LAT_INCL && maxLat == GeoUtils.MAX_LAT_INCL) {
+      // FieldValueQuery is valid since DocValues are *required* for GeoPointField
+      return new FieldValueQuery(field);
+    }
+
     if (maxLon < minLon) {
       BooleanQuery.Builder bq = new BooleanQuery.Builder();
 
       GeoPointInBBoxQueryImpl left = new GeoPointInBBoxQueryImpl(field, -180.0D, minLat, maxLon, maxLat);
-      left.setBoost(getBoost());
       bq.add(new BooleanClause(left, BooleanClause.Occur.SHOULD));
       GeoPointInBBoxQueryImpl right = new GeoPointInBBoxQueryImpl(field, minLon, minLat, 180.0D, maxLat);
-      right.setBoost(getBoost());
       bq.add(new BooleanClause(right, BooleanClause.Occur.SHOULD));
       return bq.build();
     }

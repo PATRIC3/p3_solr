@@ -19,6 +19,7 @@ package org.apache.solr.handler.component;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -62,7 +63,7 @@ import org.slf4j.LoggerFactory;
  * and for initializing them as specified by SolrConfig
  */
 public class SuggestComponent extends SearchComponent implements SolrCoreAware, SuggesterParams, Accountable {
-  private static final Logger LOG = LoggerFactory.getLogger(SuggestComponent.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   /** Name used to identify whether the user query concerns this component */
   public static final String COMPONENT_NAME = "suggest";
@@ -186,7 +187,7 @@ public class SuggestComponent extends SearchComponent implements SolrCoreAware, 
       rb.rsp.add("command", (!reloadAll) ? "reload" : "reloadAll");
     }
   }
-  
+
   private void reloadSuggester(SolrSuggester suggester, SolrCore core,
       SolrIndexSearcher searcher) throws IOException {
     File storeFile = suggester.getStoreFile();
@@ -248,11 +249,21 @@ public class SuggestComponent extends SearchComponent implements SolrCoreAware, 
         query = params.get(CommonParams.Q);
       }
     }
-    
+
     if (query != null) {
       int count = params.getInt(SUGGEST_COUNT, 1);
-      SuggesterOptions options = new SuggesterOptions(new CharsRef(query), count);
-      Map<String, SimpleOrderedMap<NamedList<Object>>> namedListResults = 
+      boolean highlight = params.getBool(SUGGEST_HIGHLIGHT, false);
+      boolean allTermsRequired = params.getBool(SUGGEST_ALL_TERMS_REQUIRED, true);
+      String contextFilter = params.get(SUGGEST_CONTEXT_FILTER_QUERY);
+      if (contextFilter != null) {
+        contextFilter = contextFilter.trim();
+        if (contextFilter.length() == 0) {
+          contextFilter = null;
+        }
+      }
+
+      SuggesterOptions options = new SuggesterOptions(new CharsRef(query), count, contextFilter, allTermsRequired, highlight);
+      Map<String, SimpleOrderedMap<NamedList<Object>>> namedListResults =
           new HashMap<>();
       for (SolrSuggester suggester : querySuggesters) {
         SuggesterResult suggesterResult = suggester.getSuggestions(options);
@@ -261,7 +272,7 @@ public class SuggestComponent extends SearchComponent implements SolrCoreAware, 
       rb.rsp.add(SuggesterResultLabels.SUGGEST, namedListResults);
     }
   }
-  
+
   /** 
    * Used in Distributed Search, merges the suggestion results from every shard
    * */
@@ -523,7 +534,7 @@ public class SuggestComponent extends SearchComponent implements SolrCoreAware, 
       try {
         suggester.build(core, newSearcher);
       } catch (Exception e) {
-        log.error("Exception in building suggester index for: " + suggester.getName(), e);
+        LOG.error("Exception in building suggester index for: " + suggester.getName(), e);
       }
     }
 

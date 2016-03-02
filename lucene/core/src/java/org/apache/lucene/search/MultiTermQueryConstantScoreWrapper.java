@@ -32,6 +32,7 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.DocIdSetBuilder;
+import org.apache.lucene.util.ToStringUtils;
 
 /**
  * This class also provides the functionality behind
@@ -87,7 +88,7 @@ final class MultiTermQueryConstantScoreWrapper<Q extends MultiTermQuery> extends
   @Override
   public String toString(String field) {
     // query.toString should be ok for the filter, too, if the query boost is 1.0f
-    return query.toString(field);
+    return query.toString(field) + ToStringUtils.boost(getBoost());
   }
 
   @Override
@@ -96,7 +97,7 @@ final class MultiTermQueryConstantScoreWrapper<Q extends MultiTermQuery> extends
       return false;
     }
     final MultiTermQueryConstantScoreWrapper<?> that = (MultiTermQueryConstantScoreWrapper<?>) o;
-    return this.query.equals(that.query) && this.getBoost() == that.getBoost();
+    return this.query.equals(that.query);
   }
 
   @Override
@@ -157,8 +158,9 @@ final class MultiTermQueryConstantScoreWrapper<Q extends MultiTermQuery> extends
             bq.add(new TermQuery(new Term(query.field, t.term), termContext), Occur.SHOULD);
           }
           Query q = new ConstantScoreQuery(bq.build());
-          q.setBoost(score());
-          return new WeightOrDocIdSet(searcher.rewrite(q).createWeight(searcher, needsScores));
+          final Weight weight = searcher.rewrite(q).createWeight(searcher, needsScores);
+          weight.normalize(1f, score());
+          return new WeightOrDocIdSet(weight);
         }
 
         // Too many terms: go back to the terms we already collected and start building the bit set

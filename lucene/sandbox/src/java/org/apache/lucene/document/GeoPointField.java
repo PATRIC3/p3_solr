@@ -104,6 +104,29 @@ public final class GeoPointField extends Field {
     if (type.numericType() != FieldType.NumericType.LONG) {
       throw new IllegalArgumentException("type.numericType() must be LONG but got " + type.numericType());
     }
+    if (type.docValuesType() != DocValuesType.SORTED_NUMERIC) {
+      throw new IllegalArgumentException("type.docValuesType() must be SORTED_NUMERIC but got " + type.docValuesType());
+    }
     fieldsData = GeoUtils.mortonHash(lon, lat);
+  }
+
+  public double getLon() {
+    return GeoUtils.mortonUnhashLon((long) fieldsData);
+  }
+
+  public double getLat() {
+    return GeoUtils.mortonUnhashLat((long) fieldsData);
+  }
+
+  @Override
+  public String toString() {
+    if (fieldsData == null) {
+      return null;
+    }
+    StringBuilder sb = new StringBuilder();
+    sb.append(GeoUtils.mortonUnhashLon((long) fieldsData));
+    sb.append(',');
+    sb.append(GeoUtils.mortonUnhashLat((long) fieldsData));
+    return sb.toString();
   }
 }

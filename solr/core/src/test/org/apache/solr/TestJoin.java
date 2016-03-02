@@ -23,7 +23,10 @@ import org.noggit.ObjectBuilder;
 import org.apache.solr.request.SolrQueryRequest;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -36,11 +39,14 @@ import java.util.Set;
 
 public class TestJoin extends SolrTestCaseJ4 {
 
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   @BeforeClass
   public static void beforeTests() throws Exception {
     System.setProperty("enable.update.log", "false"); // schema12 doesn't support _version_
     initCore("solrconfig.xml","schema12.xml");
   }
+
 
   @Test
   public void testJoin() throws Exception {
@@ -223,7 +229,7 @@ public class TestJoin extends SolrTestCaseJ4 {
            + "\n\trequest="+req
            + "\n\tresult="+strResponse
            + "\n\texpected="+ JSONUtil.toJSON(resultSet)
-           + "\n\tmodel="+ JSONUtil.toJSON(model)
+           + "\n\tmodel="+ model
           );
 
           // re-execute the request... good for putting a breakpoint here for debugging

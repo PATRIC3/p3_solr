@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
 import java.sql.Blob;
 import java.sql.Clob;
@@ -36,7 +37,7 @@ import java.util.Properties;
  * <p>
  * &lt;datasource name="f1" type="FieldReaderDataSource" /&gt;
  * <p>
- * The enity which uses this datasource must keep the url value as the variable name url="field-name"
+ * The entity which uses this datasource must keep the url value as the variable name url="field-name"
  * <p>
  * The fieldname must be resolvable from {@link VariableResolver}
  * <p>
@@ -47,7 +48,7 @@ import java.util.Properties;
  * @since 1.4
  */
 public class FieldReaderDataSource extends DataSource<Reader> {
-  private static final Logger LOG = LoggerFactory.getLogger(FieldReaderDataSource.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   protected VariableResolver vr;
   protected String dataField;
   private String encoding;

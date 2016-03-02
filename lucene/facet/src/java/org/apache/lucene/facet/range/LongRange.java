@@ -132,12 +132,13 @@ public final class LongRange extends Range {
 
     @Override
     public Query rewrite(IndexReader reader) throws IOException {
+      if (getBoost() != 1f) {
+        return super.rewrite(reader);
+      }
       if (fastMatchQuery != null) {
         final Query fastMatchRewritten = fastMatchQuery.rewrite(reader);
         if (fastMatchRewritten != fastMatchQuery) {
-          Query rewritten = new ValueSourceQuery(range, fastMatchRewritten, valueSource);
-          rewritten.setBoost(getBoost());
-          return rewritten;
+          return new ValueSourceQuery(range, fastMatchRewritten, valueSource);
         }
       }
       return super.rewrite(reader);
@@ -169,6 +170,11 @@ public final class LongRange extends Range {
             @Override
             public boolean matches() throws IOException {
               return range.accept(values.longVal(approximation.docID()));
+            }
+
+            @Override
+            public float matchCost() {
+              return 100; // TODO: use cost of range.accept()
             }
           };
           return new ConstantScoreScorer(this, score(), twoPhase);

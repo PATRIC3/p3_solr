@@ -27,6 +27,7 @@ import org.apache.lucene.index.TermContext;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.similarities.Similarity;
 
 /**
  * Wraps a SpanWeight with additional asserts
@@ -55,7 +56,12 @@ public class AssertingSpanWeight extends SpanWeight {
     Spans spans = in.getSpans(context, requiredPostings);
     if (spans == null)
       return null;
-    return new AssertingSpans(spans);
+    return new AssertingSpans(spans, in.getSimScorer(context));
+  }
+
+  @Override
+  public Similarity.SimScorer getSimScorer(LeafReaderContext context) throws IOException {
+    return in.getSimScorer(context);
   }
 
   @Override
@@ -69,8 +75,8 @@ public class AssertingSpanWeight extends SpanWeight {
   }
 
   @Override
-  public void normalize(float queryNorm, float topLevelBoost) {
-    in.normalize(queryNorm, topLevelBoost);
+  public void normalize(float queryNorm, float boost) {
+    in.normalize(queryNorm, boost);
   }
 
   @Override

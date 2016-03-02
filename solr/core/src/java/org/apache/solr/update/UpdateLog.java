@@ -24,6 +24,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -61,6 +62,7 @@ import org.apache.solr.update.processor.DistributedUpdateProcessor;
 import org.apache.solr.update.processor.UpdateRequestProcessor;
 import org.apache.solr.update.processor.UpdateRequestProcessorChain;
 import org.apache.solr.util.DefaultSolrThreadFactory;
+import org.apache.solr.util.RTimer;
 import org.apache.solr.util.RefCounted;
 import org.apache.solr.util.plugin.PluginInfoInitialized;
 import org.slf4j.Logger;
@@ -73,7 +75,7 @@ public class UpdateLog implements PluginInfoInitialized {
   public static String LOG_FILENAME_PATTERN = "%s.%019d";
   public static String TLOG_NAME="tlog";
 
-  public static Logger log = LoggerFactory.getLogger(UpdateLog.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   public boolean debug = log.isDebugEnabled();
   public boolean trace = log.isTraceEnabled();
 
@@ -901,7 +903,7 @@ public class UpdateLog implements PluginInfoInitialized {
       }
 
       try {
-        ExecutorUtil.shutdownNowAndAwaitTermination(recoveryExecutor);
+        ExecutorUtil.shutdownAndAwaitTermination(recoveryExecutor);
       } catch (Exception e) {
         SolrException.log(log, e);
       }
@@ -1571,7 +1573,7 @@ public class UpdateLog implements PluginInfoInitialized {
    */
   protected Long seedBucketsWithHighestVersion(SolrIndexSearcher newSearcher, VersionInfo versions) {
     Long highestVersion = null;
-    long startMs = System.currentTimeMillis();
+    final RTimer timer = new RTimer();
 
     RecentUpdates recentUpdates = null;
     try {
@@ -1596,9 +1598,8 @@ public class UpdateLog implements PluginInfoInitialized {
         recentUpdates.close();
     }
 
-    long tookMs = (System.currentTimeMillis() - startMs);
-    log.info("Took {} ms to seed version buckets with highest version {}",
-        tookMs, String.valueOf(highestVersion));
+    log.info("Took {}ms to seed version buckets with highest version {}",
+        timer.getTime(), String.valueOf(highestVersion));
 
     return highestVersion;
   }

@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -36,10 +37,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
@@ -72,6 +75,7 @@ import org.apache.solr.common.util.FastOutputStream;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
+import org.apache.solr.common.util.SuppressForbidden;
 import org.apache.solr.core.CloseHook;
 import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.DirectoryFactory.DirContext;
@@ -111,8 +115,10 @@ import static org.apache.solr.common.params.CommonParams.NAME;
  */
 public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAware {
 
-  private static final Logger LOG = LoggerFactory.getLogger(ReplicationHandler.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   SolrCore core;
+  
+  private volatile boolean closed = false;
 
   private static final class CommitVersionInfo {
     public final long version;
@@ -181,7 +187,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
 
   private final Map<String, FileInfo> confFileInfoCache = new HashMap<>();
 
-  private Integer reserveCommitDuration = readInterval("00:00:10");
+  private Integer reserveCommitDuration = readIntervalMs("00:00:10");
 
   volatile IndexCommit indexCommitPoint;
 
@@ -189,8 +195,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
 
   private AtomicBoolean replicationEnabled = new AtomicBoolean(true);
 
-  private Integer pollInterval;
-
+  private Long pollIntervalNs;
   private String pollIntervalStr;
 
   /**
@@ -681,10 +686,15 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     return pollDisabled.get();
   }
 
-  Long getNextScheduledExecTime() {
-    Long nextTime = null;
+  @SuppressForbidden(reason = "Need currentTimeMillis, to output next execution time in replication details")
+  private void markScheduledExecutionStart() {
+    executorStartTime = System.currentTimeMillis();
+  }
+
+  private Date getNextScheduledExecTime() {
+    Date nextTime = null;
     if (executorStartTime > 0)
-      nextTime = executorStartTime + pollInterval;
+      nextTime = new Date(executorStartTime + TimeUnit.MILLISECONDS.convert(pollIntervalNs, TimeUnit.NANOSECONDS));
     return nextTime;
   }
 
@@ -831,8 +841,9 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
       if (getPollInterval() != null) {
         slave.add(POLL_INTERVAL, getPollInterval());
       }
-      if (getNextScheduledExecTime() != null && !isPollingDisabled()) {
-        slave.add(NEXT_EXECUTION_AT, new Date(getNextScheduledExecTime()).toString());
+      Date nextScheduled = getNextScheduledExecTime();
+      if (nextScheduled != null && !isPollingDisabled()) {
+        slave.add(NEXT_EXECUTION_AT, nextScheduled.toString());
       } else if (isPollingDisabled()) {
         slave.add(NEXT_EXECUTION_AT, "Polling disabled");
       }
@@ -903,8 +914,9 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
 
           long estimatedTimeRemaining = 0;
 
-          if (fetcher.getReplicationStartTime() > 0) {
-            slave.add("replicationStartTime", new Date(fetcher.getReplicationStartTime()).toString());
+          Date replicationStartTimeStamp = fetcher.getReplicationStartTimeStamp();
+          if (replicationStartTimeStamp != null) {
+            slave.add("replicationStartTime", replicationStartTimeStamp.toString());
           }
           long elapsed = fetcher.getReplicationTimeElapsed();
           slave.add("timeElapsed", String.valueOf(elapsed) + "s");
@@ -1018,8 +1030,8 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
 
   private void setupPolling(String intervalStr) {
     pollIntervalStr = intervalStr;
-    pollInterval = readInterval(pollIntervalStr);
-    if (pollInterval == null || pollInterval <= 0) {
+    pollIntervalNs = readIntervalNs(pollIntervalStr);
+    if (pollIntervalNs == null || pollIntervalNs <= 0) {
       LOG.info(" No value set for 'pollInterval'. Timer Task not started.");
       return;
     }
@@ -1033,7 +1045,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
         }
         try {
           LOG.debug("Polling for index modifications");
-          executorStartTime = System.currentTimeMillis();
+          markScheduledExecutionStart();
           doFetch(null, false);
         } catch (Exception e) {
           LOG.error("Exception in fetching index", e);
@@ -1042,9 +1054,12 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     };
     executorService = Executors.newSingleThreadScheduledExecutor(
         new DefaultSolrThreadFactory("indexFetcher"));
-    long initialDelay = pollInterval - (System.currentTimeMillis() % pollInterval);
-    executorService.scheduleAtFixedRate(task, initialDelay, pollInterval, TimeUnit.MILLISECONDS);
-    LOG.info("Poll Scheduled at an interval of " + pollInterval + "ms");
+    // Randomize initial delay, with a minimum of 1ms
+    long initialDelayNs = new Random().nextLong() % pollIntervalNs
+        + TimeUnit.NANOSECONDS.convert(1, TimeUnit.MILLISECONDS);
+    executorService.scheduleAtFixedRate(task, initialDelayNs, pollIntervalNs, TimeUnit.NANOSECONDS);
+    LOG.info("Poll scheduled at an interval of {}ms",
+        TimeUnit.MILLISECONDS.convert(pollIntervalNs, TimeUnit.NANOSECONDS));
   }
 
   @Override
@@ -1166,7 +1181,7 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
       }
       String reserve = (String) master.get(RESERVE);
       if (reserve != null && !reserve.trim().equals("")) {
-        reserveCommitDuration = readInterval(reserve);
+        reserveCommitDuration = readIntervalMs(reserve);
       }
       LOG.info("Commits will be reserved for  " + reserveCommitDuration);
       isMaster = true;
@@ -1191,16 +1206,11 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
       @Override
       public void preClose(SolrCore core) {
         try {
-          if (executorService != null) executorService.shutdown();
+          if (executorService != null) executorService.shutdown(); // we don't wait for shutdown - this can deadlock core reload
         } finally {
-          try {
             if (pollingIndexFetcher != null) {
               pollingIndexFetcher.destroy();
             }
-          } finally {
-            if (executorService != null) ExecutorUtil
-                .shutdownNowAndAwaitTermination(executorService);
-          }
         }
         if (currentIndexFetcher != null && currentIndexFetcher != pollingIndexFetcher) {
           currentIndexFetcher.destroy();
@@ -1214,9 +1224,9 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     core.addCloseHook(new CloseHook() {
       @Override
       public void preClose(SolrCore core) {
-        ExecutorUtil.shutdownNowAndAwaitTermination(restoreExecutor);
+        ExecutorUtil.shutdownAndAwaitTermination(restoreExecutor);
         if (restoreFuture != null) {
-          restoreFuture.cancel(true);
+          restoreFuture.cancel(false);
         }
       }
 
@@ -1492,36 +1502,34 @@ public class ReplicationHandler extends RequestHandlerBase implements SolrCoreAw
     }
   }
 
-  static Integer readInterval(String interval) {
+  private static Integer readIntervalMs(String interval) {
+    return (int) TimeUnit.MILLISECONDS.convert(readIntervalNs(interval), TimeUnit.NANOSECONDS);
+  }
+
+  private static Long readIntervalNs(String interval) {
     if (interval == null)
       return null;
     int result = 0;
-    if (interval != null) {
-      Matcher m = INTERVAL_PATTERN.matcher(interval.trim());
-      if (m.find()) {
-        String hr = m.group(1);
-        String min = m.group(2);
-        String sec = m.group(3);
-        result = 0;
-        try {
-          if (sec != null && sec.length() > 0)
-            result += Integer.parseInt(sec);
-          if (min != null && min.length() > 0)
-            result += (60 * Integer.parseInt(min));
-          if (hr != null && hr.length() > 0)
-            result += (60 * 60 * Integer.parseInt(hr));
-          result *= 1000;
-        } catch (NumberFormatException e) {
-          throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,
-              INTERVAL_ERR_MSG);
-        }
-      } else {
-        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,
-            INTERVAL_ERR_MSG);
+    Matcher m = INTERVAL_PATTERN.matcher(interval.trim());
+    if (m.find()) {
+      String hr = m.group(1);
+      String min = m.group(2);
+      String sec = m.group(3);
+      result = 0;
+      try {
+        if (sec != null && sec.length() > 0)
+          result += Integer.parseInt(sec);
+        if (min != null && min.length() > 0)
+          result += (60 * Integer.parseInt(min));
+        if (hr != null && hr.length() > 0)
+          result += (60 * 60 * Integer.parseInt(hr));
+        return TimeUnit.NANOSECONDS.convert(result, TimeUnit.SECONDS);
+      } catch (NumberFormatException e) {
+        throw new SolrException(ErrorCode.SERVER_ERROR, INTERVAL_ERR_MSG);
       }
-
+    } else {
+      throw new SolrException(ErrorCode.SERVER_ERROR, INTERVAL_ERR_MSG);
     }
-    return result;
   }
 
   private static final String LOCATION = "location";

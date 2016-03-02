@@ -27,6 +27,7 @@ import org.junit.BeforeClass;
 import org.junit.Ignore;
 
 import java.io.File;
+import java.nio.file.Paths;
 import java.text.ParseException;
 import java.util.Collections;
 import java.util.Date;
@@ -34,11 +35,10 @@ import java.util.TimeZone;
 import java.util.Locale;
 
 public class DateFieldTest extends SolrTestCaseJ4 {
-  public static TimeZone UTC = DateFormatUtil.UTC;
   private final String testInstanceDir = TEST_HOME() + File.separator + "collection1";
   private final String testConfHome = testInstanceDir + File.separator + "conf"+ File.separator;
   private TrieDateField f = null;
-  private DateMathParser p = new DateMathParser(UTC, Locale.ROOT);
+  private DateMathParser p = new DateMathParser(DateFormatUtil.UTC, Locale.ROOT);
 
   @Override
   public void setUp()  throws Exception {
@@ -47,7 +47,7 @@ public class DateFieldTest extends SolrTestCaseJ4 {
     System.setProperty("solr.test.sys.prop1", "propone");
     System.setProperty("solr.test.sys.prop2", "proptwo");
     SolrConfig config = new SolrConfig
-        (new SolrResourceLoader(testInstanceDir), testConfHome + "solrconfig.xml", null);
+        (new SolrResourceLoader(Paths.get(testInstanceDir)), testConfHome + "solrconfig.xml", null);
     IndexSchema schema = IndexSchemaFactory.buildIndexSchema(testConfHome + "schema.xml", config);
     f = new TrieDateField();
     f.init(schema, Collections.<String,String>emptyMap());

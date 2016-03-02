@@ -39,7 +39,7 @@ import org.apache.lucene.util.ToStringUtils;
 
 /** Matches the union of its clauses.
  */
-public class SpanOrQuery extends SpanQuery implements Cloneable {
+public final class SpanOrQuery extends SpanQuery {
   private List<SpanQuery> clauses;
   private String field;
 
@@ -53,7 +53,9 @@ public class SpanOrQuery extends SpanQuery implements Cloneable {
     }
   }
 
-  /** Adds a clause to this query */
+  /** Adds a clause to this query
+   *  @deprecated All clauses should be provided at {@link #SpanOrQuery(SpanQuery...) construction-time}. */
+  @Deprecated
   public final void addClause(SpanQuery clause) {
     if (field == null) {
       field = clause.getField();
@@ -72,35 +74,22 @@ public class SpanOrQuery extends SpanQuery implements Cloneable {
   public String getField() { return field; }
 
   @Override
-  public SpanOrQuery clone() {
-    int sz = clauses.size();
-    SpanQuery[] newClauses = new SpanQuery[sz];
-
-    for (int i = 0; i < sz; i++) {
-      newClauses[i] = (SpanQuery) clauses.get(i).clone();
-    }
-    SpanOrQuery soq = new SpanOrQuery(newClauses);
-    soq.setBoost(getBoost());
-    return soq;
-  }
-
-  @Override
   public Query rewrite(IndexReader reader) throws IOException {
-    SpanOrQuery clone = null;
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
+    SpanOrQuery rewritten = new SpanOrQuery();
+    boolean actuallyRewritten = false;
     for (int i = 0 ; i < clauses.size(); i++) {
       SpanQuery c = clauses.get(i);
       SpanQuery query = (SpanQuery) c.rewrite(reader);
-      if (query != c) {                     // clause rewrote: must clone
-        if (clone == null)
-          clone = this.clone();
-        clone.clauses.set(i,query);
-      }
+      actuallyRewritten |= query != c;
+      rewritten.addClause(query);
     }
-    if (clone != null) {
-      return clone;                        // some clauses rewrote
-    } else {
-      return this;                         // no clauses rewrote
+    if (actuallyRewritten) {
+      return rewritten;
     }
+    return super.rewrite(reader);
   }
 
   @Override
@@ -183,7 +172,7 @@ public class SpanOrQuery extends SpanQuery implements Cloneable {
       if (subSpans.size() == 0) {
         return null;
       } else if (subSpans.size() == 1) {
-        return subSpans.get(0);
+        return new ScoringWrapperSpans(subSpans.get(0), getSimScorer(context));
       }
 
       final DisiPriorityQueue<Spans> byDocQueue = new DisiPriorityQueue<>(subSpans.size());
@@ -193,7 +182,7 @@ public class SpanOrQuery extends SpanQuery implements Cloneable {
 
       final SpanPositionQueue byPositionQueue = new SpanPositionQueue(subSpans.size()); // when empty use -1
 
-      return new Spans() {
+      return new Spans(this, getSimScorer(context)) {
         Spans topPositionSpans = null;
 
         @Override
@@ -227,24 +216,56 @@ public class SpanOrQuery extends SpanQuery implements Cloneable {
 
         @Override
         public TwoPhaseIterator asTwoPhaseIterator() {
-          boolean hasApproximation = false;
+          float sumMatchCost = 0; // See also DisjunctionScorer.asTwoPhaseIterator()
+          long sumApproxCost = 0;
+
           for (DisiWrapper<Spans> w : byDocQueue) {
             if (w.twoPhaseView != null) {
-              hasApproximation = true;
-              break;
+              long costWeight = (w.cost <= 1) ? 1 : w.cost;
+              sumMatchCost += w.twoPhaseView.matchCost() * costWeight;
+              sumApproxCost += costWeight;
             }
           }
 
-          if (!hasApproximation) { // none of the sub spans supports approximations
+          if (sumApproxCost == 0) { // no sub spans supports approximations
+            computePositionsCost();
             return null;
           }
+
+          final float matchCost = sumMatchCost / sumApproxCost;
 
           return new TwoPhaseIterator(new DisjunctionDISIApproximation<Spans>(byDocQueue)) {
             @Override
             public boolean matches() throws IOException {
               return twoPhaseCurrentDocMatches();
             }
+
+            @Override
+            public float matchCost() {
+              return matchCost;
+            }
           };
+        }
+
+        float positionsCost = -1;
+
+        void computePositionsCost() {
+          float sumPositionsCost = 0;
+          long sumCost = 0;
+          for (DisiWrapper<Spans> w : byDocQueue) {
+            long costWeight = (w.cost <= 1) ? 1 : w.cost;
+            sumPositionsCost += w.iterator.positionsCost() * costWeight;
+            sumCost += costWeight;
+          }
+          positionsCost = sumPositionsCost / sumCost;
+        }
+
+        @Override
+        public float positionsCost() {
+          // This may be called when asTwoPhaseIterator returned null,
+          // which happens when none of the sub spans supports approximations.
+          assert positionsCost > 0;
+          return positionsCost;
         }
 
         int lastDocTwoPhaseMatched = -1;

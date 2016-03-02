@@ -18,6 +18,7 @@ package org.apache.solr.update;
  */
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.locks.Lock;
 
 import org.apache.lucene.index.IndexWriter;
@@ -36,13 +37,13 @@ import org.slf4j.LoggerFactory;
  * 
  */
 public abstract class SolrCoreState {
-  public static Logger log = LoggerFactory.getLogger(SolrCoreState.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   protected boolean closed = false;
-  private final Object deleteLock = new Object();
+  private final Object updateLock = new Object();
   
   public Object getUpdateLock() {
-    return deleteLock;
+    return updateLock;
   }
   
   private int solrCoreStateRefCnt = 1;

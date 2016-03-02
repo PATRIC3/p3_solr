@@ -73,7 +73,7 @@ public class TermQuery extends Query {
         termStats = new TermStatistics(term.bytes(), docFreq, totalTermFreq);
       }
      
-      this.stats = similarity.computeWeight(getBoost(), collectionStats, termStats);
+      this.stats = similarity.computeWeight(collectionStats, termStats);
     }
 
     @Override
@@ -92,8 +92,8 @@ public class TermQuery extends Query {
     }
 
     @Override
-    public void normalize(float queryNorm, float topLevelBoost) {
-      stats.normalize(queryNorm, topLevelBoost);
+    public void normalize(float queryNorm, float boost) {
+      stats.normalize(queryNorm, boost);
     }
 
     @Override

@@ -1,16 +1,5 @@
 package org.apache.lucene.search;
 
-import java.io.IOException;
-import java.util.Random;
-import java.util.Set;
-
-import com.carrotsearch.randomizedtesting.generators.RandomInts;
-
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.util.Bits;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -28,6 +17,16 @@ import org.apache.lucene.util.Bits;
  * limitations under the License.
  */
 
+import java.io.IOException;
+import java.util.Random;
+import java.util.Set;
+
+import com.carrotsearch.randomizedtesting.generators.RandomInts;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+
 /**
  * A {@link Query} that adds random approximations to its scorers.
  */
@@ -43,22 +42,22 @@ public class RandomApproximationQuery extends Query {
 
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
     final Query rewritten = query.rewrite(reader);
     if (rewritten != query) {
       return new RandomApproximationQuery(rewritten, random);
     }
-    return this;
+    return super.rewrite(reader);
   }
 
   @Override
   public boolean equals(Object obj) {
-    if (obj instanceof RandomApproximationQuery == false) {
+    if (super.equals(obj) == false) {
       return false;
     }
     final RandomApproximationQuery that = (RandomApproximationQuery) obj;
-    if (this.getBoost() != that.getBoost()) {
-      return false;
-    }
     if (this.query.equals(that.query) == false) {
       return false;
     }
@@ -67,7 +66,7 @@ public class RandomApproximationQuery extends Query {
 
   @Override
   public int hashCode() {
-    return 31 * query.hashCode() + Float.floatToIntBits(getBoost());
+    return 31 * super.hashCode() + query.hashCode();
   }
 
   @Override
@@ -108,8 +107,8 @@ public class RandomApproximationQuery extends Query {
     }
 
     @Override
-    public void normalize(float norm, float topLevelBoost) {
-      weight.normalize(norm, topLevelBoost);
+    public void normalize(float norm, float boost) {
+      weight.normalize(norm, boost);
     }
 
     @Override
@@ -175,10 +174,12 @@ public class RandomApproximationQuery extends Query {
 
     private final DocIdSetIterator disi;
     private int lastDoc = -1;
+    private final float randomMatchCost;
 
     RandomTwoPhaseView(Random random, DocIdSetIterator disi) {
       super(new RandomApproximation(random, disi));
       this.disi = disi;
+      this.randomMatchCost = random.nextFloat() * 200; // between 0 and 200
     }
 
     @Override
@@ -193,6 +194,10 @@ public class RandomApproximationQuery extends Query {
       return approximation.docID() == disi.docID();
     }
 
+    @Override
+    public float matchCost() {
+      return randomMatchCost;
+    }
   }
 
   private static class RandomApproximation extends DocIdSetIterator {

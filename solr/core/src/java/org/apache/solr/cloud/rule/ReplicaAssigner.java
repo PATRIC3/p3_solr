@@ -1,5 +1,7 @@
 package org.apache.solr.cloud.rule;
 
+import java.lang.invoke.MethodHandles;
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -52,7 +54,7 @@ import static org.apache.solr.common.util.StrUtils.formatString;
 import static org.apache.solr.common.util.Utils.getDeepCopy;
 
 public class ReplicaAssigner {
-  public static final Logger log = LoggerFactory.getLogger(ReplicaAssigner.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   List<Rule> rules;
   Map<String, Integer> shardVsReplicaCount;
   Map<String, Map<String, Object>> nodeVsTags;
@@ -292,7 +294,7 @@ public class ReplicaAssigner {
     for (Rule rule : rules) {
       for (Map.Entry<String, Map<String, Object>> e : nodeVsTags.entrySet()) {
         if (e.getValue().get(rule.tag.name) == null) {
-          errors.add(formatString("The value for tag {0} is not available for node {}"));
+          errors.add(formatString("The value for tag {0} is not available for node {1}", rule.tag.name, e.getKey()));
         }
       }
     }

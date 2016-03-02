@@ -33,7 +33,7 @@
  * <h2>Search Basics</h2>
  * <p>
  * Lucene offers a wide variety of {@link org.apache.lucene.search.Query} implementations, most of which are in
- * this package, its subpackages ({@link org.apache.lucene.search.spans spans}, {@link org.apache.lucene.search.payloads payloads}),
+ * this package, its subpackage ({@link org.apache.lucene.search.spans spans},
  * or the <a href="{@docRoot}/../queries/overview-summary.html">queries module</a>. These implementations can be combined in a wide 
  * variety of ways to provide complex querying capabilities along with information about where matches took place in the document 
  * collection. The <a href="#query">Query Classes</a> section below highlights some of the more important Query classes. For details 
@@ -274,8 +274,8 @@
  *       <li><b>Index-time boost</b> by calling
  *        {@link org.apache.lucene.document.Field#setBoost(float) Field.setBoost()} before a document is 
  *        added to the index.</li>
- *       <li><b>Query-time boost</b> by setting a boost on a query clause, calling
- *        {@link org.apache.lucene.search.Query#setBoost(float) Query.setBoost()}.</li>
+ *       <li><b>Query-time boost</b> by applying a boost to a query by wrapping with
+ *       {@link org.apache.lucene.search.BoostQuery}.</li>
  *    </ul>    
  * <p>Indexing time boosts are pre-processed for storage efficiency and written to
  *    storage for a field as follows:
@@ -366,7 +366,7 @@
  *             <li>{@link org.apache.lucene.search.Query#rewrite(org.apache.lucene.index.IndexReader) rewrite(IndexReader reader)} &mdash; Rewrites queries into primitive queries. Primitive queries are:
  *                 {@link org.apache.lucene.search.TermQuery TermQuery},
  *                 {@link org.apache.lucene.search.BooleanQuery BooleanQuery}, <span
- *                     >and other queries that implement {@link org.apache.lucene.search.Query#createWeight(IndexSearcher,boolean) createWeight(IndexSearcher searcher,boolean)}</span></li>
+ *                     >and other queries that implement {@link org.apache.lucene.search.Query#createWeight(IndexSearcher,boolean) createWeight(IndexSearcher searcher,boolean,float)}</span></li>
  *         </ol>
  * <a name="weightClass"></a>
  * <h3>The Weight Interface</h3>
@@ -389,10 +389,10 @@
  *                 For example, with {@link org.apache.lucene.search.similarities.TFIDFSimilarity Lucene's classic vector-space formula}, this
  *                 is implemented as the sum of squared weights: <code>(idf * boost)<sup>2</sup></code></li>
  *             <li>
- *                 {@link org.apache.lucene.search.Weight#normalize(float,float) normalize(float norm, float topLevelBoost)} &mdash; 
+ *                 {@link org.apache.lucene.search.Weight#normalize(float,float) normalize(float norm, float boost)} &mdash; 
  *                 Performs query normalization: 
  *                 <ul>
- *                 <li><code>topLevelBoost</code>: A query-boost factor from any wrapping queries that should be multiplied into every
+ *                 <li><code>boost</code>: A query-boost factor from any wrapping queries that should be multiplied into every
  *                 document's score. For example, a TermQuery that is wrapped within a BooleanQuery with a boost of <code>5</code> would
  *                 receive this value at this time. This allows the TermQuery (the leaf node in this case) to compute this up-front
  *                 a single time (e.g. by multiplying into the IDF), rather than for every document.</li> 
@@ -500,8 +500,6 @@
  *           Weight object is an internal representation of the Query that allows the Query 
  *           to be reused by the IndexSearcher.</li>
  *       <li>The IndexSearcher that initiated the call.</li>     
- *       <li>A {@link org.apache.lucene.search.Filter Filter} for limiting the result set.
- *           Note, the Filter may be null.</li>                   
  *       <li>A {@link org.apache.lucene.search.Sort Sort} object for specifying how to sort
  *           the results if the standard score-based sort method is not desired.</li>                   
  *   </ol>       
@@ -509,8 +507,7 @@
  *    we call one of the search methods of the IndexSearcher, passing in the
  *    {@link org.apache.lucene.search.Weight Weight} object created by
  *    {@link org.apache.lucene.search.IndexSearcher#createNormalizedWeight(org.apache.lucene.search.Query,boolean)
- *     IndexSearcher.createNormalizedWeight(Query,boolean)}, 
- *    {@link org.apache.lucene.search.Filter Filter} and the number of results we want.
+ *     IndexSearcher.createNormalizedWeight(Query,boolean)} and the number of results we want.
  *    This method returns a {@link org.apache.lucene.search.TopDocs TopDocs} object,
  *    which is an internal collection of search results. The IndexSearcher creates
  *    a {@link org.apache.lucene.search.TopScoreDocCollector TopScoreDocCollector} and

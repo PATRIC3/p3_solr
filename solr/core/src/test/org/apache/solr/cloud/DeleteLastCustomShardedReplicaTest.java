@@ -29,19 +29,26 @@ import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.Utils;
+import org.apache.solr.util.TimeOut;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
-import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.SHARDS_PROP;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.NUM_SLICES;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.SHARDS_PROP;
 import static org.apache.solr.common.util.Utils.makeMap;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.DELETEREPLICA;
 
 public class DeleteLastCustomShardedReplicaTest extends AbstractFullDistribZkTestBase {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   protected String getSolrXml() {
     return "solr-no-core.xml";
@@ -89,10 +96,10 @@ public class DeleteLastCustomShardedReplicaTest extends AbstractFullDistribZkTes
     SolrRequest request = new QueryRequest(params);
     request.setPath("/admin/collections");
     client.request(request);
-    long endAt = System.currentTimeMillis() + 3000;
+    TimeOut timeout = new TimeOut(3, TimeUnit.SECONDS);
     boolean success = false;
     DocCollection testcoll = null;
-    while (System.currentTimeMillis() < endAt) {
+    while (! timeout.hasTimedOut()) {
       testcoll = getCommonCloudSolrClient().getZkStateReader()
           .getClusterState().getCollection(COLL_NAME);
       // In case of a custom sharded collection, the last replica deletion would also lead to

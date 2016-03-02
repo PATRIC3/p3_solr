@@ -1,5 +1,7 @@
 package org.apache.lucene.util;
 
+import org.apache.lucene.search.BoostQuery;
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -24,15 +26,6 @@ public final class ToStringUtils {
 
   private ToStringUtils() {} // no instance
 
-  /**
-   * for printing boost only if not 1.0
-   */
-  public static String boost(float boost) {
-    if (boost != 1.0f) {
-      return "^" + Float.toString(boost);
-    } else return "";
-  }
-
   public static void byteArray(StringBuilder buffer, byte[] bytes) {
     for (int i = 0; i < bytes.length; i++) {
       buffer.append("b[").append(i).append("]=").append(bytes[i]);
@@ -53,4 +46,14 @@ public final class ToStringUtils {
     return "0x" + new String(asHex);
   }
 
+  /**
+   * for printing boost only if not 1.0
+   * @deprecated per-query boosts are deprecated in favour of {@link BoostQuery}
+   */
+  @Deprecated
+  public static String boost(float boost) {
+    if (boost != 1.0f) {
+      return "^" + Float.toString(boost);
+    } else return "";
+  }
 }

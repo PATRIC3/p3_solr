@@ -23,8 +23,9 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.Set;
 
-import com.carrotsearch.hppc.IntFloatOpenHashMap;
-import com.carrotsearch.hppc.IntIntOpenHashMap;
+import com.carrotsearch.hppc.IntFloatHashMap;
+import com.carrotsearch.hppc.IntIntHashMap;
+
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
@@ -42,7 +43,6 @@ import org.apache.lucene.search.TopDocsCollector;
 import org.apache.lucene.search.TopFieldCollector;
 import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.search.Weight;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
@@ -97,7 +97,7 @@ public class ReRankQParserPlugin extends QParserPlugin {
     }
   }
 
-  private class ReRankQuery extends RankQuery {
+  private final class ReRankQuery extends RankQuery {
     private Query mainQuery = defaultQuery;
     private Query reRankQuery;
     private int reRankDocs;
@@ -106,19 +106,18 @@ public class ReRankQParserPlugin extends QParserPlugin {
     private Map<BytesRef, Integer> boostedPriority;
 
     public int hashCode() {
-      return mainQuery.hashCode()+reRankQuery.hashCode()+(int)reRankWeight+reRankDocs+(int)getBoost();
+      return 31 * super.hashCode() + mainQuery.hashCode()+reRankQuery.hashCode()+(int)reRankWeight+reRankDocs;
     }
 
     public boolean equals(Object o) {
-      if(o instanceof ReRankQuery) {
-        ReRankQuery rrq = (ReRankQuery)o;
-        return (mainQuery.equals(rrq.mainQuery) &&
-                reRankQuery.equals(rrq.reRankQuery) &&
-                reRankWeight == rrq.reRankWeight &&
-                reRankDocs == rrq.reRankDocs &&
-                getBoost() == rrq.getBoost());
+      if (super.equals(o) == false) {
+        return false;
       }
-      return false;
+      ReRankQuery rrq = (ReRankQuery)o;
+      return mainQuery.equals(rrq.mainQuery) &&
+             reRankQuery.equals(rrq.reRankQuery) &&
+             reRankWeight == rrq.reRankWeight &&
+             reRankDocs == rrq.reRankDocs;
     }
 
     public ReRankQuery(Query reRankQuery, int reRankDocs, double reRankWeight, int length) {
@@ -157,22 +156,18 @@ public class ReRankQParserPlugin extends QParserPlugin {
       return "{!rerank mainQuery='"+mainQuery.toString()+
              "' reRankQuery='"+reRankQuery.toString()+
              "' reRankDocs="+reRankDocs+
-             " reRankWeigh="+reRankWeight+"}";
+             " reRankWeight="+reRankWeight+"}";
     }
 
     public Query rewrite(IndexReader reader) throws IOException {
-      Query q = mainQuery.rewrite(reader);
-      if(q == mainQuery) {
-        return this;
-      } else {
-        return clone().wrap(q);
+      if (getBoost() != 1f) {
+        return super.rewrite(reader);
       }
-    }
-
-    public ReRankQuery clone() {
-      ReRankQuery clonedQuery =  new ReRankQuery(reRankQuery, reRankDocs, reRankWeight, length);
-      clonedQuery.setBoost(getBoost());
-      return clonedQuery;
+      Query q = mainQuery.rewrite(reader);
+      if (q != mainQuery) {
+        return new ReRankQuery(reRankQuery, reRankDocs, reRankWeight, length).wrap(q);
+      }
+      return super.rewrite(reader);
     }
 
     public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException{
@@ -292,7 +287,7 @@ public class ReRankQParserPlugin extends QParserPlugin {
             requestContext = info.getReq().getContext();
           }
 
-          IntIntOpenHashMap boostedDocs = QueryElevationComponent.getBoostDocs((SolrIndexSearcher)searcher, boostedPriority, requestContext);
+          IntIntHashMap boostedDocs = QueryElevationComponent.getBoostDocs((SolrIndexSearcher)searcher, boostedPriority, requestContext);
 
           ScoreDoc[] mainScoreDocs = mainDocs.scoreDocs;
           ScoreDoc[] reRankScoreDocs = new ScoreDoc[Math.min(mainScoreDocs.length, reRankDocs)];
@@ -391,14 +386,15 @@ public class ReRankQParserPlugin extends QParserPlugin {
   }
 
   public class BoostedComp implements Comparator {
-    IntFloatOpenHashMap boostedMap;
+    IntFloatHashMap boostedMap;
 
-    public BoostedComp(IntIntOpenHashMap boostedDocs, ScoreDoc[] scoreDocs, float maxScore) {
-      this.boostedMap = new IntFloatOpenHashMap(boostedDocs.size()*2);
+    public BoostedComp(IntIntHashMap boostedDocs, ScoreDoc[] scoreDocs, float maxScore) {
+      this.boostedMap = new IntFloatHashMap(boostedDocs.size()*2);
 
       for(int i=0; i<scoreDocs.length; i++) {
-        if(boostedDocs.containsKey(scoreDocs[i].doc)) {
-          boostedMap.put(scoreDocs[i].doc, maxScore+boostedDocs.lget());
+        final int idx;
+        if((idx = boostedDocs.indexOf(scoreDocs[i].doc)) >= 0) {
+          boostedMap.put(scoreDocs[i].doc, maxScore+boostedDocs.indexGet(idx));
         } else {
           break;
         }
@@ -410,21 +406,16 @@ public class ReRankQParserPlugin extends QParserPlugin {
       ScoreDoc doc2 = (ScoreDoc) o2;
       float score1 = doc1.score;
       float score2 = doc2.score;
-      if(boostedMap.containsKey(doc1.doc)) {
-        score1 = boostedMap.lget();
+      int idx;
+      if((idx = boostedMap.indexOf(doc1.doc)) >= 0) {
+        score1 = boostedMap.indexGet(idx);
       }
 
-      if(boostedMap.containsKey(doc2.doc)) {
-        score2 = boostedMap.lget();
+      if((idx = boostedMap.indexOf(doc2.doc)) >= 0) {
+        score2 = boostedMap.indexGet(idx);
       }
 
-      if(score1 > score2) {
-        return -1;
-      } else if(score1 < score2) {
-        return 1;
-      } else {
-        return 0;
-      }
+      return -Float.compare(score1, score2);
     }
   }
 }

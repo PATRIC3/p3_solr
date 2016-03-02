@@ -21,9 +21,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.CharsRefBuilder;
-import org.apache.lucene.util.UnicodeUtil;
 
 /**
  * An implementation tying Java's built-in java.util.regex to RegexQuery.
@@ -32,7 +30,9 @@ import org.apache.lucene.util.UnicodeUtil;
  * {@link RegexCapabilities.RegexMatcher#prefix()} that queries using this implementation 
  * will enumerate and attempt to {@link RegexCapabilities.RegexMatcher#match(BytesRef)} each 
  * term for the specified field in the index.
+ * @deprecated Use core's regex query.
  */
+@Deprecated
 public class JavaUtilRegexCapabilities implements RegexCapabilities {
 
   private int flags = 0;

@@ -23,6 +23,7 @@ import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 import org.apache.http.HttpException;
@@ -52,6 +53,8 @@ import org.slf4j.LoggerFactory;
 @SuppressSysoutChecks(bugUrl = "Solr logs to JUL")
 public class TestAuthenticationFramework extends TestMiniSolrCloudCluster {
   
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  
   public TestAuthenticationFramework () {
     NUM_SERVERS = 5;
     NUM_SHARDS = 2;
@@ -60,7 +63,7 @@ public class TestAuthenticationFramework extends TestMiniSolrCloudCluster {
   
   static String requestUsername = MockAuthenticationPlugin.expectedUsername;
   static String requestPassword = MockAuthenticationPlugin.expectedPassword;
-  
+
   @Rule
   public TestRule solrTestRules = RuleChain
       .outerRule(new SystemPropertiesRestoreRule());
@@ -78,26 +81,19 @@ public class TestAuthenticationFramework extends TestMiniSolrCloudCluster {
   
   private void setupAuthenticationPlugin() throws Exception {
     System.setProperty("authenticationPlugin", "org.apache.solr.cloud.TestAuthenticationFramework$MockAuthenticationPlugin");
+    MockAuthenticationPlugin.expectedUsername = null;
+    MockAuthenticationPlugin.expectedPassword = null;
+
   }
   
   @Test
-  @Override
   public void testBasics() throws Exception {
 
-    final String collectionName = "testAuthenticationFrameworkCollection";
-
-    // save original username/password
-    final String originalRequestUsername = requestUsername;
-    final String originalRequestPassword = requestPassword;
-
-    requestUsername = MockAuthenticationPlugin.expectedUsername;
-    requestPassword = MockAuthenticationPlugin.expectedPassword;
-    
     // Should pass
-    testCollectionCreateSearchDelete(collectionName);
-    
-    requestUsername = MockAuthenticationPlugin.expectedUsername;
-    requestPassword = "junkpassword";
+    testCollectionCreateSearchDelete();
+
+    MockAuthenticationPlugin.expectedUsername = "solr";
+    MockAuthenticationPlugin.expectedPassword = "s0lrRocks";
     
     // Should fail with 401
     try {
@@ -108,9 +104,8 @@ public class TestAuthenticationFramework extends TestMiniSolrCloudCluster {
         fail("Should've returned a 401 error");
       }
     } finally {
-      // restore original username/password
-      requestUsername = originalRequestUsername;
-      requestPassword = originalRequestPassword;        
+      MockAuthenticationPlugin.expectedUsername = null;
+      MockAuthenticationPlugin.expectedPassword = null;
     }
   }
 
@@ -121,10 +116,8 @@ public class TestAuthenticationFramework extends TestMiniSolrCloudCluster {
   }
   
   public static class MockAuthenticationPlugin extends AuthenticationPlugin implements HttpClientInterceptorPlugin {
-    private static Logger log = LoggerFactory.getLogger(MockAuthenticationPlugin.class);
-
-    public static String expectedUsername = "solr";
-    public static String expectedPassword = "s0lrRocks";
+    public static String expectedUsername;
+    public static String expectedPassword;
 
     @Override
     public void init(Map<String,Object> pluginConfig) {}
@@ -132,6 +125,10 @@ public class TestAuthenticationFramework extends TestMiniSolrCloudCluster {
     @Override
     public void doAuthenticate(ServletRequest request, ServletResponse response, FilterChain filterChain)
         throws Exception {
+      if (expectedUsername == null) {
+        filterChain.doFilter(request, response);
+        return;
+      }
       HttpServletRequest httpRequest = (HttpServletRequest)request;
       String username = httpRequest.getHeader("username");
       String password = httpRequest.getHeader("password");

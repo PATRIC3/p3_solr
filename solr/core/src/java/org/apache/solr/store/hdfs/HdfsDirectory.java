@@ -18,6 +18,7 @@ package org.apache.solr.store.hdfs;
  */
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -29,7 +30,8 @@ import org.apache.hadoop.fs.FileContext;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.ipc.RemoteException;
+import org.apache.hadoop.hdfs.DistributedFileSystem;
+import org.apache.hadoop.hdfs.protocol.HdfsConstants.SafeModeAction;
 import org.apache.lucene.store.BaseDirectory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
@@ -40,7 +42,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class HdfsDirectory extends BaseDirectory {
-  public static Logger LOG = LoggerFactory.getLogger(HdfsDirectory.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   public static final int BUFFER_SIZE = 8192;
   
@@ -63,36 +65,29 @@ public class HdfsDirectory extends BaseDirectory {
     fileSystem = FileSystem.get(hdfsDirPath.toUri(), configuration);
     fileContext = FileContext.getFileContext(hdfsDirPath.toUri(), configuration);
     
-    while (true) {
-      try {
-        if (!fileSystem.exists(hdfsDirPath)) {
-          boolean success = fileSystem.mkdirs(hdfsDirPath);
-          if (!success) {
-            throw new RuntimeException("Could not create directory: " + hdfsDirPath);
-          }
-        } else {
-          fileSystem.mkdirs(hdfsDirPath); // check for safe mode
+    if (fileSystem instanceof DistributedFileSystem) {
+      // Make sure dfs is not in safe mode
+      while (((DistributedFileSystem) fileSystem).setSafeMode(SafeModeAction.SAFEMODE_GET, true)) {
+        LOG.warn("The NameNode is in SafeMode - Solr will wait 5 seconds and try again.");
+        try {
+          Thread.sleep(5000);
+        } catch (InterruptedException e) {
+          Thread.interrupted();
+          // continue
         }
-        
-        break;
-      } catch (RemoteException e) {
-        if (e.getClassName().equals("org.apache.hadoop.hdfs.server.namenode.SafeModeException")) {
-          LOG.warn("The NameNode is in SafeMode - Solr will wait 5 seconds and try again.");
-          try {
-            Thread.sleep(5000);
-          } catch (InterruptedException e1) {
-            Thread.interrupted();
-          }
-          continue;
-        }
-        org.apache.solr.common.util.IOUtils.closeQuietly(fileSystem);
-        throw new RuntimeException(
-            "Problem creating directory: " + hdfsDirPath, e);
-      } catch (Exception e) {
-        org.apache.solr.common.util.IOUtils.closeQuietly(fileSystem);
-        throw new RuntimeException(
-            "Problem creating directory: " + hdfsDirPath, e);
       }
+    }
+    
+    try {
+      if (!fileSystem.exists(hdfsDirPath)) {
+        boolean success = fileSystem.mkdirs(hdfsDirPath);
+        if (!success) {
+          throw new RuntimeException("Could not create directory: " + hdfsDirPath);
+        }
+      }
+    } catch (Exception e) {
+      org.apache.solr.common.util.IOUtils.closeQuietly(fileSystem);
+      throw new RuntimeException("Problem creating directory: " + hdfsDirPath, e);
     }
   }
   
@@ -195,8 +190,7 @@ public class HdfsDirectory extends BaseDirectory {
   }
   
   static class HdfsIndexInput extends CustomBufferedIndexInput {
-    public static Logger LOG = LoggerFactory
-        .getLogger(HdfsIndexInput.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
     
     private final Path path;
     private final FSDataInputStream inputStream;

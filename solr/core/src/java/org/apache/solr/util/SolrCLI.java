@@ -22,6 +22,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.lang.invoke.MethodHandles;
 import java.net.ConnectException;
 import java.net.Socket;
 import java.net.SocketException;
@@ -70,6 +71,7 @@ import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.conn.ConnectTimeoutException;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.util.EntityUtils;
+import org.apache.lucene.util.Version;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -184,7 +186,7 @@ public class SolrCLI {
         throws Exception;
   }
   
-  public static Logger log = LoggerFactory.getLogger(SolrCLI.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   public static final String DEFAULT_SOLR_URL = "http://localhost:8983/solr";  
   public static final String ZK_HOST = "localhost:9983";
   
@@ -223,6 +225,12 @@ public class SolrCLI {
           + "Supported tools:\n");
       displayToolOptions(System.err);
       exit(1);
+    }
+
+    if (args.length == 1 && Arrays.asList("-v","-version","version").contains(args[0])) {
+      // Simple version tool, no need for its own class
+      System.out.println(Version.LATEST);
+      exit(0);
     }
 
     String configurerClassName = System.getProperty("solr.authentication.httpclient.configurer");
@@ -1566,7 +1574,7 @@ public class SolrCLI {
             throw new IllegalArgumentException("\n"+configSetDir.getAbsolutePath()+" doesn't contain a conf subdirectory or solrconfig.xml\n");
           }
         }
-        echo("\nSetup new core instance directory:\n" + coreInstanceDir.getAbsolutePath());
+        echo("\nCopying configuration to new core instance directory:\n" + coreInstanceDir.getAbsolutePath());
       }
 
       String createCoreUrl =
@@ -1578,12 +1586,17 @@ public class SolrCLI {
 
       echo("\nCreating new core '" + coreName + "' using command:\n" + createCoreUrl + "\n");
 
-      Map<String,Object> json = getJson(createCoreUrl);
-
-      CharArr arr = new CharArr();
-      new JSONWriter(arr, 2).write(json);
-      echo(arr.toString());
-      echo("\n");
+      try {
+        Map<String,Object> json = getJson(createCoreUrl);
+        CharArr arr = new CharArr();
+        new JSONWriter(arr, 2).write(json);
+        echo(arr.toString());
+        echo("\n");
+      } catch (Exception e) {
+        /* create-core failed, cleanup the copied configset before propagating the error. */
+        FileUtils.deleteDirectory(coreInstanceDir);
+        throw e;
+      }
     }
   } // end CreateCoreTool class
 

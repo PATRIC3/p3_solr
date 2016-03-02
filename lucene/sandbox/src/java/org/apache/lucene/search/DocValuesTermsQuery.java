@@ -32,6 +32,7 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LongBitSet;
+import org.apache.lucene.util.ToStringUtils;
 
 /**
  * A {@link Query} that only accepts documents whose
@@ -121,13 +122,10 @@ public class DocValuesTermsQuery extends Query {
 
   @Override
   public boolean equals(Object obj) {
-    if (obj instanceof DocValuesTermsQuery == false) {
+    if (super.equals(obj) == false) {
       return false;
     }
     DocValuesTermsQuery that = (DocValuesTermsQuery) obj;
-    if (!super.equals(obj)) {
-      return false;
-    }
     if (!field.equals(that.field)) {
       return false;
     }
@@ -136,7 +134,7 @@ public class DocValuesTermsQuery extends Query {
 
   @Override
   public int hashCode() {
-    return Objects.hash(field, Arrays.asList(terms), getBoost());
+    return 31 * super.hashCode() + Objects.hash(field, Arrays.asList(terms));
   }
 
   @Override
@@ -149,7 +147,7 @@ public class DocValuesTermsQuery extends Query {
     if (terms.length > 0) {
       sb.setLength(sb.length() - 2);
     }
-    return sb.append(']').toString();
+    return sb.append(']').append(ToStringUtils.boost(getBoost())).toString();
   }
 
   @Override

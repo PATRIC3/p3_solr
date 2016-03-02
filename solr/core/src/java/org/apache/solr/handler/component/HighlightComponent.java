@@ -187,7 +187,16 @@ public class HighlightComponent extends SearchComponent implements PluginInfoIni
             continue;
           }
           NamedList hl = (NamedList)srsp.getSolrResponse().getResponse().get("highlighting");
-          SolrPluginUtils.copyNamedListIntoArrayByDocPosInResponse(hl, rb.resultIds, arr);
+          for (int i=0; i<hl.size(); i++) {
+            String id = hl.getName(i);
+            ShardDoc sdoc = rb.resultIds.get(id);
+            // sdoc maybe null
+            if (sdoc == null) {
+                continue;
+            }
+            int idx = sdoc.positionInResponse;
+            arr[idx] = new NamedList.NamedListEntry<>(id, hl.getVal(i));
+          }
         }
       }
 

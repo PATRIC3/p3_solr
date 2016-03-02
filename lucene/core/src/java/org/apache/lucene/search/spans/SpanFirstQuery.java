@@ -58,11 +58,4 @@ public class SpanFirstQuery extends SpanPositionRangeQuery {
     return buffer.toString();
   }
 
-  @Override
-  public SpanFirstQuery clone() {
-    SpanFirstQuery spanFirstQuery = new SpanFirstQuery((SpanQuery) match.clone(), end);
-    spanFirstQuery.setBoost(getBoost());
-    return spanFirstQuery;
-  }
-
 }

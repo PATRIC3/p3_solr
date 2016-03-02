@@ -19,19 +19,9 @@ package org.apache.solr.handler.admin;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import com.google.common.collect.ImmutableMap;
@@ -97,7 +87,7 @@ import static org.apache.solr.common.params.CommonParams.PATH;
  * @since solr 1.3
  */
 public class CoreAdminHandler extends RequestHandlerBase {
-  protected static Logger log = LoggerFactory.getLogger(CoreAdminHandler.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   protected final CoreContainer coreContainer;
   protected final Map<String, Map<String, TaskObject>> requestStatusMap;
 
@@ -310,12 +300,16 @@ public class CoreAdminHandler extends RequestHandlerBase {
           if (zkController != null) {
             zkController.rejoinShardLeaderElection(req.getParams());
           } else {
-            log.warn("zkController is null in CoreAdminHandler.handleRequestInternal:REJOINLEADERELCTIONS. No action taken.");
+            log.warn("zkController is null in CoreAdminHandler.handleRequestInternal:REJOINLEADERELECTION. No action taken.");
           }
           break;
         case INVOKE:
           handleInvoke(req, rsp);
           break;
+        case FORCEPREPAREFORLEADERSHIP: {
+          this.handleForcePrepareForLeadership(req, rsp);
+          break;
+        }
       }
     }
     rsp.setHttpCaching(false);
@@ -885,7 +879,7 @@ public class CoreAdminHandler extends RequestHandlerBase {
           throw new SolrException(ErrorCode.SERVER_ERROR, "Sync Failed");
         }
       } else {
-        SolrException.log(log, "Cound not find core to call sync:" + cname);
+        SolrException.log(log, "Could not find core to call sync:" + cname);
       }
     } finally {
       // no recoveryStrat close for now
@@ -897,6 +891,32 @@ public class CoreAdminHandler extends RequestHandlerBase {
 
   }
   
+  protected void handleForcePrepareForLeadership(SolrQueryRequest req,
+      SolrQueryResponse rsp) throws IOException {
+    final SolrParams params = req.getParams();
+
+    log.info("I have been forcefully prepare myself for leadership.");
+    ZkController zkController = coreContainer.getZkController();
+    if (zkController == null) {
+      throw new SolrException(ErrorCode.BAD_REQUEST, "Only valid for SolrCloud");
+    }
+    
+    String cname = params.get(CoreAdminParams.CORE);
+    if (cname == null) {
+      throw new IllegalArgumentException(CoreAdminParams.CORE + " is required");
+    }
+    try (SolrCore core = coreContainer.getCore(cname)) {
+
+      // Setting the last published state for this core to be ACTIVE
+      if (core != null) {
+        core.getCoreDescriptor().getCloudDescriptor().setLastPublished(Replica.State.ACTIVE);
+        log.info("Setting the last published state for this core, {}, to {}", core.getName(), Replica.State.ACTIVE);
+      } else {
+        SolrException.log(log, "Could not find core: " + cname);
+      }
+    }
+  }
+
   protected void handleWaitForStateAction(SolrQueryRequest req,
       SolrQueryResponse rsp) throws IOException, InterruptedException, KeeperException {
     final SolrParams params = req.getParams();
@@ -1161,12 +1181,15 @@ public class CoreAdminHandler extends RequestHandlerBase {
       try (SolrCore core = cores.getCore(cname)) {
         if (core != null) {
           info.add(NAME, core.getName());
-          info.add("instanceDir", normalizePath(core.getResourceLoader().getInstanceDir()));
+          info.add("instanceDir", core.getResourceLoader().getInstancePath().toString());
           info.add("dataDir", normalizePath(core.getDataDir()));
           info.add("config", core.getConfigResource());
           info.add("schema", core.getSchemaResource());
-          info.add("startTime", new Date(core.getStartTime()));
-          info.add("uptime", System.currentTimeMillis() - core.getStartTime());
+          info.add("startTime", core.getStartTimeStamp());
+          info.add("uptime", core.getUptimeMs());
+          if (coreContainer.isZooKeeperAware()) {
+            info.add("lastPublished", core.getCoreDescriptor().getCloudDescriptor().getLastPublished().toString().toLowerCase(Locale.ROOT));
+          }
           if (isIndexInfoNeeded) {
             RefCounted<SolrIndexSearcher> searcher = core.getSearcher();
             try {

@@ -23,6 +23,7 @@ import java.util.List;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.ConjunctionDISI;
 import org.apache.lucene.search.TwoPhaseIterator;
+import org.apache.lucene.search.similarities.Similarity;
 
 /**
  * Common super class for multiple sub spans required in a document.
@@ -33,7 +34,8 @@ abstract class ConjunctionSpans extends Spans {
   boolean atFirstInCurrentDoc; // a first start position is available in current doc for nextStartPosition
   boolean oneExhaustedInCurrentDoc; // one subspans exhausted in current doc
 
-  ConjunctionSpans(List<Spans> subSpans) {
+  ConjunctionSpans(List<Spans> subSpans, SpanWeight weight, Similarity.SimScorer docScorer) {
+    super(weight, docScorer);
     if (subSpans.size() < 2) {
       throw new IllegalArgumentException("Less than 2 subSpans.size():" + subSpans.size());
     }
@@ -86,14 +88,34 @@ abstract class ConjunctionSpans extends Spans {
    */
   @Override
   public TwoPhaseIterator asTwoPhaseIterator() {
-    TwoPhaseIterator res = new TwoPhaseIterator(conjunction) {
+    float totalMatchCost = 0;
+    // Compute the matchCost as the total matchCost/positionsCostant of the sub spans.
+    for (Spans spans : subSpans) {
+      TwoPhaseIterator tpi = spans.asTwoPhaseIterator();
+      if (tpi != null) {
+        totalMatchCost += tpi.matchCost();
+      } else {
+        totalMatchCost += spans.positionsCost();
+      }
+    }
+    final float matchCost = totalMatchCost;
 
+    return new TwoPhaseIterator(conjunction) {
       @Override
       public boolean matches() throws IOException {
         return twoPhaseCurrentDocMatches();
       }
+
+      @Override
+      public float matchCost() {
+        return matchCost;
+      }
     };
-    return res;
+  }
+
+  @Override
+  public float positionsCost() {
+    throw new UnsupportedOperationException(); // asTwoPhaseIterator never returns null here.
   }
 
   public Spans[] getSubSpans() {

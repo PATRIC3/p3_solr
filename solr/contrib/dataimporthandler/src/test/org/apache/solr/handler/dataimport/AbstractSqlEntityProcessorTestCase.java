@@ -1,10 +1,14 @@
 package org.apache.solr.handler.dataimport;
 
 import junit.framework.Assert;
+import org.apache.solr.common.util.SuppressForbidden;
 import org.junit.After;
 import org.junit.Before;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.lang.invoke.MethodHandles;
 import java.nio.file.Files;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -40,6 +44,9 @@ import java.util.Set;
 
 public abstract class AbstractSqlEntityProcessorTestCase extends
     AbstractDIHJdbcTestCase {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   protected boolean underlyingDataModified;  
   protected boolean useSimpleCaches;
   protected boolean countryEntity;
@@ -445,6 +452,7 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
     return nameArr[0];
   }
   
+  @SuppressForbidden(reason = "Needs currentTimeMillis to set change time for SQL query")
   public IntChanges modifySomePeople() throws Exception {
     underlyingDataModified = true;
     int numberToChange = random().nextInt(people.length + 1);
@@ -519,7 +527,8 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
     c.addedKeys = addSet.toArray(new Integer[addSet.size()]);
     return c;
   }
-  
+
+  @SuppressForbidden(reason = "Needs currentTimeMillis to set change time for SQL query")
   public String[] modifySomeCountries() throws Exception {
     underlyingDataModified = true;
     int numberToChange = random().nextInt(countries.length + 1);
@@ -700,6 +709,8 @@ public abstract class AbstractSqlEntityProcessorTestCase extends
     log.debug(config);
     return config;
   }
+
+  @SuppressForbidden(reason = "Needs currentTimeMillis to set change time for SQL query")
   @Override
   protected void populateData(Connection conn) throws Exception {
     Statement s = null;

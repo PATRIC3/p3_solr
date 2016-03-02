@@ -22,14 +22,24 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.standard.StandardTokenizerFactory;
+import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
+import org.apache.lucene.queryparser.flexible.standard.StandardQueryParser;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.spell.Dictionary;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.Lookup.LookupResult;
 import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.IOUtils;
+import org.apache.solr.analysis.TokenizerChain;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.CloseHook;
 import org.apache.solr.core.SolrCore;
@@ -38,6 +48,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.apache.solr.common.params.CommonParams.NAME;
+import static org.apache.solr.spelling.suggest.fst.AnalyzingInfixLookupFactory.CONTEXTS_FIELD_NAME;
 
 /** 
  * Responsible for loading the lookup and dictionary Implementations specified by 
@@ -46,7 +57,7 @@ import static org.apache.solr.common.params.CommonParams.NAME;
  * {@link Dictionary}
  * */
 public class SolrSuggester implements Accountable {
-  private static final Logger LOG = LoggerFactory.getLogger(SolrSuggester.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   /** Name used when an unnamed suggester config is passed */
   public static final String DEFAULT_DICT_NAME = "default";
@@ -61,7 +72,7 @@ public class SolrSuggester implements Accountable {
   
   /** Fully-qualified class of the {@link Dictionary} implementation */
   public static final String DICTIONARY_IMPL = "dictionaryImpl";
-  
+
   /**
    * Name of the location where to persist the dictionary. If this location
    * is relative then the data will be stored under the core's dataDir. If this
@@ -81,8 +92,9 @@ public class SolrSuggester implements Accountable {
 
   private LookupFactory factory;
   private DictionaryFactory dictionaryFactory;
-  
-  /** 
+  private Analyzer contextFilterQueryAnalyzer;
+
+  /**
    * Uses the <code>config</code> and the <code>core</code> to initialize the underlying 
    * Lucene suggester
    * */
@@ -101,6 +113,9 @@ public class SolrSuggester implements Accountable {
       lookupImpl = LookupFactory.DEFAULT_FILE_BASED_DICT;
       LOG.info("No " + LOOKUP_IMPL + " parameter was provided falling back to " + lookupImpl);
     }
+
+    contextFilterQueryAnalyzer = new TokenizerChain(new StandardTokenizerFactory(Collections.EMPTY_MAP), null);
+
     // initialize appropriate lookup instance
     factory = core.getResourceLoader().newInstance(lookupImpl, LookupFactory.class);
     lookup = factory.create(config, core);
@@ -146,7 +161,7 @@ public class SolrSuggester implements Accountable {
         DictionaryFactory.DEFAULT_FILE_BASED_DICT;
       LOG.info("No " + DICTIONARY_IMPL + " parameter was provided falling back to " + dictionaryImpl);
     }
-    
+
     dictionaryFactory = core.getResourceLoader().newInstance(dictionaryImpl, DictionaryFactory.class);
     dictionaryFactory.setParams(config);
     LOG.info("Dictionary loaded with params: " + config);
@@ -212,9 +227,39 @@ public class SolrSuggester implements Accountable {
     }
     
     SuggesterResult res = new SuggesterResult();
-    List<LookupResult> suggestions = lookup.lookup(options.token, false, options.count);
+    List<LookupResult> suggestions;
+    if(options.contextFilterQuery == null){
+      //TODO: this path needs to be fixed to accept query params to override configs such as allTermsRequired, highlight
+      suggestions = lookup.lookup(options.token, false, options.count);
+    } else {
+      BooleanQuery query = parseContextFilterQuery(options.contextFilterQuery);
+      suggestions = lookup.lookup(options.token, query, options.count, options.allTermsRequired, options.highlight);
+      if(suggestions == null){
+        // Context filtering not supported/configured by lookup
+        // Silently ignore filtering and serve a result by querying without context filtering
+        LOG.debug("Context Filtering Query not supported by {}", lookup.getClass());
+        suggestions = lookup.lookup(options.token, false, options.count);
+      }
+    }
     res.add(getName(), options.token.toString(), suggestions);
     return res;
+  }
+
+  private BooleanQuery parseContextFilterQuery(String contextFilter) {
+    if(contextFilter == null){
+      return null;
+    }
+
+    Query query = null;
+    try {
+      query = new StandardQueryParser(contextFilterQueryAnalyzer).parse(contextFilter, CONTEXTS_FIELD_NAME);
+      if (query instanceof BooleanQuery) {
+        return (BooleanQuery) query;
+      }
+      return new BooleanQuery.Builder().add(query, BooleanClause.Occur.MUST).build();
+    } catch (QueryNodeException e) {
+      throw new IllegalArgumentException("Failed to parse query: " + query);
+    }
   }
 
   /** Returns the unique name of the suggester */

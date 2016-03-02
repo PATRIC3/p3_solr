@@ -15,9 +15,7 @@ package org.apache.lucene.queryparser.surround.query;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import java.io.IOException;
 
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.search.Query;
 
 abstract class RewriteQuery<SQ extends SrndQuery> extends Query {
@@ -33,9 +31,6 @@ abstract class RewriteQuery<SQ extends SrndQuery> extends Query {
     this.fieldName = fieldName;
     this.qf = qf;
   }
-
-  @Override
-  abstract public Query rewrite(IndexReader reader) throws IOException;
 
   @Override
   public String toString(String field) {
@@ -61,7 +56,7 @@ abstract class RewriteQuery<SQ extends SrndQuery> extends Query {
       return false;
     if (! getClass().equals(obj.getClass()))
       return false;
-    RewriteQuery other = (RewriteQuery)obj;
+    @SuppressWarnings("unchecked") RewriteQuery<SQ> other = (RewriteQuery<SQ>)obj;
     return super.equals(obj)
       && fieldName.equals(other.fieldName)
       && qf.equals(other.qf)

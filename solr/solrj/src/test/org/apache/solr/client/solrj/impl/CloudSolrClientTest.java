@@ -22,6 +22,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.lucene.util.TestUtil;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -29,6 +30,7 @@ import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
+import org.apache.solr.client.solrj.response.UpdateResponse;
 import org.apache.solr.cloud.AbstractFullDistribZkTestBase;
 import org.apache.solr.cloud.AbstractZkTestCase;
 import org.apache.solr.common.SolrDocumentList;
@@ -54,6 +56,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -66,7 +69,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 
-import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.NUM_SLICES;
 import static org.apache.solr.common.util.Utils.makeMap;
 import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
 import static org.apache.solr.common.cloud.ZkStateReader.REPLICATION_FACTOR;
@@ -77,7 +80,7 @@ import static org.apache.solr.common.cloud.ZkStateReader.REPLICATION_FACTOR;
  */
 @Slow
 public class CloudSolrClientTest extends AbstractFullDistribZkTestBase {
-  static Logger log = LoggerFactory.getLogger(CloudSolrClientTest.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static final String SOLR_HOME = getFile("solrj" + File.separator + "solr").getAbsolutePath();
 
@@ -110,12 +113,25 @@ public class CloudSolrClientTest extends AbstractFullDistribZkTestBase {
 
   @Test
   public void test() throws Exception {
+    testParallelUpdateQTime();
     checkCollectionParameters();
     allTests();
     stateVersionParamTest();
     customHttpClientTest();
     testOverwriteOption();
     preferLocalShardsTest();
+  }
+
+  private void testParallelUpdateQTime() throws Exception {
+    UpdateRequest req = new UpdateRequest();
+    for (int i=0; i<10; i++)  {
+      SolrInputDocument doc = new SolrInputDocument();
+      doc.addField("id", String.valueOf(TestUtil.nextInt(random(), 1000, 1100)));
+      req.add(doc);
+    }
+    UpdateResponse response = req.process(cloudClient);
+    // See SOLR-6547, we just need to ensure that no exception is thrown here
+    assertTrue(response.getQTime() >= 0);
   }
 
   private void testOverwriteOption() throws Exception, SolrServerException,

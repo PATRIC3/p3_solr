@@ -18,6 +18,7 @@
 package org.apache.solr.update;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -34,6 +35,7 @@ import org.apache.lucene.util.BitUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.NumericUtils;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.util.SuppressForbidden;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.SolrIndexSearcher;
@@ -43,7 +45,7 @@ import org.slf4j.LoggerFactory;
 
 public class VersionInfo {
 
-  public static Logger log = LoggerFactory.getLogger(VersionInfo.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static final String VERSION_FIELD="_version_";
 
@@ -149,15 +151,14 @@ public class VersionInfo {
   // Time-based lamport clock.  Good for introducing some reality into clocks (to the degree
   // that times are somewhat synchronized in the cluster).
   // Good if we want to relax some constraints to scale down to where only one node may be
-  // up at a time.  Possibly harder to detect missing messages (because versions are not contiguous.
-  long vclock;
-  long time;
+  // up at a time.  Possibly harder to detect missing messages (because versions are not contiguous).
+  private long vclock;
   private final Object clockSync = new Object();
 
-
+  @SuppressForbidden(reason = "need currentTimeMillis just for getting realistic version stamps, does not assume monotonicity")
   public long getNewClock() {
     synchronized (clockSync) {
-      time = System.currentTimeMillis();
+      long time = System.currentTimeMillis();
       long result = time << 20;
       if (result <= vclock) {
         result = vclock + 1;

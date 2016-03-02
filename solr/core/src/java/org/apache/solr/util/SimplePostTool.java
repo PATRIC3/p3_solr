@@ -60,6 +60,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.zip.GZIPInputStream;
@@ -110,7 +111,7 @@ public class SimplePostTool {
   private int currentDepth;
 
   static HashMap<String,String> mimeMap;
-  GlobFileFilter globFileFilter;
+  FileFilter fileFilter;
   // Backlog for crawling
   List<LinkedHashSet<URL>> backlog = new ArrayList<>();
   Set<URL> visited = new HashSet<>();
@@ -172,7 +173,7 @@ public class SimplePostTool {
    * This method delegates to the correct mode method.
    */
   public void execute() {
-    final long startTime = System.currentTimeMillis();
+    final RTimer timer = new RTimer();
     if (DATA_MODE_FILES.equals(mode) && args.length > 0) {
       doFilesMode();
     } else if(DATA_MODE_ARGS.equals(mode) && args.length > 0) {
@@ -188,8 +189,7 @@ public class SimplePostTool {
     
     if (commit)   commit();
     if (optimize) optimize();
-    final long endTime = System.currentTimeMillis();
-    displayTiming(endTime - startTime);
+    displayTiming((long) timer.getTime());
   }
   
   /**
@@ -286,7 +286,7 @@ public class SimplePostTool {
     this.recursive = recursive;
     this.delay = delay;
     this.fileTypes = fileTypes;
-    this.globFileFilter = getFileFilterFromFileTypes(fileTypes);
+    this.fileFilter = getFileFilterFromFileTypes(fileTypes);
     this.out = out;
     this.commit = commit;
     this.optimize = optimize;
@@ -487,9 +487,9 @@ public class SimplePostTool {
   private int postDirectory(File dir, OutputStream out, String type) {
     if(dir.isHidden() && !dir.getName().equals("."))
       return(0);
-    info("Indexing directory "+dir.getPath()+" ("+dir.listFiles(globFileFilter).length+" files, depth="+currentDepth+")");
+    info("Indexing directory "+dir.getPath()+" ("+dir.listFiles(fileFilter).length+" files, depth="+currentDepth+")");
     int posted = 0;
-    posted += postFiles(dir.listFiles(globFileFilter), out, type);
+    posted += postFiles(dir.listFiles(fileFilter), out, type);
     if(recursive > currentDepth) {
       for(File d : dir.listFiles()) {
         if(d.isDirectory()) {
@@ -965,7 +965,7 @@ public class SimplePostTool {
     if (null != dest) dest.flush();
   }
 
-  public GlobFileFilter getFileFilterFromFileTypes(String fileTypes) {
+  public FileFilter getFileFilterFromFileTypes(String fileTypes) {
     String glob;
     if(fileTypes.equals("*"))
       glob = ".*";

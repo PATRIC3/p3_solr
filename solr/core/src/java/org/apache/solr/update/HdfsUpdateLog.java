@@ -19,12 +19,11 @@ package org.apache.solr.update;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.hadoop.conf.Configuration;
@@ -40,6 +39,8 @@ import org.apache.solr.common.util.IOUtils;
 import org.apache.solr.core.PluginInfo;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.util.HdfsUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** @lucene.experimental */
 public class HdfsUpdateLog extends UpdateLog {
@@ -49,6 +50,8 @@ public class HdfsUpdateLog extends UpdateLog {
   private volatile Path tlogDir;
   private final String confDir;
   private Integer tlogDfsReplication;
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   // used internally by tests to track total count of failed tran log loads in init
   public static AtomicLong INIT_FAILED_LOGS_COUNT = new AtomicLong();
@@ -68,13 +71,26 @@ public class HdfsUpdateLog extends UpdateLog {
   // allows for it
   @Override
   public boolean dropBufferedUpdates() {
-    Future<RecoveryInfo> future = applyBufferedUpdates();
-    if (future != null) {
-      try {
-        future.get();
-      } catch (InterruptedException | ExecutionException e) {
-        throw new RuntimeException(e);
+    versionInfo.blockUpdates();
+    try {
+      if (state != State.BUFFERING) return false;
+      
+      if (log.isInfoEnabled()) {
+        log.info("Dropping buffered updates " + this);
       }
+      
+      // since we blocked updates, this synchronization shouldn't strictly be
+      // necessary.
+      synchronized (this) {
+        if (tlog != null) {
+          // tlog.rollback(recoveryInfo.positionOfStart);
+        }
+      }
+      
+      state = State.ACTIVE;
+      operationFlags &= ~FLAG_GAP;
+    } finally {
+      versionInfo.unblockUpdates();
     }
     return true;
   }

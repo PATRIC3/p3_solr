@@ -26,22 +26,25 @@ import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.update.processor.DocExpirationUpdateProcessorFactory; // jdoc
 import org.apache.solr.update.processor.DocExpirationUpdateProcessorFactoryTest;
 
+import org.apache.solr.util.TimeOut;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.HashMap;
+import java.util.concurrent.TimeUnit;
 
 /** Test of {@link DocExpirationUpdateProcessorFactory} in a cloud setup */
 @Slow // Has to do some sleeping to wait for a future expiration
 public class DistribDocExpirationUpdateProcessorTest extends AbstractFullDistribZkTestBase {
 
-  public static Logger log = LoggerFactory.getLogger(DistribDocExpirationUpdateProcessorTest.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public DistribDocExpirationUpdateProcessorTest() {
     configString = DocExpirationUpdateProcessorFactoryTest.CONFIG_XML;
@@ -171,10 +174,10 @@ public class DistribDocExpirationUpdateProcessorTest extends AbstractFullDistrib
                                 SolrParams params)
       throws SolrServerException, InterruptedException, IOException {
 
-    final long giveUpAfter = System.currentTimeMillis() + (1000L * maxTimeLimitSeconds);
+    final TimeOut timeout = new TimeOut(maxTimeLimitSeconds, TimeUnit.SECONDS);
     long numFound = cloudClient.query(params).getResults().getNumFound();
-    while (0L < numFound && System.currentTimeMillis() < giveUpAfter) {
-      Thread.sleep(Math.min(5000, giveUpAfter - System.currentTimeMillis()));
+    while (0L < numFound && ! timeout.hasTimedOut()) {
+      Thread.sleep(Math.max(1, Math.min(5000, timeout.timeLeft(TimeUnit.MILLISECONDS))));
       numFound = cloudClient.query(params).getResults().getNumFound();
     }
     assertEquals("Give up waiting for no results: " + params,

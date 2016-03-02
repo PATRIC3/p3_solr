@@ -1,5 +1,7 @@
 package org.apache.solr.update.processor;
 
+import java.lang.invoke.MethodHandles;
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -42,7 +44,7 @@ import org.slf4j.LoggerFactory;
  */
 public class AtomicUpdateDocumentMerger {
   
-  private final static Logger log = LoggerFactory.getLogger(AtomicUpdateDocumentMerger.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   protected final IndexSchema schema;
   protected final SchemaField idField;
@@ -124,11 +126,13 @@ public class AtomicUpdateDocumentMerger {
   }
   
   protected void doSet(SolrInputDocument toDoc, SolrInputField sif, Object fieldVal) {
-    toDoc.setField(sif.getName(), fieldVal, sif.getBoost());
+    SchemaField sf = schema.getField(sif.getName());
+    toDoc.setField(sif.getName(), sf.getType().toNativeType(fieldVal), sif.getBoost());
   }
 
   protected void doAdd(SolrInputDocument toDoc, SolrInputField sif, Object fieldVal) {
-    toDoc.addField(sif.getName(), fieldVal, sif.getBoost());
+    SchemaField sf = schema.getField(sif.getName());
+    toDoc.addField(sif.getName(), sf.getType().toNativeType(fieldVal), sif.getBoost());
   }
 
   protected void doInc(SolrInputDocument toDoc, SolrInputField sif, Object fieldVal) {
@@ -159,18 +163,19 @@ public class AtomicUpdateDocumentMerger {
       toDoc.setField(sif.getName(),  result, sif.getBoost());
     }
   }
-  
+
   protected void doRemove(SolrInputDocument toDoc, SolrInputField sif, Object fieldVal) {
     final String name = sif.getName();
     SolrInputField existingField = toDoc.get(name);
-    if(existingField == null) return;
+    if (existingField == null) return;
     SchemaField sf = schema.getField(name);
 
     if (sf != null) {
       final Collection<Object> original = existingField.getValues();
       if (fieldVal instanceof Collection) {
-        for (Object object : (Collection)fieldVal){
-          original.remove(sf.getType().toNativeType(object));
+        for (Object object : (Collection) fieldVal) {
+          Object o = sf.getType().toNativeType(object);
+          original.remove(o);
         }
       } else {
         original.remove(sf.getType().toNativeType(fieldVal));

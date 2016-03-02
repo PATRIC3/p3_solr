@@ -26,18 +26,16 @@ import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.CommonParams;
+import org.apache.solr.util.TimeOut;
 import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 abstract public class SolrExampleTestsBase extends SolrJettyTestBase {
-  private static Logger log = LoggerFactory
-      .getLogger(SolrExampleTestsBase.class);
   
   /**
    * query the example
@@ -149,7 +147,7 @@ abstract public class SolrExampleTestsBase extends SolrJettyTestBase {
     Assert.assertEquals(1, rsp.getResults().getNumFound());
     
     // check if the doc has been deleted every 250 ms for 30 seconds
-    long timeout = System.currentTimeMillis() + 30000;
+    TimeOut timeout = new TimeOut(30, TimeUnit.SECONDS);
     do {
       Thread.sleep(250); // wait 250 ms
       
@@ -157,7 +155,7 @@ abstract public class SolrExampleTestsBase extends SolrJettyTestBase {
       if (rsp.getResults().getNumFound() == 0) {
         return;
       }
-    } while (System.currentTimeMillis() < timeout);
+    } while (! timeout.hasTimedOut());
     
     Assert.fail("commitWithin failed to commit");
   }

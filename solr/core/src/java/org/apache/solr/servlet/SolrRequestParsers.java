@@ -57,16 +57,13 @@ import org.apache.solr.core.SolrCore;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequestBase;
 import org.apache.solr.util.RTimer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.solr.util.RTimerTree;
 
 import static org.apache.solr.common.params.CommonParams.PATH;
 
 
 public class SolrRequestParsers 
 {
-  final static Logger log = LoggerFactory.getLogger(SolrRequestParsers.class);
-  
   // Should these constants be in a more public place?
   public static final String MULTIPART = "multipart";
   public static final String FORMDATA = "formdata";
@@ -140,14 +137,14 @@ public class SolrRequestParsers
     parsers.put( "", standard );
   }
 
-  private static RTimer getRequestTimer(HttpServletRequest req)
+  private static RTimerTree getRequestTimer(HttpServletRequest req)
   {
     final Object reqTimer = req.getAttribute(REQUEST_TIMER_SERVLET_ATTRIBUTE);
-    if (reqTimer != null && reqTimer instanceof RTimer) {
-      return ((RTimer) reqTimer);
+    if (reqTimer != null && reqTimer instanceof RTimerTree) {
+      return ((RTimerTree) reqTimer);
     }
 
-    return new RTimer();
+    return new RTimerTree();
   }
 
   public SolrQueryRequest parse( SolrCore core, String path, HttpServletRequest req ) throws Exception
@@ -173,11 +170,11 @@ public class SolrRequestParsers
   }
 
   public SolrQueryRequest buildRequestFrom(SolrCore core, SolrParams params, Collection<ContentStream> streams) throws Exception {
-    return buildRequestFrom(core, params, streams, new RTimer(), null);
+    return buildRequestFrom(core, params, streams, new RTimerTree(), null);
   }
 
   private SolrQueryRequest buildRequestFrom(SolrCore core, SolrParams params, Collection<ContentStream> streams,
-                                            RTimer requestTimer, final HttpServletRequest req) throws Exception {
+                                            RTimerTree requestTimer, final HttpServletRequest req) throws Exception {
     // The content type will be applied to all streaming content
     String contentType = params.get( CommonParams.STREAM_CONTENTTYPE );
       
