@@ -50,7 +50,7 @@ import org.junit.Test;
 import static org.apache.solr.cloud.ReplicaPropertiesBase.verifyUniqueAcrossCollection;
 
 @LuceneTestCase.Slow
-public class CollectionsAPISolrJTests extends AbstractFullDistribZkTestBase {
+public class CollectionsAPISolrJTest extends AbstractFullDistribZkTestBase {
 
   @Test
   public void test() throws Exception {
@@ -78,6 +78,7 @@ public class CollectionsAPISolrJTests extends AbstractFullDistribZkTestBase {
             .setConfigName("conf1")
             .setRouterField("myOwnField")
             .setStateFormat(1);
+
     CollectionAdminResponse response = createCollectionRequest.process(cloudClient);
 
     assertEquals(0, response.getStatus());

@@ -14,11 +14,10 @@
 # limitations under the License.
 
 import argparse
-import io
-import os
 import re
 import subprocess
 import sys
+from enum import Enum
 
 class Version(object):
   def __init__(self, major, minor, bugfix, prerelease):
@@ -95,7 +94,12 @@ def update_file(filename, line_re, edit):
     f.write(''.join(buffer))
   return True
 
-# branch types are "release", "stable" and "trunk"
+# branch types are "release", "stable" and "major"
+class BranchType(Enum):
+  major   = 1
+  stable  = 2
+  release = 3
+
 def find_branch_type():
   output = subprocess.check_output('git status', shell=True)
   for line in output.split(b'\n'):
@@ -106,21 +110,16 @@ def find_branch_type():
     raise Exception('git status missing branch name')
 
   if branchName == b'master':
-    return 'master'
-  if branchName.startswith(b'branch_'):
-    return 'stable'
-  if branchName.startswith(b'lucene_solr_'):
-    return 'release'
+    return BranchType.major
+  if re.match(r'branch_(\d+)x', branchName.decode('UTF-8')):
+    return BranchType.stable
+  if re.match(r'branch_(\d+)_(\d+)', branchName.decode('UTF-8')):
+    return BranchType.release
   raise Exception('Cannot run bumpVersion.py on feature branch')
 
 version_prop_re = re.compile('version\.base=(.*)')
 def find_current_version():
   return version_prop_re.search(open('lucene/version.properties').read()).group(1)
-
-def merge_change(changeid, repo):
-  print('\nMerging downstream change %d...' % changeid, end='')
-  run('svn merge -c %d --record-only %s' % (changeid, repo))
-  print('done')
 
 if __name__ == '__main__':
   print('This is only a support module, it cannot be run')

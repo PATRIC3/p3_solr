@@ -75,6 +75,8 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.common.util.Utils;
+import org.apache.solr.core.CloudConfig;
+import org.apache.solr.handler.admin.ClusterStatus;
 import org.apache.solr.handler.component.ShardHandler;
 import org.apache.solr.handler.component.ShardHandlerFactory;
 import org.apache.solr.handler.component.ShardRequest;
@@ -1308,13 +1310,18 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
       
       // TODO: change this to handle sharding a slice into > 2 sub-shards.
 
+
+      Map<Position, String> nodeMap = identifyNodes(clusterState,
+          new ArrayList<>(clusterState.getLiveNodes()),
+          new ZkNodeProps(collection.getProperties()),
+          subSlices, repFactor - 1);
+
       List<Map<String, Object>> replicas = new ArrayList<>((repFactor - 1) * 2);
-      for (int i = 1; i <= subSlices.size(); i++) {
-        Collections.shuffle(nodeList, RANDOM);
-        String sliceName = subSlices.get(i - 1);
-        for (int j = 2; j <= repFactor; j++) {
-          String subShardNodeName = nodeList.get((repFactor * (i - 1) + (j - 2)) % nodeList.size());
-          String shardName = collectionName + "_" + sliceName + "_replica" + (j);
+
+        for (Map.Entry<Position, String> entry : nodeMap.entrySet()) {
+          String sliceName = entry.getKey().shard;
+          String subShardNodeName = entry.getValue();
+          String shardName = collectionName + "_" + sliceName + "_replica" + (entry.getKey().index);
 
           log.info("Creating replica shard " + shardName + " as part of slice " + sliceName + " of collection "
               + collectionName + " on " + subShardNodeName);
@@ -1349,7 +1356,6 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
 
           replicas.add(propMap);
         }
-      }
 
       // we must set the slice state into recovery before actually creating the replica cores
       // this ensures that the logic inside Overseer to update sub-shard state to 'active'
@@ -1845,6 +1851,7 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
     String replica = zkStateReader.getBaseUrlForNodeName(nodeName);
     sreq.shards = new String[]{replica};
     sreq.actualShards = sreq.shards;
+    sreq.nodeName = nodeName;
     sreq.params = params;
 
     shardHandler.submit(sreq, replica, sreq.params);
@@ -1885,6 +1892,7 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
 
   private void createCollection(ClusterState clusterState, ZkNodeProps message, NamedList results) throws KeeperException, InterruptedException {
     final String collectionName = message.getStr(NAME);
+    log.info("Create collection {}", collectionName);
     if (clusterState.hasCollection(collectionName)) {
       throw new SolrException(ErrorCode.BAD_REQUEST, "collection already exists: " + collectionName);
     }
@@ -1995,7 +2003,7 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
 
       log.info(formatString("Creating SolrCores for new collection {0}, shardNames {1} , replicationFactor : {2}",
           collectionName, shardNames, repFactor));
-      Map<String ,ShardRequest> coresToCreate = new LinkedHashMap<>();
+      Map<String,ShardRequest> coresToCreate = new LinkedHashMap<>();
       for (Map.Entry<Position, String> e : positionVsNodes.entrySet()) {
         Position position = e.getKey();
         String nodeName = e.getValue();
@@ -2036,6 +2044,7 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
         addPropertyParams(message, params);
 
         ShardRequest sreq = new ShardRequest();
+        sreq.nodeName = nodeName;
         params.set("qt", adminPath);
         sreq.purpose = 1;
         sreq.shards = new String[]{baseUrl};
@@ -2060,10 +2069,16 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
       }
 
       processResponses(results, shardHandler, false, null, async, requestMap, Collections.<String>emptySet());
-
-      log.debug("Finished create command on all shards for collection: "
-          + collectionName);
-
+      if(results.get("failure") != null && ((SimpleOrderedMap)results.get("failure")).size() > 0) {
+        // Let's cleanup as we hit an exception
+        // We shouldn't be passing 'results' here for the cleanup as the response would then contain 'success'
+        // element, which may be interpreted by the user as a positive ack
+        cleanupCollection(collectionName, new NamedList());
+        log.info("Cleaned up  artifacts for failed create collection for [" + collectionName + "]");
+      } else {
+        log.debug("Finished create command on all shards for collection: "
+            + collectionName);
+      }
     } catch (SolrException ex) {
       throw ex;
     } catch (Exception ex) {
@@ -2071,13 +2086,22 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
     }
   }
 
+
+  private void cleanupCollection(String collectionName, NamedList results) throws KeeperException, InterruptedException {
+    log.error("Cleaning up collection [" + collectionName + "]." );
+    Map<String, Object> props = makeMap(
+        Overseer.QUEUE_OPERATION, DELETE.toLower(),
+        NAME, collectionName);
+    deleteCollection(new ZkNodeProps(props), results);
+  }
+
   private Map<Position, String> identifyNodes(ClusterState clusterState,
                                               List<String> nodeList,
                                               ZkNodeProps message,
                                               List<String> shardNames,
                                               int repFactor) throws IOException {
-    List<Map> maps = (List) message.get("rule");
-    if (maps == null) {
+    List<Map> rulesMap = (List) message.get("rule");
+    if (rulesMap == null) {
       int i = 0;
       Map<Position, String> result = new HashMap<>();
       for (String aShard : shardNames) {
@@ -2090,7 +2114,7 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
     }
 
     List<Rule> rules = new ArrayList<>();
-    for (Object map : maps) rules.add(new Rule((Map) map));
+    for (Object map : rulesMap) rules.add(new Rule((Map) map));
 
     Map<String, Integer> sharVsReplicaCount = new HashMap<>();
 
@@ -2155,10 +2179,13 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
           "Collection: " + collection + " shard: " + shard + " does not exist");
     }
     ShardHandler shardHandler = shardHandlerFactory.getShardHandler();
+    boolean skipCreateReplicaInClusterState = message.getBool(SKIP_CREATE_REPLICA_IN_CLUSTER_STATE, false);
 
     // Kind of unnecessary, but it does put the logic of whether to override maxShardsPerNode in one place.
-    node = getNodesForNewReplicas(clusterState, collection, shard, 1, node,
-        overseer.getZkController().getCoreContainer()).get(0).nodeName;
+    if (!skipCreateReplicaInClusterState) {
+      node = getNodesForNewReplicas(clusterState, collection, shard, 1, node,
+          overseer.getZkController().getCoreContainer()).get(0).nodeName;
+    }
     log.info("Node not provided, Identified {} for creating new replica", node);
 
     if (!clusterState.liveNodesContain(node)) {
@@ -2166,7 +2193,7 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
     }
     if (coreName == null) {
       coreName = Assign.buildCoreName(coll, shard);
-    } else if (!message.getBool(SKIP_CREATE_REPLICA_IN_CLUSTER_STATE, false)) {
+    } else if (!skipCreateReplicaInClusterState) {
       //Validate that the core name is unique in that collection
       for (Slice slice : coll.getSlices()) {
         for (Replica replica : slice.getReplicas()) {
@@ -2181,7 +2208,7 @@ public class OverseerCollectionMessageHandler implements OverseerMessageHandler 
     ModifiableSolrParams params = new ModifiableSolrParams();
     
     if (!Overseer.isLegacy(zkStateReader.getClusterProps())) {
-      if (!message.getBool(SKIP_CREATE_REPLICA_IN_CLUSTER_STATE, false)) {
+      if (!skipCreateReplicaInClusterState) {
         ZkNodeProps props = new ZkNodeProps(Overseer.QUEUE_OPERATION, ADDREPLICA.toLower(), ZkStateReader.COLLECTION_PROP,
             collection, ZkStateReader.SHARD_ID_PROP, shard, ZkStateReader.CORE_NAME_PROP, coreName,
             ZkStateReader.STATE_PROP, Replica.State.DOWN.toString(), ZkStateReader.BASE_URL_PROP,

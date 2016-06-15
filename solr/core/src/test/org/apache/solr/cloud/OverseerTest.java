@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -121,6 +122,13 @@ public class OverseerTest extends SolrTestCaseJ4 {
     }
 
     public void close() {
+      for (ElectionContext ec : electionContext.values()) {
+        try {
+          ec.cancelElection();
+        } catch (Exception e) {
+          log.warn(String.format(Locale.ROOT, "Error cancelling election for %s", ec.id), e);
+        }
+      }
       deleteNode(ZkStateReader.LIVE_NODES_ZKNODE + "/" + nodeName);
       zkClient.close();
     }
@@ -157,6 +165,11 @@ public class OverseerTest extends SolrTestCaseJ4 {
         for (int i = 0; i < 120; i++) {
           String shardId = getShardId(collection, coreNodeName);
           if (shardId != null) {
+            ElectionContext prevContext = electionContext.get(coreName);
+            if (prevContext != null) {
+              prevContext.cancelElection();
+            }
+
             try {
               zkClient.makePath("/collections/" + collection + "/leader_elect/"
                   + shardId + "/election", true);
@@ -172,6 +185,7 @@ public class OverseerTest extends SolrTestCaseJ4 {
                 elector, shardId, collection, nodeName + "_" + coreName, props,
                 zkStateReader);
             elector.setup(ctx);
+            electionContext.put(coreName, ctx);
             elector.joinElection(ctx, false);
             return shardId;
           }

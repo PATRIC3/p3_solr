@@ -14,12 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.lucene;
 
+package org.apache.lucene;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -36,8 +38,10 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.PrintStreamInfoStream;
+import org.junit.AfterClass;
 
 /**
  * Holds tests cases to verify external APIs are accessible
@@ -48,6 +52,7 @@ public class TestMergeSchedulerExternal extends LuceneTestCase {
   volatile boolean mergeCalled;
   volatile boolean mergeThreadCreated;
   volatile boolean excCalled;
+  volatile static InfoStream infoStream;
 
   private class MyMergeScheduler extends ConcurrentMergeScheduler {
 
@@ -69,6 +74,9 @@ public class TestMergeSchedulerExternal extends LuceneTestCase {
     @Override
     protected void handleMergeException(Directory dir, Throwable t) {
       excCalled = true;
+      if (infoStream.isEnabled("IW")) {
+        infoStream.message("IW", "TEST: now handleMergeException");
+      }
     }
 
     @Override
@@ -84,10 +92,22 @@ public class TestMergeSchedulerExternal extends LuceneTestCase {
       StackTraceElement[] trace = new Exception().getStackTrace();
       for (int i = 0; i < trace.length; i++) {
         if ("doMerge".equals(trace[i].getMethodName())) {
-          throw new IOException("now failing during merge");
+          IOException ioe = new IOException("now failing during merge");
+          StringWriter sw = new StringWriter();
+          PrintWriter pw = new PrintWriter(sw);
+          ioe.printStackTrace(pw);
+          if (infoStream.isEnabled("IW")) {
+            infoStream.message("IW", "TEST: now throw exc:\n" + sw.toString());
+          }
+          throw ioe;
         }
       }
     }
+  }
+
+  @AfterClass
+  public static void afterClass() {
+    infoStream = null;
   }
 
   public void testSubclassConcurrentMergeScheduler() throws IOException {
@@ -104,7 +124,8 @@ public class TestMergeSchedulerExternal extends LuceneTestCase {
       .setMergePolicy(newLogMergePolicy());
 
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    iwc.setInfoStream(new PrintStreamInfoStream(new PrintStream(baos, true, IOUtils.UTF_8)));
+    infoStream = new PrintStreamInfoStream(new PrintStream(baos, true, IOUtils.UTF_8));
+    iwc.setInfoStream(infoStream);
 
     IndexWriter writer = new IndexWriter(dir, iwc);
     LogMergePolicy logMP = (LogMergePolicy) writer.getConfig().getMergePolicy();

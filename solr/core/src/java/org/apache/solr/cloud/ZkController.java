@@ -184,7 +184,8 @@ public final class ZkController {
   private boolean zkRunOnly = Boolean.getBoolean("zkRunOnly"); // expert
 
   // keeps track of a list of objects that need to know a new ZooKeeper session was created after expiration occurred
-  private List<OnReconnect> reconnectListeners = new ArrayList<OnReconnect>();
+  // ref is held as a HashSet since we clone the set before notifying to avoid synchronizing too long
+  private HashSet<OnReconnect> reconnectListeners = new HashSet<OnReconnect>();
 
   private class RegisterCoreAsync implements Callable {
 
@@ -202,6 +203,22 @@ public final class ZkController {
       log.info("Registering core {} afterExpiration? {}", descriptor.getName(), afterExpiration);
       register(descriptor.getName(), descriptor, recoverReloadedCores, afterExpiration);
       return descriptor;
+    }
+  }
+
+  // notifies registered listeners after the ZK reconnect in the background
+  private class OnReconnectNotifyAsync implements Callable {
+
+    private final OnReconnect listener;
+
+    OnReconnectNotifyAsync(OnReconnect listener) {
+      this.listener = listener;
+    }
+
+    @Override
+    public Object call() throws Exception {
+      listener.command();
+      return null;
     }
   }
 
@@ -291,8 +308,8 @@ public final class ZkController {
 
               List<CoreDescriptor> descriptors = registerOnReconnect.getCurrentDescriptors();
               // re register all descriptors
+              ExecutorService executorService = (cc != null) ? cc.getCoreZkRegisterExecutorService() : null;
               if (descriptors != null) {
-                ExecutorService executorService = (cc != null) ? cc.getCoreZkRegisterExecutorService() : null;
                 for (CoreDescriptor descriptor : descriptors) {
                   // TODO: we need to think carefully about what happens when it
                   // was
@@ -315,17 +332,23 @@ public final class ZkController {
               }
 
               // notify any other objects that need to know when the session was re-connected
+              HashSet<OnReconnect> clonedListeners;
               synchronized (reconnectListeners) {
-                for (OnReconnect listener : reconnectListeners) {
-                  try {
+                clonedListeners = (HashSet<OnReconnect>)reconnectListeners.clone();
+              }
+              // the OnReconnect operation can be expensive per listener, so do that async in the background
+              for (OnReconnect listener : clonedListeners) {
+                try {
+                  if (executorService != null) {
+                    executorService.submit(new OnReconnectNotifyAsync(listener));
+                  } else {
                     listener.command();
-                  } catch (Exception exc) {
-                    // not much we can do here other than warn in the log
-                    log.warn("Error when notifying OnReconnect listener " + listener + " after session re-connected.", exc);
                   }
+                } catch (Exception exc) {
+                  // not much we can do here other than warn in the log
+                  log.warn("Error when notifying OnReconnect listener " + listener + " after session re-connected.", exc);
                 }
               }
-
             } catch (InterruptedException e) {
               // Restore the interrupted status
               Thread.currentThread().interrupt();
@@ -1502,11 +1525,13 @@ public final class ZkController {
       }
 
       publish(cd, Replica.State.DOWN, false, true);
-      DocCollection collection = zkStateReader.getClusterState().getCollectionOrNull(cd.getCloudDescriptor().getCollectionName());
-      if (collection != null) {
-        log.info("Registering watch for collection {}", cd.getCloudDescriptor().getCollectionName());
-        zkStateReader.addCollectionWatch(cd.getCloudDescriptor().getCollectionName());
-      }
+      String collectionName = cd.getCloudDescriptor().getCollectionName();
+      DocCollection collection = zkStateReader.getClusterState().getCollectionOrNull(collectionName);
+      log.info(collection == null ?
+              "Collection {} not visible yet, but flagging it so a watch is registered when it becomes visible" :
+              "Registering watch for collection {}",
+          collectionName);
+      zkStateReader.addCollectionWatch(collectionName);
     } catch (KeeperException e) {
       log.error("", e);
       throw new ZooKeeperException(SolrException.ErrorCode.SERVER_ERROR, "", e);
@@ -2169,7 +2194,7 @@ public final class ZkController {
     // we use this version and multi to ensure *only* the current zk registered leader
     // for a shard can put a replica into LIR
     
-    Integer leaderZkNodeParentVersion = ((ShardLeaderElectionContextBase)context).leaderZkNodeParentVersion;
+    Integer leaderZkNodeParentVersion = ((ShardLeaderElectionContextBase)context).getLeaderZkNodeParentVersion();
     
     // TODO: should we do this optimistically to avoid races?
     if (zkClient.exists(znodePath, retryOnConnLoss)) {
@@ -2224,8 +2249,35 @@ public final class ZkController {
     if (listener != null) {
       synchronized (reconnectListeners) {
         reconnectListeners.add(listener);
+        log.info("Added new OnReconnect listener "+listener);
       }
     }
+  }
+
+  /**
+   * Removed a previously registered OnReconnect listener, such as when a core is removed or reloaded.
+   */
+  public void removeOnReconnectListener(OnReconnect listener) {
+    if (listener != null) {
+      boolean wasRemoved;
+      synchronized (reconnectListeners) {
+        wasRemoved = reconnectListeners.remove(listener);
+      }
+      if (wasRemoved) {
+        log.info("Removed OnReconnect listener "+listener);
+      } else {
+        log.warn("Was asked to remove OnReconnect listener "+listener+
+            ", but remove operation did not find it in the list of registered listeners.");
+      }
+    }
+  }
+
+  Set<OnReconnect> getCurrentOnReconnectListeners() {
+    HashSet<OnReconnect> clonedListeners;
+    synchronized (reconnectListeners) {
+      clonedListeners = (HashSet<OnReconnect>)reconnectListeners.clone();
+    }
+    return clonedListeners;
   }
 
   /**

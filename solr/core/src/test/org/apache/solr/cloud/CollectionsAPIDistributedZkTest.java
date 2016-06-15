@@ -26,8 +26,19 @@ import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
@@ -39,7 +50,6 @@ import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.impl.CloudSolrClient;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
-import org.apache.solr.client.solrj.impl.HttpSolrClient.RemoteSolrException;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.client.solrj.request.CoreAdminRequest.Create;
@@ -70,6 +80,7 @@ import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrInfoMBean.Category;
 import org.apache.solr.util.TestInjection;
 import org.apache.solr.util.TimeOut;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,6 +103,11 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
 
   // we randomly use a second config set rather than just one
   private boolean secondConfigSet = random().nextBoolean();
+  
+  @BeforeClass
+  public static void beforeCollectionsAPIDistributedZkTest() {
+    TestInjection.randomDelayInCoreCreation = "true:20";
+  }
   
   @Override
   public void distribSetUp() throws Exception {
@@ -155,6 +171,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
   @Test
   @ShardsFixed(num = 4)
   public void test() throws Exception {
+    waitForRecoveriesToFinish(false); // we need to fix no core tests still
     testNodesUsedByCreate();
     testNoConfigSetExist();
     testCollectionsAPI();
@@ -368,6 +385,14 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
 
   }
 
+  private NamedList<Object> makeRequest(String baseUrl, SolrRequest request, int socketTimeout)
+      throws SolrServerException, IOException {
+    try (SolrClient client = createNewSolrClient("", baseUrl)) {
+      ((HttpSolrClient) client).setSoTimeout(socketTimeout);
+      return client.request(request);
+    }
+  }
+
   private NamedList<Object> makeRequest(String baseUrl, SolrRequest request)
       throws SolrServerException, IOException {
     try (SolrClient client = createNewSolrClient("", baseUrl)) {
@@ -518,8 +543,7 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
     params.set(OverseerCollectionMessageHandler.CREATE_NODE_SET, nn1 + "," + nn2);
     request = new QueryRequest(params);
     request.setPath("/admin/collections");
-    gotExp = false;
-    NamedList<Object> resp = makeRequest(baseUrl, request);;
+    NamedList<Object> resp = makeRequest(baseUrl, request, 60000);
     
     SimpleOrderedMap success = (SimpleOrderedMap) resp.get("success");
     SimpleOrderedMap failure = (SimpleOrderedMap) resp.get("failure");
@@ -1267,8 +1291,9 @@ public class CollectionsAPIDistributedZkTest extends AbstractFullDistribZkTestBa
         MAX_SHARDS_PER_NODE, maxShardsPerNode,
         NUM_SLICES, numShards);
     Map<String,List<Integer>> collectionInfos = new HashMap<>();
-    createCollection(collectionInfos, COLL_NAME, props, client,"conf1");
-    waitForRecoveriesToFinish(COLL_NAME, false);
+    createCollection(collectionInfos, COLL_NAME, props, client, "conf1");
+    assertAllActive(COLL_NAME, getCommonCloudSolrClient().getZkStateReader());
+    
   }
   
   private void clusterPropTest() throws Exception {

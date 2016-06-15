@@ -3,6 +3,19 @@ Lucene Change Log
 For more information on past and future Lucene versions, please see:
 http://s.apache.org/luceneversions
 
+======================= Lucene 5.5.1 =======================
+
+Bug fixes
+
+* LUCENE-7112: WeightedSpanTermExtractor.extractUnknownQuery is only called
+  on queries that could not be extracted. (Adrien Grand)
+
+* LUCENE-7188: remove incorrect sanity check in NRTCachingDirectory.listAll()
+  that led to IllegalStateException being thrown when nothing was wrong.
+  (David Smiley, yonik)  
+
+* LUCENE-7209: Fixed explanations of FunctionScoreQuery. (Adrien Grand)
+
 
 ======================= Lucene 5.5.0 =======================
 

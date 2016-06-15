@@ -16,14 +16,26 @@
  */
 package org.apache.solr.cloud;
 
+import java.io.IOException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.cloud.ConnectionManager;
+import org.apache.solr.common.cloud.DefaultConnectionStrategy;
+import org.apache.solr.common.cloud.OnReconnect;
 import org.apache.solr.common.cloud.SolrZkClient;
+import org.apache.solr.common.cloud.ZkClientConnectionStrategy;
+import org.apache.solr.common.cloud.ZkClientConnectionStrategy.ZkUpdate;
+import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.Watcher.Event.EventType;
 import org.apache.zookeeper.Watcher.Event.KeeperState;
 import org.junit.Ignore;
+import org.junit.Test;
 
 @Slow
 public class ConnectionManagerTest extends SolrTestCaseJ4 {
@@ -106,6 +118,64 @@ public class ConnectionManagerTest extends SolrTestCaseJ4 {
       }
     } finally {
       server.shutdown();
+    }
+  }
+  
+  @Test
+  public void testReconnectWhenZkDisappeared() throws Exception {
+    ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(new DefaultSolrThreadFactory("connectionManagerTest"));
+    
+    // setup a SolrZkClient to do some getBaseUrlForNodeName testing
+    String zkDir = createTempDir("zkData").toFile().getAbsolutePath();
+
+    ZkTestServer server = new ZkTestServer(zkDir);
+    try {
+      server.run();
+
+      AbstractZkTestCase.tryCleanSolrZkNode(server.getZkHost());
+      AbstractZkTestCase.makeSolrZkNode(server.getZkHost());
+      
+      MockZkClientConnectionStrategy strat = new MockZkClientConnectionStrategy();
+      SolrZkClient zkClient = new SolrZkClient(server.getZkAddress(), TIMEOUT, strat , null);
+      ConnectionManager cm = zkClient.getConnectionManager();
+      
+      try {
+        assertFalse(cm.isLikelyExpired());
+        assertTrue(cm.isConnected());
+               
+        // reconnect -- should no longer be likely expired
+        cm.process(new WatchedEvent(EventType.None, KeeperState.Expired, ""));
+        assertFalse(cm.isLikelyExpired());
+        assertTrue(cm.isConnected());
+        assertTrue(strat.isExceptionThrow());
+      } finally {
+        cm.close();
+        zkClient.close();
+        executor.shutdown();
+      }
+    } finally {
+      server.shutdown();
+    }
+  }
+  
+  private class MockZkClientConnectionStrategy extends DefaultConnectionStrategy {
+    int called = 0;
+    boolean exceptionThrown = false;
+    
+    @Override
+    public void reconnect(final String serverAddress, final int zkClientTimeout,
+        final Watcher watcher, final ZkUpdate updater) throws IOException {
+      
+      if(called++ < 1) {
+        exceptionThrown = true;
+        throw new IOException("Testing");
+      }
+      
+      super.reconnect(serverAddress, zkClientTimeout, watcher, updater);
+    }
+    
+    public boolean isExceptionThrow() {
+      return exceptionThrown;
     }
   }
 }
