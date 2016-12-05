@@ -86,7 +86,7 @@ import static org.apache.solr.common.cloud.ZkStateReader.SHARD_ID_PROP;
  * <p>
  * TODO: exceptions during close on attempts to update cloud state
  */
-public final class ZkController {
+public class ZkController {
 
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   static final int WAIT_DOWN_STATES_TIMEOUT_SECONDS = 60;
@@ -2432,7 +2432,8 @@ public final class ZkController {
 
     @Override
     public void process(WatchedEvent event) {
-      if (event.getState() == Event.KeeperState.Disconnected || event.getState() == Event.KeeperState.Expired)  {
+      // session events are not change events, and do not remove the watcher
+      if (Event.EventType.None.equals(event.getType())) {
         return;
       }
 
